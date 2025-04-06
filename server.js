@@ -2,11 +2,14 @@ import express from 'express';
 import fetch from 'node-fetch';
 import dotenv from 'dotenv';
 import cors from 'cors';
+import path from 'path';
+import { fileURLToPath } from 'url';
 
 // Load environment variables
 dotenv.config();
 
 const app = express();
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 // Enhanced CORS configuration
 app.use(cors({
@@ -53,8 +56,6 @@ app.get('/proxy-jira', async (req, res) => {
       });
     }
 
-    console.log('Using Jira credentials:', { email });
-
     const auth = Buffer.from(`${email}:${token}`).toString('base64');
     const jql = encodeURIComponent('project = PROJECT49 ORDER BY updated DESC');
     const apiUrl = `https://synerx.atlassian.net/rest/api/3/search?jql=${jql}&maxResults=50`;
@@ -71,7 +72,6 @@ app.get('/proxy-jira', async (req, res) => {
 
     const responseText = await response.text();
     console.log('Jira API response status:', response.status);
-    console.log('Jira API response headers:', response.headers);
     
     if (!response.ok) {
       console.error('Jira API error details:', {
@@ -112,8 +112,16 @@ app.get('/proxy-jira', async (req, res) => {
   }
 });
 
+// Serve static files from the dist directory
+app.use(express.static(path.join(__dirname, 'dist')));
+
+// Handle client-side routing
+app.get('*', (req, res) => {
+  res.sendFile(path.join(__dirname, 'dist', 'index.html'));
+});
+
 // Start server
-const PORT = process.env.PORT || 4001;
-app.listen(PORT, () => {
-  console.log(`Server running on port ${PORT}`);
+const port = process.env.PORT || 8080;
+app.listen(port, () => {
+  console.log(`Server running on port ${port}`);
 });

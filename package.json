@@ -8,7 +8,7 @@
     "build": "tsc && vite build",
     "lint": "eslint .",
     "preview": "vite preview",
-    "deploy": "firebase deploy"
+    "start": "node server.js"
   },
   "dependencies": {
     "lucide-react": "^0.344.0",
@@ -18,7 +18,11 @@
     "framer-motion": "^11.0.8",
     "recharts": "^2.12.2",
     "date-fns": "^3.3.1",
-    "firebase": "^10.8.0"
+    "firebase": "^10.8.0",
+    "express": "^4.18.2",
+    "node-fetch": "^3.3.2",
+    "dotenv": "^16.4.5",
+    "cors": "^2.8.5"
   },
   "devDependencies": {
     "@eslint/js": "^9.9.1",
@@ -34,7 +38,6 @@
     "tailwindcss": "^3.4.1",
     "typescript": "^5.5.3",
     "typescript-eslint": "^8.3.0",
-    "vite": "^5.4.2",
-    "firebase-tools": "^13.0.0"
+    "vite": "^5.4.2"
   }
 }
