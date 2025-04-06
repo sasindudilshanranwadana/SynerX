@@ -1,0 +1,80 @@
+[debug] [2025-04-06T08:22:14.300Z] ----------------------------------------------------------------------
+[debug] [2025-04-06T08:22:14.300Z] Command:       /usr/local/bin/node /home/project/node_modules/.bin/firebase login
+[debug] [2025-04-06T08:22:14.300Z] CLI Version:   13.35.1
+[debug] [2025-04-06T08:22:14.300Z] Platform:      linux
+[debug] [2025-04-06T08:22:14.301Z] Node Version:  v18.20.3
+[debug] [2025-04-06T08:22:14.301Z] Time:          Sun Apr 06 2025 18:22:14 GMT+1000 (Australian Eastern Standard Time)
+[debug] [2025-04-06T08:22:14.301Z] ----------------------------------------------------------------------
+[debug] 
+[debug] [2025-04-06T08:22:14.310Z] >>> [apiv2][query] GET https://firebase-public.firebaseio.com/cli.json [none]
+[info] i  Firebase optionally collects CLI and Emulator Suite usage and error reporting information to help improve our products. Data is collected in accordance with Google's privacy policy (https://policies.google.com/privacy) and is not used to identify you.
+ 
+[debug] [2025-04-06T08:22:15.163Z] <<< [apiv2][status] GET https://firebase-public.firebaseio.com/cli.json 200
+[debug] [2025-04-06T08:22:15.163Z] <<< [apiv2][body] GET https://firebase-public.firebaseio.com/cli.json {"cloudBuildErrorAfter":1594252800000,"cloudBuildWarnAfter":1590019200000,"defaultNode10After":1594252800000,"minVersion":"3.0.5","node8DeploysDisabledAfter":1613390400000,"node8RuntimeDisabledAfter":1615809600000,"node8WarnAfter":1600128000000}
+[info] i  To change your data collection preference at any time, run `firebase logout` and log in again. 
+[info] 
+[info] Visit this URL on this device to log in:
+[info] https://accounts.google.com/o/oauth2/auth?client_id=563584335869-fgrhgmd47bqnekij5i8b5pr03ho849e6.apps.googleusercontent.com&scope=email%20openid%20https%3A%2F%2Fwww.googleapis.com%2Fauth%2Fcloudplatformprojects.readonly%20https%3A%2F%2Fwww.googleapis.com%2Fauth%2Ffirebase%20https%3A%2F%2Fwww.googleapis.com%2Fauth%2Fcloud-platform&response_type=code&state=684257852&redirect_uri=http%3A%2F%2Flocalhost%3A9005
+[info] 
+[info] Waiting for authentication...
+[debug] [2025-04-06T08:22:18.007Z] >>> [apiv2][query] POST https://auth.firebase.tools/attest [none]
+[debug] [2025-04-06T08:22:18.009Z] >>> [apiv2][body] POST https://auth.firebase.tools/attest {"session_id":"dc38e12a-bfa0-4c3f-a340-02069f3a9908"}
+[debug] [2025-04-06T08:22:18.855Z] <<< [apiv2][status] POST https://auth.firebase.tools/attest 200
+[debug] [2025-04-06T08:22:18.855Z] <<< [apiv2][body] POST https://auth.firebase.tools/attest {"token":"h8JdKY1piFKW7MxJjTubFK6vnj2WokhHV1poMkjEl4A"}
+[info] 
+[info] To sign in to the Firebase CLI:
+[info] 
+[info] 1. Take note of your session ID:
+[info] 
+[info]    DC38E
+[info] 
+[info] 2. Visit the URL below on any device and follow the instructions to get your code:
+[info] 
+[info]    https://auth.firebase.tools/login?code_challenge=1cs9QQ5XswL_nfdMftoxNQgytN0AtWakPjNOa6yuvfw&session=dc38e12a-bfa0-4c3f-a340-02069f3a9908&attest=h8JdKY1piFKW7MxJjTubFK6vnj2WokhHV1poMkjEl4A
+[info] 
+[info] 3. Paste or enter the authorization code below once you have it:
+[info] 
+[debug] [2025-04-06T08:24:45.696Z] ----------------------------------------------------------------------
+[debug] [2025-04-06T08:24:45.697Z] Command:       /usr/local/bin/node /home/project/node_modules/.bin/firebase deploy
+[debug] [2025-04-06T08:24:45.697Z] CLI Version:   13.35.1
+[debug] [2025-04-06T08:24:45.697Z] Platform:      linux
+[debug] [2025-04-06T08:24:45.697Z] Node Version:  v18.20.3
+[debug] [2025-04-06T08:24:45.697Z] Time:          Sun Apr 06 2025 18:24:45 GMT+1000 (Australian Eastern Standard Time)
+[debug] [2025-04-06T08:24:45.697Z] ----------------------------------------------------------------------
+[debug] 
+[debug] [2025-04-06T08:24:45.781Z] > command requires scopes: ["email","openid","https://www.googleapis.com/auth/cloudplatformprojects.readonly","https://www.googleapis.com/auth/firebase","https://www.googleapis.com/auth/cloud-platform"]
+[debug] [2025-04-06T08:24:45.919Z] Error: Unknown status code 530
+    at _0x36e048 (https://zp1v56uxy8rdx5ypatb0ockcb9tr6a-oci3.w-credentialless-staticblitz.com/blitz.33edf5bb.js:40:918666)
+    at _0x501eec._readHeaders (https://zp1v56uxy8rdx5ypatb0ockcb9tr6a-oci3.w-credentialless-staticblitz.com/blitz.33edf5bb.js:40:925274)
+    at _0x501eec.execute (https://zp1v56uxy8rdx5ypatb0ockcb9tr6a-oci3.w-credentialless-staticblitz.com/blitz.33edf5bb.js:40:923176)
+    at Socket.socketOnData (https://zp1v56uxy8rdx5ypatb0ockcb9tr6a-oci3.w-credentialless-staticblitz.com/builtins.8cb5228f.js:3:6055)
+    at Socket.emit (https://zp1v56uxy8rdx5ypatb0ockcb9tr6a-oci3.w-credentialless-staticblitz.com/builtins.8cb5228f.js:30:10899)
+    at Socket.emit (https://zp1v56uxy8rdx5ypatb0ockcb9tr6a-oci3.w-credentialless-staticblitz.com/builtins.8cb5228f.js:29:5177)
+    at addChunk (https://zp1v56uxy8rdx5ypatb0ockcb9tr6a-oci3.w-credentialless-staticblitz.com/builtins.8cb5228f.js:225:3685)
+    at readableAddChunk (https://zp1v56uxy8rdx5ypatb0ockcb9tr6a-oci3.w-credentialless-staticblitz.com/builtins.8cb5228f.js:225:3393)
+    at Readable.push (https://zp1v56uxy8rdx5ypatb0ockcb9tr6a-oci3.w-credentialless-staticblitz.com/builtins.8cb5228f.js:225:4971)
+    at _0x362f22.onStreamRead [as onread] (https://zp1v56uxy8rdx5ypatb0ockcb9tr6a-oci3.w-credentialless-staticblitz.com/builtins.8cb5228f.js:211:2596)
+[error] 
+[error] Error: An unexpected error has occurred.
+[debug] [2025-04-06T08:38:10.396Z] ----------------------------------------------------------------------
+[debug] [2025-04-06T08:38:10.397Z] Command:       /usr/local/bin/node /home/project/node_modules/.bin/firebase functions:config:set jira.email=sdranwadana@gmail.com jira.token=ATATT3xFfGF0aEiEM3vS8Q6H8zjKcBKC7llEEiI_KgagtVPzf2XQBLFr1tn9CrjzmiZjE8KY8WH48TNAWYXfDDxOdSjFEZlX-twIwlhsbmhTsVWjn0gBBkNoSY9uwqvKHtgYMUEN5vqGF8tmFG5Vo9nLMdNHs4SNeJ_dwdgX_IbEPNYkTTSkmMM=D5AD1665
+[debug] [2025-04-06T08:38:10.397Z] CLI Version:   13.35.1
+[debug] [2025-04-06T08:38:10.397Z] Platform:      linux
+[debug] [2025-04-06T08:38:10.397Z] Node Version:  v18.20.3
+[debug] [2025-04-06T08:38:10.397Z] Time:          Sun Apr 06 2025 18:38:10 GMT+1000 (Australian Eastern Standard Time)
+[debug] [2025-04-06T08:38:10.397Z] ----------------------------------------------------------------------
+[debug] 
+[debug] [2025-04-06T08:38:10.474Z] > command requires scopes: ["email","openid","https://www.googleapis.com/auth/cloudplatformprojects.readonly","https://www.googleapis.com/auth/firebase","https://www.googleapis.com/auth/cloud-platform"]
+[debug] [2025-04-06T08:38:10.697Z] Error: Unknown status code 530
+    at _0x36e048 (https://zp1v56uxy8rdx5ypatb0ockcb9tr6a-oci3.w-credentialless-staticblitz.com/blitz.33edf5bb.js:40:918666)
+    at _0x501eec._readHeaders (https://zp1v56uxy8rdx5ypatb0ockcb9tr6a-oci3.w-credentialless-staticblitz.com/blitz.33edf5bb.js:40:925274)
+    at _0x501eec.execute (https://zp1v56uxy8rdx5ypatb0ockcb9tr6a-oci3.w-credentialless-staticblitz.com/blitz.33edf5bb.js:40:923176)
+    at Socket.socketOnData (https://zp1v56uxy8rdx5ypatb0ockcb9tr6a-oci3.w-credentialless-staticblitz.com/builtins.8cb5228f.js:3:6055)
+    at Socket.emit (https://zp1v56uxy8rdx5ypatb0ockcb9tr6a-oci3.w-credentialless-staticblitz.com/builtins.8cb5228f.js:30:10899)
+    at Socket.emit (https://zp1v56uxy8rdx5ypatb0ockcb9tr6a-oci3.w-credentialless-staticblitz.com/builtins.8cb5228f.js:29:5177)
+    at addChunk (https://zp1v56uxy8rdx5ypatb0ockcb9tr6a-oci3.w-credentialless-staticblitz.com/builtins.8cb5228f.js:225:3685)
+    at readableAddChunk (https://zp1v56uxy8rdx5ypatb0ockcb9tr6a-oci3.w-credentialless-staticblitz.com/builtins.8cb5228f.js:225:3393)
+    at Readable.push (https://zp1v56uxy8rdx5ypatb0ockcb9tr6a-oci3.w-credentialless-staticblitz.com/builtins.8cb5228f.js:225:4971)
+    at _0x362f22.onStreamRead [as onread] (https://zp1v56uxy8rdx5ypatb0ockcb9tr6a-oci3.w-credentialless-staticblitz.com/builtins.8cb5228f.js:211:2596)
+[error] 
+[error] Error: An unexpected error has occurred.
