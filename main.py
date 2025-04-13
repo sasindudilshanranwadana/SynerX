@@ -51,6 +51,15 @@ class ViewTransformer:
         transformed_points = cv2.perspectiveTransform(reshaped_points, self.m)
         return transformed_points.reshape(-1, 2)
 
+def update_csv(tracker_status, csvfile, writer):
+    """ Update the CSV file with the latest vehicle status """
+    csvfile.seek(0)  # Move to the start of the file
+    csvfile.truncate()  # Clear the file
+    writer.writeheader()  # Re-write the header
+    for tid, data in tracker_status.items():
+        writer.writerow({"tracker_id": tid, "vehicle_type": data["vehicle_type"], "status": data["status"], "compliance": data["compliance"]})
+    csvfile.flush()
+
 if __name__ == "__main__":
     video_info = sv.VideoInfo.from_video_path(video_path='./asset/videoplayback.mp4')
     video_info.fps = 25
@@ -98,8 +107,17 @@ if __name__ == "__main__":
     # Dictionary to store the latest status for each tracker ID
     tracker_status = {}
 
+    # Set of tracker IDs that are currently inside the stop zone and compliant
+    compliant_vehicles = set()
+
+    # Variable to track vehicles currently in the stop zone
+    vehicles_in_stop_zone = {}
+
+    # Variable to track all vehicles that have ever been in the stop zone
+    historical_stop_zone_data = {}
+
     with open('./asset/tracking_results.csv', mode='w', newline='') as csvfile:
-        fieldnames = ["tracker_id", "vehicle_type", "status"]
+        fieldnames = ["tracker_id", "vehicle_type", "status", "compliance"]
         writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
         writer.writeheader()  # Write the header once
 
@@ -130,34 +148,50 @@ if __name__ == "__main__":
 
                         vehicle_type = tracker_types[tracker_id]
                         status = "moving"
+                        compliance = 0  # Default compliance value
 
                         # Check if this specific vehicle is inside the stop zone using original point
                         pt = tuple(map(float, orig_point))  # ensure it's (x, y) and float
-                        if cv2.pointPolygonTest(stop_zone.polygon.astype(np.float32), pt, False) >= 0:
+                        is_in_stop_zone = cv2.pointPolygonTest(stop_zone.polygon.astype(np.float32), pt, False) >= 0
 
+                        if is_in_stop_zone:
                             stopped_vehicles[tracker_id] += 1
 
                             if stopped_vehicles[tracker_id] > video_info.fps * 2:
                                 status = "stopped"
+                                compliance = 1  # Compliant if stopped
+                                compliant_vehicles.add(tracker_id)  # Add vehicle to compliant set
                             elif stopped_vehicles[tracker_id] > video_info.fps:
                                 status = "slower"
+                                compliance = 1  # Compliant if slower
+
+                            # Update tracker status in memory only when it changes
+                            if tracker_id not in tracker_status or tracker_status[tracker_id]["status"] != status:
+                                tracker_status[tracker_id] = {"vehicle_type": vehicle_type, "status": status, "compliance": compliance}
+
+                            # Add vehicle to the stop zone variable
+                            vehicles_in_stop_zone[tracker_id] = {"vehicle_type": vehicle_type, "status": status, "compliance": compliance}
+
+                            # Add vehicle to historical data
+                            historical_stop_zone_data[tracker_id] = {"vehicle_type": vehicle_type, "status": status, "compliance": compliance}
                         else:
                             stopped_vehicles[tracker_id] = 0
 
-                        # Update tracker status in memory
-                        if tracker_id not in tracker_status or (
-                            tracker_status[tracker_id]["status"] != "stopped" and
-                            (status == "stopped" or (status == "slower" and tracker_status[tracker_id]["status"] == "moving"))
-                        ):
-                            tracker_status[tracker_id] = {"vehicle_type": vehicle_type, "status": status}
+                            # Remove vehicle from the stop zone variable if it leaves
+                            if tracker_id in vehicles_in_stop_zone:
+                                del vehicles_in_stop_zone[tracker_id]
 
-                            # Overwrite the CSV file with updated tracker statuses
-                            csvfile.seek(0)  # Move to the start of the file
-                            csvfile.truncate()  # Clear the file
-                            writer.writeheader()  # Re-write the header
-                            for tid, data in tracker_status.items():
-                                writer.writerow({"tracker_id": tid, "vehicle_type": data["vehicle_type"], "status": data["status"]})
-                            csvfile.flush()
+                            # Prevent the status from changing to "moving" or "slower" if it's already stopped or slower
+                            if tracker_id in compliant_vehicles:
+                                continue  # Skip the status change if already compliant
+
+                            # Otherwise, reset to "moving" if vehicle is not compliant and leaves the stop zone
+                            if tracker_id not in compliant_vehicles:
+                                status = "moving"  # Only reset to moving if it is not compliant and leaves the zone
+
+                            # Update tracker status in memory only when it changes
+                            if tracker_id not in tracker_status or tracker_status[tracker_id]["status"] != status:
+                                tracker_status[tracker_id] = {"vehicle_type": vehicle_type, "status": status, "compliance": compliance}
 
                         # Update labels
                         if status == "stopped":
@@ -168,6 +202,14 @@ if __name__ == "__main__":
                             top_left_labels.append(vehicle_type)
 
                         bottom_labels.append(f"#{tracker_id}")
+
+                    # Save all historical stop zone data to the CSV file
+                    csvfile.seek(0)  # Move to the start of the file
+                    csvfile.truncate()  # Clear the file
+                    writer.writeheader()  # Re-write the header
+                    for tid, data in historical_stop_zone_data.items():
+                        writer.writerow({"tracker_id": tid, "vehicle_type": data["vehicle_type"], "status": data["status"], "compliance": data["compliance"]})
+                    csvfile.flush()
 
                     # Ensure labels match the number of detections
                     while len(top_left_labels) < len(detections):

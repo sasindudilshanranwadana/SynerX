@@ -1,3 +1,10 @@
-tracker_id,vehicle_type,status
-1,car,slower
-2,car,stopped
+tracker_id,vehicle_type,status,compliance
+2,car,stopped,1
+1,car,stopped,1
+4,car,slower,1
+5,car,slower,1
+7,car,slower,1
+8,car,slower,1
+11,car,slower,1
+13,car,slower,1
+14,car,stopped,1
