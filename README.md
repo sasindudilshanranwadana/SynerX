@@ -20,8 +20,6 @@ This video is used as the input for the vehicle detection, tracking, and stoppin
 
 ## 📁 Test Data
 
-The test data for this project is located in the `tracking-results-test` directory.
-
 > ⚠️ **Important Notice:**
 
 - The files `tracking_results.csv` and `vehicle_count.csv` will be **reset (overwritten)** every time the program is re-run.
