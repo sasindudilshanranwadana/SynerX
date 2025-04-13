@@ -110,8 +110,7 @@ if __name__ == "__main__":
     # Set of tracker IDs that are currently inside the stop zone and compliant
     compliant_vehicles = set()
 
-    # Variable to track vehicles currently in the stop zone
-    vehicles_in_stop_zone = {}
+   
 
     # Variable to track all vehicles that have ever been in the stop zone
     historical_stop_zone_data = {}
@@ -169,17 +168,14 @@ if __name__ == "__main__":
                             if tracker_id not in tracker_status or tracker_status[tracker_id]["status"] != status:
                                 tracker_status[tracker_id] = {"vehicle_type": vehicle_type, "status": status, "compliance": compliance}
 
-                            # Add vehicle to the stop zone variable
-                            vehicles_in_stop_zone[tracker_id] = {"vehicle_type": vehicle_type, "status": status, "compliance": compliance}
+                         
 
                             # Add vehicle to historical data
                             historical_stop_zone_data[tracker_id] = {"vehicle_type": vehicle_type, "status": status, "compliance": compliance}
                         else:
                             stopped_vehicles[tracker_id] = 0
 
-                            # Remove vehicle from the stop zone variable if it leaves
-                            if tracker_id in vehicles_in_stop_zone:
-                                del vehicles_in_stop_zone[tracker_id]
+                           
 
                             # Prevent the status from changing to "moving" or "slower" if it's already stopped or slower
                             if tracker_id in compliant_vehicles:
