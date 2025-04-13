@@ -12,7 +12,7 @@ If running Colab tests, upload /asset/ contents into your Drive Account, make su
 
 The new video file used for tracking and status detection is located in the `asset` folder:
 
-📁 **Path**: `./asset/videoplayback.mp4`
+📁 **Path**: `asset/videoplayback.mp4`
 
 This video is used as the input for the vehicle detection, tracking, and stopping behavior analysis system.
 
