@@ -1,34 +1,19 @@
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 
+// https://vitejs.dev/config/
 export default defineConfig({
   plugins: [react()],
   optimizeDeps: {
     exclude: ['lucide-react'],
   },
   server: {
-    proxy: {
-      '/proxy-jira': {
-        target: 'https://project49--project49-45f16.asia-east1.hosted.app',
-        changeOrigin: true,
-        secure: false
-      },
-      '/api': {
-        target: 'https://project49--project49-45f16.asia-east1.hosted.app',
-        changeOrigin: true,
-        secure: false
-      }
-    },
+    host: true, // Listen on all local IPs
+    port: 5173,
+    strictPort: true,
   },
-  build: {
-    minify: 'esbuild',
-    sourcemap: true,
-    rollupOptions: {
-      output: {
-        manualChunks: {
-          'react-vendor': ['react', 'react-dom'],
-        },
-      },
-    },
+  preview: {
+    port: 4173,
+    strictPort: true,
   },
 });

@@ -1,65 +1,102 @@
 import React from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
-import { motion } from 'framer-motion';
+import { initializeApp } from 'firebase/app';
+import { getAuth, onAuthStateChanged } from 'firebase/auth';
 import LandingPage from './pages/LandingPage';
 import Dashboard from './pages/Dashboard';
 import Auth from './pages/Auth';
-import { AuthProvider, useAuth } from './contexts/AuthContext';
-import { ThemeProvider } from './contexts/ThemeContext';
+import Upload from './pages/Upload';
+import Analytics from './pages/Analytics';
+import Reports from './pages/Reports';
+import Progress from './pages/Progress';
+import ProgressBoard from './pages/ProgressBoard';
+import Settings from './pages/Settings';
+import LoadingScreen from './components/LoadingScreen';
 
-const PrivateRoute = ({ children }: { children: React.ReactNode }) => {
-  const { user, loading } = useAuth();
-  
-  if (loading) {
-    return (
-      <div className="min-h-screen bg-gradient-to-br from-gray-900 to-gray-800 dark:from-gray-900 dark:to-gray-800 light:from-gray-100 light:to-gray-200 flex items-center justify-center">
-        <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-cyan-500"></div>
-      </div>
-    );
-  }
-  
-  return user ? <>{children}</> : <Navigate to="/auth" replace />;
+// Firebase configuration from environment variables
+const firebaseConfig = {
+  apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
+  authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN,
+  projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID,
+  storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET,
+  messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID,
+  appId: import.meta.env.VITE_FIREBASE_APP_ID
 };
 
-const PublicRoute = ({ children }: { children: React.ReactNode }) => {
-  const { user } = useAuth();
-  return user ? <Navigate to="/dashboard" replace /> : <>{children}</>;
-};
+// Initialize Firebase
+const app = initializeApp(firebaseConfig);
+const auth = getAuth(app);
 
 function App() {
+  const [user, setUser] = React.useState<any>(null);
+  const [loading, setLoading] = React.useState(true);
+  const [pageLoading, setPageLoading] = React.useState(false);
+
+  React.useEffect(() => {
+    const unsubscribe = onAuthStateChanged(auth, (user) => {
+      setUser(user);
+      setLoading(false);
+    });
+
+    return () => unsubscribe();
+  }, []);
+
+  // Add loading state for route changes
+  React.useEffect(() => {
+    const handleStart = () => setPageLoading(true);
+    const handleComplete = () => setPageLoading(false);
+
+    window.addEventListener('beforeunload', handleStart);
+    window.addEventListener('load', handleComplete);
+
+    return () => {
+      window.removeEventListener('beforeunload', handleStart);
+      window.removeEventListener('load', handleComplete);
+    };
+  }, []);
+
+  if (loading || pageLoading) {
+    return <LoadingScreen />;
+  }
+
   return (
-    <AuthProvider>
-      <ThemeProvider>
-        <Router>
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            transition={{ duration: 0.5 }}
-            className="min-h-screen bg-gradient-to-br from-gray-100 to-gray-200 dark:from-gray-900 dark:to-gray-800 text-gray-900 dark:text-white transition-colors duration-200"
-          >
-            <Routes>
-              <Route path="/" element={<LandingPage />} />
-              <Route
-                path="/auth"
-                element={
-                  <PublicRoute>
-                    <Auth />
-                  </PublicRoute>
-                }
-              />
-              <Route
-                path="/dashboard/*"
-                element={
-                  <PrivateRoute>
-                    <Dashboard />
-                  </PrivateRoute>
-                }
-              />
-            </Routes>
-          </motion.div>
-        </Router>
-      </ThemeProvider>
-    </AuthProvider>
+    <Router>
+      <Routes>
+        <Route path="/" element={<LandingPage />} />
+        <Route 
+          path="/dashboard/*" 
+          element={user ? <Dashboard /> : <Navigate to="/auth" />} 
+        />
+        <Route 
+          path="/upload" 
+          element={user ? <Upload /> : <Navigate to="/auth" />} 
+        />
+        <Route 
+          path="/analytics" 
+          element={user ? <Analytics /> : <Navigate to="/auth" />} 
+        />
+        <Route 
+          path="/reports" 
+          element={user ? <Reports /> : <Navigate to="/auth" />} 
+        />
+        <Route 
+          path="/progress" 
+          element={user ? <Progress /> : <Navigate to="/auth" />} 
+        />
+        <Route 
+          path="/progress/board" 
+          element={user ? <ProgressBoard /> : <Navigate to="/auth" />} 
+        />
+        <Route 
+          path="/settings" 
+          element={user ? <Settings /> : <Navigate to="/auth" />} 
+        />
+        <Route 
+          path="/auth" 
+          element={!user ? <Auth /> : <Navigate to="/dashboard" />} 
+        />
+      </Routes>
+    </Router>
   );
 }
 
