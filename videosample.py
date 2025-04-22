@@ -1,4 +1,4 @@
-import cv2 
+import cv2
 import os
 
 # Load Haar cascade for license plate detection
@@ -16,6 +16,12 @@ if not cap.isOpened():
     exit()
 
 frame_count = 0
+frame_width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+frame_height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+fps = int(cap.get(cv2.CAP_PROP_FPS))
+
+# Define the codec and create a VideoWriter object
+out = cv2.VideoWriter('processed_video.mp4', cv2.VideoWriter_fourcc(*'mp4v'), fps, (frame_width, frame_height))
 
 while True:
     ret, frame = cap.read()
@@ -44,5 +50,10 @@ while True:
     frame_count += 1
     cv2.imwrite(f"frames/frame_{frame_count:04d}.jpg", frame)
 
+    # Write the frame to the video file
+    out.write(frame)
+
 cap.release()
+out.release()
 print(f"✅ Processing complete. {frame_count} frames saved in 'frames' folder.")
+print("✅ Processed video saved as 'processed_video.mp4'.")
