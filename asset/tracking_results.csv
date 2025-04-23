@@ -1,22 +1,5 @@
 tracker_id,vehicle_type,status,compliance
-1,car,slower,1
-2,car,slower,1
+1,car,slow down,1
+2,car,slow down,1
 3,car,stopped,1
-5,car,stopped,1
-7,car,stopped,1
-20,car,moving,0
-21,bus,moving,0
-23,car,slower,1
-24,bus,stopped,1
-17,car,stopped,1
-11,car,stopped,1
-25,car,stopped,1
-29,car,slower,1
-30,car,slower,1
-31,car,slower,1
-32,car,slower,1
-28,car,slower,1
-39,car,slower,1
-42,car,stopped,1
-44,car,stopped,1
-45,car,slower,1
+5,car,moving,0

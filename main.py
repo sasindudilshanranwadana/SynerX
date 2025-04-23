@@ -118,8 +118,8 @@ def main():
                         if stopped_frames[track_id] > video_info.fps * 2:
                             status, compliance = "stopped", 1
                             compliance_set.add(track_id)
-                        elif stopped_frames[track_id] > video_info.fps:
-                            status, compliance = "slower", 1
+                        elif stopped_frames[track_id] > video_info.fps * 1.5:
+                            status, compliance = "slow down", 1
 
                         stop_zone_history[track_id] = {
                             "vehicle_type": vehicle_type,
