@@ -94,7 +94,7 @@ def main():
             for frame in frame_gen:
                 result = model(frame)[0]
                 detections = sv.Detections.from_ultralytics(result)
-                detections = detections[detections.confidence > 0.5]
+                detections = detections[detections.confidence > 0.3]
                 detections = detections[polygon_zone.trigger(detections)].with_nms(threshold=0.6)
                 detections = tracker.update_with_detections(detections)
 
