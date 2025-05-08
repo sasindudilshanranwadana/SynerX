@@ -70,7 +70,7 @@ To run the program, follow these steps:
    ```bash
    python main.py
    ```
-3. **Execute API**:
+### (Optional) Run API
 
    Run the following command in your terminal:
    
