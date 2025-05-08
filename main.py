@@ -56,13 +56,13 @@ def initialize_csv(filepath, fieldnames):
 
 # ---------- MAIN PIPELINE ---------- #
 
-def main():
-    video_info = sv.VideoInfo.from_video_path(video_path=VIDEO_PATH)
+def main(video_path=VIDEO_PATH, output_video_path=OUTPUT_VIDEO_PATH):
+    video_info = sv.VideoInfo.from_video_path(video_path)
     video_info.fps = 25
 
     model = YOLO(MODEL_PATH)
     tracker = sv.ByteTrack(frame_rate=video_info.fps, track_activation_threshold=0.3)
-    frame_gen = sv.get_video_frames_generator(source_path=VIDEO_PATH)
+    frame_gen = sv.get_video_frames_generator(source_path=video_path)
 
     # Annotators
     thickness = sv.calculate_optimal_line_thickness(video_info.resolution_wh)
@@ -90,7 +90,7 @@ def main():
     count_csvfile, count_writer = initialize_csv(COUNT_CSV_PATH, ["vehicle_type", "count"])
 
     try:
-        with sv.VideoSink(OUTPUT_VIDEO_PATH, video_info) as sink:
+        with sv.VideoSink(output_video_path, video_info) as sink:
             for frame in frame_gen:
                 result = model(frame)[0]
                 detections = sv.Detections.from_ultralytics(result)
