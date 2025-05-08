@@ -1,31 +1,30 @@
-from fastapi import FastAPI
-from ultralytics import YOLO
-from pydantic import BaseModel
-from typing import List
+from fastapi import FastAPI, UploadFile, File
+from fastapi.responses import JSONResponse
+import shutil
+import os
+from main import main, OUTPUT_CSV_PATH, COUNT_CSV_PATH, VIDEO_PATH, OUTPUT_VIDEO_PATH
+
 app = FastAPI()
 
-@app.get("/")
-async def root():
-    return {"message": "SynerX"}
+@app.post("/upload-video/")
+async def upload_video(file: UploadFile = File(...)):
+    # Save the uploaded video
+    with open(VIDEO_PATH, "wb") as buffer:
+        shutil.copyfileobj(file.file, buffer)
 
+    # Process the video
+    result = main(VIDEO_PATH, OUTPUT_VIDEO_PATH)
+    return JSONResponse(content={"Video": "Video processed successfully."})
 
-# # Load a pretrained YOLO11n model
-# model = YOLO("yolo11n.pt")
+@app.get("/get-results/")
+async def get_results():
+    # Return results from the CSV files
+    if not os.path.exists(OUTPUT_CSV_PATH) or not os.path.exists(COUNT_CSV_PATH):
+        return JSONResponse(content={"error": "No results available. Process a video first."})
 
-# # Train the model on the COCO8 dataset for 100 epochs
-# train_results = model.train(
-#     data="coco8.yaml",  # Path to dataset configuration file
-#     epochs=100,  # Number of training epochs
-#     imgsz=640,  # Image size for training
-#     device="cpu",  # Device to run on (e.g., 'cpu', 0, [0,1,2,3])
-# )
+    with open(OUTPUT_CSV_PATH, "r") as csvfile:
+        tracking_results = csvfile.read()
+    with open(COUNT_CSV_PATH, "r") as countfile:
+        count_results = countfile.read()
 
-# # Evaluate the model's performance on the validation set
-# metrics = model.val()
-
-# # Perform object detection on an image
-# results = model("path/to/image.jpg")  # Predict on an image
-# results[0].show()  # Display results
-
-# # Export the model to ONNX format for deployment
-# path = model.export(format="onnx")  # Returns the path to the exported model
+    return JSONResponse(content={"tracking_results": tracking_results, "vehicle_counts": count_results})
