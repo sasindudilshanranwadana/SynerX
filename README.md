@@ -70,3 +70,9 @@ To run the program, follow these steps:
    ```bash
    python main.py
    ```
+3. **Execute API**:
+   Run the following command in your terminal:
+   
+   ```bash
+   uvicorn api:app --reload
+   ```
