@@ -77,3 +77,7 @@ To run the program, follow these steps:
    ```bash
    uvicorn api:app --reload
    ```
+
+### (Optional) Run on Nvidia GPU (CUDA)
+
+```pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu121 ```
