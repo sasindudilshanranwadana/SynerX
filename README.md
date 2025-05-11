@@ -70,3 +70,14 @@ To run the program, follow these steps:
    ```bash
    python main.py
    ```
+### (Optional) Run API
+
+   Run the following command in your terminal:
+   
+   ```bash
+   uvicorn api:app --reload
+   ```
+
+### (Optional) Run on Nvidia GPU (CUDA)
+
+```pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu121 ```
