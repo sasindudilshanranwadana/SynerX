@@ -25,7 +25,7 @@ SOURCE_POLYGON = np.array([
 
 STOP_ZONE_POLYGON = np.array([(507, 199), (681, 209), (751, 555), (484, 541)])
 TARGET_WIDTH, TARGET_HEIGHT = 50, 130
-VELOCITY_THRESHOLD = 0.5  # Adjusted for normalized space (tune this value)
+VELOCITY_THRESHOLD = 0.5 # Adjusted for normalized space (tune this value)
 FRAME_BUFFER = 20
 
 CLASS_NAMES = {
@@ -165,7 +165,15 @@ def main():
     # Track which vehicle records have been written to CSV
     written_records = set()  # Set of (tracker_id, status) tuples
     
+    # New set to track vehicles that have been marked as stationary
+    stationary_vehicles = set()
+    
     stop_zone_history_dict = read_csv_to_dict(OUTPUT_CSV_PATH)
+    
+    # Check for previously marked stationary vehicles in existing CSV
+    for track_id, data in stop_zone_history_dict.items():
+        if data.get('status') == 'stationary':
+            stationary_vehicles.add(int(track_id))
     
     # We'll handle file operations directly when needed
     if not os.path.exists(OUTPUT_CSV_PATH) or os.path.getsize(OUTPUT_CSV_PATH) == 0:
@@ -234,7 +242,9 @@ def main():
                     tracker_types[track_id] = vehicle_type
                     
                     previous_status = status_cache.get(track_id, "")
-                    status = "moving"
+                    
+                    # Default to moving status, which may be overridden below
+                    current_status = "moving"
                     compliance = 0
 
                     position_history[track_id].append(trans_pt)
@@ -252,7 +262,7 @@ def main():
                                 "vehicle_type": vehicle_type,
                                 "status": "entered",
                                 "compliance": 0,
-                                "reaction_time": None,
+                                "reaction_time": 0,
                                 "date": current_time
                             }
                             
@@ -271,7 +281,7 @@ def main():
                             avg_velocity = np.average(displacements, weights=weights)
 
                             if avg_velocity < VELOCITY_THRESHOLD:
-                                status, compliance = "stationary", 1
+                                current_status, compliance = "stationary", 1
                                 compliance_set.add(track_id)
 
                                 if track_id not in reaction_times:
@@ -280,23 +290,40 @@ def main():
                         position_history[track_id].clear()
                         if track_id in entry_times and track_id not in reaction_times:
                             reaction_times[track_id] = None
-
+                    
+                    # If the vehicle is already marked as stationary, maintain that status
+                    # regardless of its current movement state
+                    if track_id in stationary_vehicles:
+                        current_status = "stationary"
+                        compliance = 1
+                    
                     # Detect status change and update CSV if needed
-                    if previous_status != status and previous_status != "":
-                        record_key = (track_id, status)
-                        if record_key not in written_records:
-                            written_records.add(record_key)
-                            csv_update_needed = True
-                            
-                    status_cache[track_id] = status
-                    top_labels.append(f"{vehicle_type} {status}" if status != "moving" else vehicle_type)
+                    if previous_status != current_status and previous_status != "":
+                        # Only update the CSV if:
+                        # 1. We're upgrading to "stationary" status, OR
+                        # 2. The vehicle hasn't been marked as stationary before
+                        if current_status == "stationary" or track_id not in stationary_vehicles:
+                            record_key = (track_id, current_status)
+                            if record_key not in written_records:
+                                written_records.add(record_key)
+                                csv_update_needed = True
+                                
+                                # If we're marking it as stationary for the first time,
+                                # add it to our stationary vehicles set
+                                if current_status == "stationary":
+                                    stationary_vehicles.add(track_id)
+                    
+                    status_cache[track_id] = current_status
+                    
+                    # Display the status label - always show the actual/current status for visual feedback
+                    top_labels.append(f"{vehicle_type} {current_status}" if current_status != "moving" else vehicle_type)
                     bottom_labels.append(f"#{track_id}")
 
                     if track_id in stop_zone_history:
                         stop_zone_history_dict[str(track_id)] = {
                             "tracker_id": track_id,
                             "vehicle_type": vehicle_type,
-                            "status": status,
+                            "status": current_status,
                             "compliance": compliance,
                             "reaction_time": reaction_times.get(track_id),
                             "date": stop_zone_history[track_id].get("date", datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
