@@ -130,14 +130,14 @@ def correct_vehicle_type(class_id, y_position, confidence=None):
 
 # ---------- MAIN ---------- #
 
-def main():
-    video_info = sv.VideoInfo.from_video_path(video_path=VIDEO_PATH)
+def main(video_path=VIDEO_PATH, output_video_path=OUTPUT_VIDEO_PATH):
+    video_info = sv.VideoInfo.from_video_path(video_path)
     video_info.fps = 30
 
     model = YOLO(MODEL_PATH)
     model.fuse()
     tracker = sv.ByteTrack(frame_rate=video_info.fps)
-    frame_gen = sv.get_video_frames_generator(source_path=VIDEO_PATH)
+    frame_gen = sv.get_video_frames_generator(source_path=video_path)
 
     thickness = 1
     text_scale = 0.4
@@ -203,7 +203,7 @@ def main():
     prev_fps_time = start_time
 
     try:
-        with sv.VideoSink(OUTPUT_VIDEO_PATH, video_info) as sink:
+        with sv.VideoSink(output_video_path, video_info) as sink:
             for frame in frame_gen:
                 frame_idx += 1
                 result = model(frame, verbose=False)[0]
