@@ -43,3 +43,7 @@ async def process_video(request: Request):
         "tracking_results": tracking_data,
         "vehicle_counts": count_data
     }
+    @app.get("/")
+def health_check():
+    return {"status": "ok"}
+
