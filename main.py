@@ -133,6 +133,20 @@ def correct_vehicle_type(class_id, y_position, confidence=None):
 def main(video_path=VIDEO_PATH, output_video_path=OUTPUT_VIDEO_PATH):
     video_info = sv.VideoInfo.from_video_path(video_path)
     video_info.fps = 30
+    # ---------- HEAT-MAP INITIALISATION ----------
+    W, H = video_info.resolution_wh
+    heat_raw = np.zeros((H, W), dtype=np.float32)
+
+    cap0 = cv2.VideoCapture(video_path)
+    ok, first_frame = cap0.read()       # keep this!
+    cap0.release()
+    if not ok:
+        raise RuntimeError("could not read first frame")
+
+    KERNEL = cv2.getGaussianKernel(25, 7)
+    KERNEL = (KERNEL @ KERNEL.T).astype(np.float32)
+    kH, kW = KERNEL.shape
+    # --------------------------------------------
 
     model = YOLO(MODEL_PATH)
     model.fuse()
@@ -211,6 +225,20 @@ def main(video_path=VIDEO_PATH, output_video_path=OUTPUT_VIDEO_PATH):
                 detections = detections[detections.confidence > 0.3]
                 detections = detections[polygon_zone.trigger(detections)].with_nms(threshold=0.6)
                 detections = tracker.update_with_detections(detections)
+
+                # ---------- HEAT-MAP ACCUMULATION ----------
+                for (x1, y1, x2, y2), conf in zip(detections.xyxy, detections.confidence):
+                    cx, cy = int((x1 + x2) / 2), int((y1 + y2) / 2)   # bbox centre
+
+                    # roi in heat_raw (clip at edges)
+                    x0, x1p = max(0, cx - kW // 2), min(W, cx + kW // 2 + 1)
+                    y0, y1p = max(0, cy - kH // 2), min(H, cy + kH // 2 + 1)
+
+                    kx0, ky0 = x0 - (cx - kW // 2), y0 - (cy - kH // 2)
+                    kx1, ky1 = kx0 + (x1p - x0),    ky0 + (y1p - y0)
+
+                    heat_raw[y0:y1p, x0:x1p] += KERNEL[ky0:ky1, kx0:kx1] * conf
+                # -------------------------------------------
 
                 # Shift track IDs by offset
                 detections.tracker_id = [tid + tracker_id_offset for tid in detections.tracker_id]
@@ -376,6 +404,16 @@ def main(video_path=VIDEO_PATH, output_video_path=OUTPUT_VIDEO_PATH):
         end_time = time.time()
         total_time = end_time - start_time
         avg_fps = frame_idx / total_time
+        # ---------- HEAT-MAP WRITE-OUT ----------
+        heat_norm  = cv2.normalize(heat_raw, None, 0, 255, cv2.NORM_MINMAX)
+        heat_color = cv2.applyColorMap(heat_norm.astype(np.uint8), cv2.COLORMAP_JET)
+        cv2.imwrite("./asset/heatmap.png", heat_color)
+
+        # blend only if we really have first_frame
+        if first_frame is not None and first_frame.size:
+            overlay = cv2.addWeighted(first_frame, 0.55, heat_color, 0.45, 0)
+            cv2.imwrite("./asset/heatmap_overlay.png", overlay)
+        print("[INFO] Heat-map images saved ➜ asset/heatmap*.png")
         print(f"[INFO] Total Time: {total_time:.2f}s, Frames: {frame_idx}, Avg FPS: {avg_fps:.2f}")
         cv2.destroyAllWindows()
         print("[INFO] Tracking and counting completed successfully.")
