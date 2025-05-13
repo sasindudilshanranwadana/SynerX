@@ -4,6 +4,8 @@ from supabase import create_client
 from blur_core import blur_plates_yolo
 from main import main
 import shutil
+import cv2
+import numpy as np
 
 SUPABASE_URL = os.environ.get("SUPABASE_URL")
 SUPABASE_KEY = os.environ.get("SUPABASE_SERVICE_ROLE_KEY")
@@ -31,24 +33,19 @@ if video.data:
     output_blur_only = f"asset/{base_name}_tracking_blur.mp4"
     main(blurred_path, output_blur_only)
 
-    # 3. Heatmap-only video from heatmap image (convert png to video)
-    import cv2
-    import numpy as np
-
+    # 3. Heatmap-only video
     frame = cv2.imread("asset/heatmap_overlay.png")
     if frame is not None:
         h, w, _ = frame.shape
         heatmap_vid = cv2.VideoWriter(f"asset/{base_name}_heatmap_only.mp4", cv2.VideoWriter_fourcc(*'mp4v'), 10, (w, h))
-        for _ in range(100):  # 10s of video
+        for _ in range(100):
             heatmap_vid.write(frame)
         heatmap_vid.release()
 
-    # 4. Tracking + blur + heatmap overlay (overlay image onto video)
-    # You already produce heatmap_overlay.png — so we'll blend it with the output_blur_only
-    tracking_blur_path = f"asset/{base_name}_tracking_blur.mp4"
+    # 4. Combined tracking + blur + heatmap overlay
     overlay_img = cv2.imread("asset/heatmap_overlay.png")
     if overlay_img is not None:
-        cap = cv2.VideoCapture(tracking_blur_path)
+        cap = cv2.VideoCapture(output_blur_only)
         w, h = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH)), int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
         fps = cap.get(cv2.CAP_PROP_FPS)
         out_combined = cv2.VideoWriter(f"asset/{base_name}_tracking_blur_heatmap.mp4", cv2.VideoWriter_fourcc(*'mp4v'), fps, (w, h))
@@ -67,10 +64,29 @@ if video.data:
             supabase.storage().from_("videos").upload(target, f, {"content-type": mime})
 
     folder = f"processed/{video_id}"
-    upload(f"asset/{base_name}_tracking_blur.mp4", f"{folder}/{base_name}_tracking_blur.mp4", "video/mp4")
+    upload(output_blur_only, f"{folder}/{base_name}_tracking_blur.mp4", "video/mp4")
     upload(f"asset/{base_name}_tracking_blur_heatmap.mp4", f"{folder}/{base_name}_tracking_blur_heatmap.mp4", "video/mp4")
     upload(f"asset/{base_name}_heatmap_only.mp4", f"{folder}/{base_name}_heatmap_only.mp4", "video/mp4")
     upload("asset/tracking_results.csv", f"{folder}/tracking_results.csv", "text/csv")
     upload("asset/vehicle_count.csv", f"{folder}/vehicle_count.csv", "text/csv")
 
     supabase.table("video_uploads").update({"status": "completed", "progress": 100}).eq("id", video_id).execute()
+
+    # Optional cleanup
+    paths_to_delete = [
+        input_path,
+        blurred_path,
+        output_blur_only,
+        f"asset/{base_name}_tracking_blur_heatmap.mp4",
+        f"asset/{base_name}_heatmap_only.mp4",
+        "asset/tracking_results.csv",
+        "asset/vehicle_count.csv",
+        "asset/heatmap.png",
+        "asset/heatmap_overlay.png"
+    ]
+
+    for p in paths_to_delete:
+        try:
+            os.remove(p)
+        except FileNotFoundError:
+            pass
