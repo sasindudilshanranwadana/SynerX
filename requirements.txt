@@ -1,3 +1,4 @@
+supabase
 opencv-python
 numpy
 ultralytics
