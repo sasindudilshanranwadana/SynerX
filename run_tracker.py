@@ -1,11 +1,19 @@
 import os
+print("✅ STEP 1: Basic imports loaded")
+
 import time
 import requests
 from supabase import create_client
+print("✅ STEP 2: Supabase client import done")
+
 from blur_core import blur_plates_yolo
+print("✅ STEP 3: blur_core imported")
+
 from main import main
 import cv2
 import numpy as np
+print("✅ STEP 4: OpenCV and main imported")
+
 
 print("✅ run_tracker.py started")
 
