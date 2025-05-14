@@ -12,11 +12,24 @@ import requests
 from main import main, OUTPUT_CSV_PATH, COUNT_CSV_PATH, VIDEO_PATH, OUTPUT_VIDEO_PATH
 from blur_core import blur_plates_yolo
 
+# Supabase client
+from supabase import create_client
+
+SUPABASE_URL = os.getenv("SUPABASE_URL")
+SUPABASE_SERVICE_ROLE_KEY = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
+supabase = create_client(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
+
 OUTPUT_DIR = Path("processed")
 OUTPUT_DIR.mkdir(exist_ok=True)
 
 app = FastAPI()
 app.mount("/videos", StaticFiles(directory=OUTPUT_DIR), name="videos")
+
+def upload_to_supabase(local_path: Path, remote_path: str) -> str:
+    with open(local_path, "rb") as f:
+        supabase.storage.from_("processed").upload(remote_path, f, file_options={"content-type": "video/mp4", "upsert": True})
+    public_url = supabase.storage.from_("processed").get_public_url(remote_path)
+    return public_url
 
 @app.post("/upload-video/")
 async def upload_video(
@@ -126,8 +139,13 @@ async def process_from_url(request: Request):
 
     try:
         with open(OUTPUT_CSV_PATH) as f1, open(COUNT_CSV_PATH) as f2:
+            # Upload processed video
+            remote_path = f"results/{analytic_path.name}"
+            supabase_url = upload_to_supabase(analytic_path, remote_path)
+
             return {
                 "status": "done",
+                "supabase_video_url": supabase_url,
                 "tracking_results": f1.read(),
                 "vehicle_counts": f2.read()
             }
