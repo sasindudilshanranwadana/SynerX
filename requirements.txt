@@ -1,5 +1,7 @@
-supabase
-opencv-python
+fastapi
+uvicorn
+requests
+opencv-python-headless
 numpy
 ultralytics
 supervision
