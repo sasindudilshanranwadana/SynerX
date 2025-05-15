@@ -18,7 +18,8 @@ from supabase import create_client
 app = FastAPI()
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # Or specify your frontend URL for security
+   allow_origins=["https://zp1v56uxy8rdx5ypatb0ockcb9tr6a-oci3--5173--local-credentialless.webcontainer-api.io"],
+  # Or specify your frontend URL for security
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
