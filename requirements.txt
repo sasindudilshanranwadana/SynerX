@@ -1,9 +1,8 @@
 fastapi
 uvicorn
 requests
+supabase
 opencv-python
-numpy
 ultralytics
 supervision
-python-dotenv
-supabase
+numpy

@@ -8,6 +8,79 @@ import csv
 import os
 from datetime import datetime  # Add import for datetime
 
+
+from fastapi import FastAPI, Request
+import requests
+import shutil
+from supabase import create_client
+
+app = FastAPI()
+
+SUPABASE_URL = os.getenv("SUPABASE_URL")
+SUPABASE_SERVICE_ROLE_KEY = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
+supabase = create_client(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
+
+@app.post("/")
+async def trigger_processing(req: Request):
+    data = await req.json()
+    upload_id = data.get("upload_id")
+    video_url = data.get("video_url")
+
+    if not upload_id or not video_url:
+        return {"error": "Missing upload_id or video_url"}
+
+    try:
+        supabase.table("video_uploads").update({
+            "status": "processing",
+            "progress": 0
+        }).eq("id", upload_id).execute()
+
+        os.makedirs("asset", exist_ok=True)
+        input_path = f"./asset/{upload_id}_input.mp4"
+        response = requests.get(video_url, stream=True)
+        if response.status_code != 200:
+            raise Exception("Failed to download video")
+
+        with open(input_path, "wb") as f:
+            shutil.copyfileobj(response.raw, f)
+
+        # ✅ Call your processing function
+        output_video_path, output_csv_path = main(input_path, upload_id)
+
+        # ✅ Upload results to Supabase Storage
+        with open(output_video_path, "rb") as f:
+            supabase.storage.from_("processed").upload(f"{upload_id}/processed.mp4", f, {
+                "content-type": "video/mp4", "upsert": True
+            })
+
+        with open(output_csv_path, "rb") as f:
+            supabase.storage.from_("processed").upload(f"{upload_id}/tracking.csv", f, {
+                "content-type": "text/csv", "upsert": True
+            })
+
+        result_video_url = supabase.storage.from_("processed").get_public_url(f"{upload_id}/processed.mp4").data["publicUrl"]
+        result_csv_url = supabase.storage.from_("processed").get_public_url(f"{upload_id}/tracking.csv").data["publicUrl"]
+
+        supabase.table("video_uploads").update({
+            "status": "completed",
+            "progress": 100,
+            "result_video_url": result_video_url,
+            "result_csv_url": result_csv_url
+        }).eq("id", upload_id).execute()
+
+        return {
+            "success": True,
+            "video_url": result_video_url,
+            "csv_url": result_csv_url
+        }
+
+    except Exception as e:
+        supabase.table("video_uploads").update({
+            "status": "failed",
+            "error": str(e)
+        }).eq("id", upload_id).execute()
+        return {"error": str(e)}
+
 # ---------- CONFIGURATION ---------- #
 
 VIDEO_PATH = './asset/videoplayback.mp4'
@@ -130,9 +203,14 @@ def correct_vehicle_type(class_id, y_position, confidence=None):
 
 # ---------- MAIN ---------- #
 
-def main(video_path=VIDEO_PATH, output_video_path=OUTPUT_VIDEO_PATH):
+def main(video_path, upload_id):
+    output_video_path = f"./asset/{upload_id}_processed.mp4"
+    global OUTPUT_CSV_PATH, COUNT_CSV_PATH
+    OUTPUT_CSV_PATH = f"./asset/{upload_id}_tracking.csv"
+    COUNT_CSV_PATH = f"./asset/{upload_id}_vehicle_count.csv"
     video_info = sv.VideoInfo.from_video_path(video_path)
-    video_info.fps = 30
+
+
     # ---------- HEAT-MAP INITIALISATION ----------
     W, H = video_info.resolution_wh
     heat_raw = np.zeros((H, W), dtype=np.float32)
@@ -384,7 +462,7 @@ def main(video_path=VIDEO_PATH, output_video_path=OUTPUT_VIDEO_PATH):
                             cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 1)
                 
                 sink.write_frame(annotated)
-                cv2.imshow("Tracking with Stop", annotated)
+                #cv2.imshow("Tracking with Stop", annotated)
 
                 if frame_idx % 30 == 0:
                     now = time.time()
@@ -415,8 +493,8 @@ def main(video_path=VIDEO_PATH, output_video_path=OUTPUT_VIDEO_PATH):
             cv2.imwrite("./asset/heatmap_overlay.png", overlay)
         print("[INFO] Heat-map images saved ➜ asset/heatmap*.png")
         print(f"[INFO] Total Time: {total_time:.2f}s, Frames: {frame_idx}, Avg FPS: {avg_fps:.2f}")
-        cv2.destroyAllWindows()
+        #cv2.destroyAllWindows()
         print("[INFO] Tracking and counting completed successfully.")
 
-if __name__ == "__main__":
-    main()
+ 
+
