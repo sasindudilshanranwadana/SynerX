@@ -1,0 +1,102 @@
+import cv2
+import numpy as np
+import time
+import seaborn as sns
+import matplotlib.pyplot as plt
+import pandas as pd
+from ultralytics import YOLO
+import supervision as sv
+from collections import defaultdict, deque
+from google.colab import drive
+drive.mount('/content/drive')
+from google.colab.patches import cv2_imshow
+
+# Load YOLO model
+model = YOLO("yolov8n.pt")
+
+# Define video source
+video_path = '/content/drive/MyDrive/ColabNotebooks/projectA/m6-motorway-trim.mp4'
+
+# Define Stop Line Y-Coordinate
+STOP_LINE_Y = 500
+WARNING_ZONE_Y = 300
+
+# Video Information
+video_info = sv.VideoInfo.from_video_path(video_path)
+video_info.fps = 25
+
+# ByteTrack Object Tracker
+byte_track = sv.ByteTrack(frame_rate=video_info.fps, track_activation_threshold=0.3)
+
+# Store vehicle movement data
+vehicle_data = defaultdict(lambda: {"stopped": False, "stop_time": 0, "reaction_time": None})
+reaction_times = []
+heatmap_points = []
+
+# Open Video Capture
+cap = cv2.VideoCapture(video_path)
+cap.set(cv2.CAP_PROP_BUFFERSIZE, 2)  # Reduce buffering for faster processing
+
+frame_count = 0
+FRAME_SKIP = 2  # Process every 2nd frame to improve speed
+
+while cap.isOpened():
+    ret, frame = cap.read()
+    if not ret:
+        break  # Stop if video ends
+
+    frame_count += 1
+    if frame_count % FRAME_SKIP != 0:
+        continue  # Skip frames to improve speed
+
+    # Run YOLOv8 Model
+    results = model(frame)[0]
+    detections = sv.Detections.from_ultralytics(results)
+    detections = byte_track.update_with_detections(detections)
+
+    # Analyze each detected vehicle
+    for track_id, (x1, y1, x2, y2) in zip(detections.tracker_id, detections.xyxy):
+        cx, cy = int((x1 + x2) / 2), int(y2)  # Bottom-center of vehicle
+
+        # Save position for heatmap
+        heatmap_points.append((cx, cy))
+
+        # Detect stopping at STOP line
+        if STOP_LINE_Y - 10 <= cy <= STOP_LINE_Y + 10:
+            if not vehicle_data[track_id]["stopped"]:
+                vehicle_data[track_id]["stopped"] = True
+                vehicle_data[track_id]["stop_time"] = time.time()
+
+        # Measure reaction time if moving after STOP
+        if vehicle_data[track_id]["stopped"] and cy < WARNING_ZONE_Y:
+            if vehicle_data[track_id]["reaction_time"] is None:
+                vehicle_data[track_id]["reaction_time"] = time.time() - vehicle_data[track_id]["stop_time"]
+                reaction_times.append(vehicle_data[track_id]["reaction_time"])
+
+        # Draw box & tracking info
+        cv2.rectangle(frame, (int(x1), int(y1)), (int(x2), int(y2)), (0, 255, 0), 2)
+        cv2.putText(frame, f"ID {track_id}", (int(x1), int(y1)-10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 2)
+
+    # Show video in real-time
+    cv2_imshow(frame)
+
+    # Press 'q' to exit
+    if cv2.waitKey(1) & 0xFF == ord('q'):
+        break
+
+cap.release()
+cv2.destroyAllWindows()
+
+# Convert data for visualization
+df_heatmap = pd.DataFrame(heatmap_points, columns=["x", "y"])
+reaction_df = pd.DataFrame(reaction_times, columns=["Reaction Time (s)"])
+
+# Generate heatmap
+plt.figure(figsize=(10, 6))
+sns.kdeplot(x=df_heatmap["x"], y=df_heatmap["y"], fill=True, bw_adjust=0.5, cmap="Reds")
+
+plt.gca().invert_yaxis()  # Flip y-axis to match video coordinates
+plt.title("Traffic Density Heatmap")
+plt.xlabel("X Coordinate")
+plt.ylabel("Y Coordinate")
+plt.show()
