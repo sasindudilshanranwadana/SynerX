@@ -20,34 +20,44 @@ SUPABASE_URL = os.getenv("SUPABASE_URL")
 SUPABASE_SERVICE_ROLE_KEY = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
 supabase = create_client(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
 
+from fastapi.responses import JSONResponse
+
 @app.post("/")
 async def trigger_processing(req: Request):
-    data = await req.json()
-    upload_id = data.get("upload_id")
-    video_url = data.get("video_url")
-
-    if not upload_id or not video_url:
-        return {"error": "Missing upload_id or video_url"}
-
     try:
+        data = await req.json()
+        upload_id = data.get("upload_id")
+        video_url = data.get("video_url")
+
+        print(f"📦 Received request: upload_id={upload_id}, video_url={video_url}")
+
+        if not upload_id or not video_url:
+            print("❌ Missing required fields.")
+            return JSONResponse(status_code=400, content={"error": "Missing upload_id or video_url"})
+
+        # Update DB status to 'processing'
         supabase.table("video_uploads").update({
             "status": "processing",
             "progress": 0
         }).eq("id", upload_id).execute()
 
+        # Download the video
         os.makedirs("asset", exist_ok=True)
         input_path = f"./asset/{upload_id}_input.mp4"
         response = requests.get(video_url, stream=True)
+
         if response.status_code != 200:
+            print("❌ Failed to download video.")
             raise Exception("Failed to download video")
 
         with open(input_path, "wb") as f:
             shutil.copyfileobj(response.raw, f)
 
-        # ✅ Call your processing function
+        # Run processing
+        print("🚀 Starting video processing...")
         output_video_path, output_csv_path = main(input_path, upload_id)
 
-        # ✅ Upload results to Supabase Storage
+        # Upload processed results
         with open(output_video_path, "rb") as f:
             supabase.storage.from_("processed").upload(f"{upload_id}/processed.mp4", f, {
                 "content-type": "video/mp4", "upsert": True
@@ -68,18 +78,22 @@ async def trigger_processing(req: Request):
             "result_csv_url": result_csv_url
         }).eq("id", upload_id).execute()
 
-        return {
+        print("✅ Processing complete. Returning URLs.")
+        return JSONResponse(status_code=200, content={
             "success": True,
             "video_url": result_video_url,
             "csv_url": result_csv_url
-        }
+        })
 
     except Exception as e:
+        print(f"❌ Error in / route: {str(e)}")
         supabase.table("video_uploads").update({
             "status": "failed",
             "error": str(e)
         }).eq("id", upload_id).execute()
-        return {"error": str(e)}
+
+        return JSONResponse(status_code=500, content={"error": str(e)})
+
 
 # ---------- CONFIGURATION ---------- #
 
