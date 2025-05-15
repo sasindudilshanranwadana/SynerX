@@ -10,11 +10,20 @@ from datetime import datetime  # Add import for datetime
 
 
 from fastapi import FastAPI, Request
+from fastapi.middleware.cors import CORSMiddleware
 import requests
 import shutil
 from supabase import create_client
 
 app = FastAPI()
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],  # Or specify your frontend URL for security
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
 
 SUPABASE_URL = os.getenv("SUPABASE_URL")
 SUPABASE_SERVICE_ROLE_KEY = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
