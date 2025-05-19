@@ -3,3 +3,4 @@ uvicorn
 opencv-python
 ultralytics
 supervision
+python-multipart

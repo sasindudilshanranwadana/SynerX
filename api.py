@@ -4,7 +4,7 @@ import shutil
 from pathlib import Path
 import os, tempfile, uuid
 from main import main, OUTPUT_CSV_PATH, COUNT_CSV_PATH, VIDEO_PATH, OUTPUT_VIDEO_PATH
-from blur_core import blur_plates_yolo
+from blur_core import process_video as blur_plates_yolo
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
