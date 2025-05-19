@@ -8,103 +8,6 @@ import csv
 import os
 from datetime import datetime  # Add import for datetime
 
-
-from fastapi import FastAPI, Request
-from fastapi.middleware.cors import CORSMiddleware
-import requests
-import shutil
-from supabase import create_client
-
-app = FastAPI()
-app.add_middleware(
-    CORSMiddleware,
-   allow_origins=["https://zp1v56uxy8rdx5ypatb0ockcb9tr6a-oci3--5173--local-credentialless.webcontainer-api.io"],
-  # Or specify your frontend URL for security
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
-
-
-SUPABASE_URL = os.getenv("SUPABASE_URL")
-SUPABASE_SERVICE_ROLE_KEY = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
-supabase = create_client(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
-
-from fastapi.responses import JSONResponse
-
-@app.post("/")
-async def trigger_processing(req: Request):
-    try:
-        data = await req.json()
-        upload_id = data.get("upload_id")
-        video_url = data.get("video_url")
-
-        print(f"📦 Received request: upload_id={upload_id}, video_url={video_url}")
-
-        if not upload_id or not video_url:
-            print("❌ Missing required fields.")
-            return JSONResponse(status_code=400, content={"error": "Missing upload_id or video_url"})
-
-        # Update DB status to 'processing'
-        supabase.table("video_uploads").update({
-            "status": "processing",
-            "progress": 0
-        }).eq("id", upload_id).execute()
-
-        # Download the video
-        os.makedirs("asset", exist_ok=True)
-        input_path = f"./asset/{upload_id}_input.mp4"
-        response = requests.get(video_url, stream=True)
-
-        if response.status_code != 200:
-            print("❌ Failed to download video.")
-            raise Exception("Failed to download video")
-
-        with open(input_path, "wb") as f:
-            shutil.copyfileobj(response.raw, f)
-
-        # Run processing
-        print("🚀 Starting video processing...")
-        output_video_path, output_csv_path = main(input_path, upload_id)
-
-        # Upload processed results
-        with open(output_video_path, "rb") as f:
-            supabase.storage.from_("processed").upload(f"{upload_id}/processed.mp4", f, {
-                "content-type": "video/mp4", "upsert": True
-            })
-
-        with open(output_csv_path, "rb") as f:
-            supabase.storage.from_("processed").upload(f"{upload_id}/tracking.csv", f, {
-                "content-type": "text/csv", "upsert": True
-            })
-
-        result_video_url = supabase.storage.from_("processed").get_public_url(f"{upload_id}/processed.mp4").data["publicUrl"]
-        result_csv_url = supabase.storage.from_("processed").get_public_url(f"{upload_id}/tracking.csv").data["publicUrl"]
-
-        supabase.table("video_uploads").update({
-            "status": "completed",
-            "progress": 100,
-            "result_video_url": result_video_url,
-            "result_csv_url": result_csv_url
-        }).eq("id", upload_id).execute()
-
-        print("✅ Processing complete. Returning URLs.")
-        return JSONResponse(status_code=200, content={
-            "success": True,
-            "video_url": result_video_url,
-            "csv_url": result_csv_url
-        })
-
-    except Exception as e:
-        print(f"❌ Error in / route: {str(e)}")
-        supabase.table("video_uploads").update({
-            "status": "failed",
-            "error": str(e)
-        }).eq("id", upload_id).execute()
-
-        return JSONResponse(status_code=500, content={"error": str(e)})
-
-
 # ---------- CONFIGURATION ---------- #
 
 VIDEO_PATH = './asset/videoplayback.mp4'
@@ -227,14 +130,9 @@ def correct_vehicle_type(class_id, y_position, confidence=None):
 
 # ---------- MAIN ---------- #
 
-def main(video_path, upload_id):
-    output_video_path = f"./asset/{upload_id}_processed.mp4"
-    global OUTPUT_CSV_PATH, COUNT_CSV_PATH
-    OUTPUT_CSV_PATH = f"./asset/{upload_id}_tracking.csv"
-    COUNT_CSV_PATH = f"./asset/{upload_id}_vehicle_count.csv"
+def main(video_path=VIDEO_PATH, output_video_path=OUTPUT_VIDEO_PATH):
     video_info = sv.VideoInfo.from_video_path(video_path)
-
-
+    video_info.fps = 30
     # ---------- HEAT-MAP INITIALISATION ----------
     W, H = video_info.resolution_wh
     heat_raw = np.zeros((H, W), dtype=np.float32)
@@ -486,7 +384,7 @@ def main(video_path, upload_id):
                             cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 1)
                 
                 sink.write_frame(annotated)
-                #cv2.imshow("Tracking with Stop", annotated)
+                cv2.imshow("Tracking with Stop", annotated)
 
                 if frame_idx % 30 == 0:
                     now = time.time()
@@ -517,8 +415,6 @@ def main(video_path, upload_id):
             cv2.imwrite("./asset/heatmap_overlay.png", overlay)
         print("[INFO] Heat-map images saved ➜ asset/heatmap*.png")
         print(f"[INFO] Total Time: {total_time:.2f}s, Frames: {frame_idx}, Avg FPS: {avg_fps:.2f}")
-        #cv2.destroyAllWindows()
+        cv2.destroyAllWindows()
         print("[INFO] Tracking and counting completed successfully.")
-
- 
 

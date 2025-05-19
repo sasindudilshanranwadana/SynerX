@@ -1,91 +1,108 @@
-from fastapi import FastAPI, Request
-from fastapi.middleware.cors import CORSMiddleware
-import requests
-import os
-from blur_core import process_video
-from supabase import create_client
+from fastapi import FastAPI, UploadFile, File, HTTPException
+from fastapi.responses import JSONResponse
+import shutil
 from pathlib import Path
+import os, tempfile, uuid
+from main import main, OUTPUT_CSV_PATH, COUNT_CSV_PATH, VIDEO_PATH, OUTPUT_VIDEO_PATH
+from blur_core import blur_plates_yolo
+from fastapi.responses import FileResponse
+from fastapi.staticfiles import StaticFiles
 
-# Load Supabase credentials from environment
-SUPABASE_URL = os.getenv("SUPABASE_URL")
-SUPABASE_KEY = os.getenv("SUPABASE_SERVICE_KEY")
-SUPABASE_BUCKET = os.getenv("SUPABASE_BUCKET", "processed")
-supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
+from fastapi.concurrency import run_in_threadpool
 
-# FastAPI app setup
+OUTPUT_DIR = Path("processed")
+OUTPUT_DIR.mkdir(exist_ok=True)
+
 app = FastAPI()
+app.mount("/videos", StaticFiles(directory=OUTPUT_DIR), name="videos")
 
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],  # Replace with frontend URL in production
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
+@app.post("/upload-video/")
+async def upload_video(
+    file: UploadFile = File(...),
+    stride: int = 1,
+    save_frames: bool = False
+):
+    # 1. save raw upload
+    suffix = Path(file.filename).suffix or ".mp4"
+    with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp_in:
+        shutil.copyfileobj(file.file, tmp_in)
+        raw_path = Path(tmp_in.name)
 
-@app.post("/process")
-async def process_video_from_url(request: Request):
-    data = await request.json()
-    video_url = data.get("video_url")
-    upload_id = data.get("upload_id", "default")
+    # 2. blur into processed/<uuid>_blur.mp4
+    blur_path = OUTPUT_DIR / f"{uuid.uuid4().hex}_blur{suffix}"
+    await run_in_threadpool(
+        blur_plates_yolo,
+        video_path=str(raw_path),
+        output_video=str(blur_path),
+        save_frames=save_frames,
+        stride=max(1, stride),
+    )
 
-    if not video_url:
-        return {"status": "failed", "error": "Missing video_url"}
+    # 3. run analytics **into a second file** so nothing overwrites
+    analytic_path = OUTPUT_DIR / f"{uuid.uuid4().hex}_out{suffix}"
+    await run_in_threadpool(
+        main,                   # your analytics
+        str(blur_path),         # input video
+        str(analytic_path)      # ***separate*** output
+    )
 
-    try:
-        # 1. Download video
-        os.makedirs("./asset", exist_ok=True)
-        local_input = f"./asset/{upload_id}.mp4"
-        response = requests.get(video_url, stream=True)
-        with open(local_input, "wb") as f:
-            for chunk in response.iter_content(chunk_size=8192):
-                f.write(chunk)
+    # 4. read CSVs written by `main()`
+    with open(OUTPUT_CSV_PATH) as f:
+        tracking_csv = f.read()
+    with open(COUNT_CSV_PATH) as f:
+        counts_csv = f.read()
 
-        # 2. Run your model
-        process_video(local_input)
-
-        # 3. Upload results to Supabase
-        public_urls = upload_results_to_supabase(upload_id)
-
-        # 4. Update DB
-        supabase.from_("video_uploads").update({
-            "status": "completed",
-            "result_video_url": public_urls.get("video"),
-            "result_csv_url": public_urls.get("csv")
-        }).eq("id", upload_id).execute()
-
-        return {"status": "completed", "urls": public_urls}
-
-    except Exception as e:
-        print("Processing error:", str(e))
-        supabase.from_("video_uploads").update({
-            "status": "failed",
-            "error": str(e)
-        }).eq("id", upload_id).execute()
-        return {"status": "failed", "error": str(e)}
-
-
-def upload_results_to_supabase(upload_id: str) -> dict:
-    public_urls = {}
-    output_files = {
-        "video": f"./asset/{upload_id}_processed.mp4",
-        "csv": f"./asset/{upload_id}_tracking.csv"
+    return {
+        "status":          "done",
+        "blurred_video":   f"/videos/{blur_path.name}",
+        "analytic_video":  f"/videos/{analytic_path.name}",
+        "tracking":        tracking_csv,
+        "vehicle_counts":  counts_csv
     }
 
-    for key, local_path in output_files.items():
-        if Path(local_path).exists():
-            remote_path = f"{upload_id}/{Path(local_path).name}"
-            with open(local_path, "rb") as f:
-                supabase.storage.from_(SUPABASE_BUCKET).upload(remote_path, f, {"content-type": get_mime_type(local_path)})
-            public_url = supabase.storage.from_(SUPABASE_BUCKET).get_public_url(remote_path).public_url
-            public_urls[key] = public_url
+@app.get("/get-results/")
+async def get_results():
+    # Return results from the CSV files
+    if not os.path.exists(OUTPUT_CSV_PATH) or not os.path.exists(COUNT_CSV_PATH):
+        return JSONResponse(content={"error": "No results available. Process a video first."})
 
-    return public_urls
+    with open(OUTPUT_CSV_PATH, "r") as csvfile:
+        tracking_results = csvfile.read()
+    with open(COUNT_CSV_PATH, "r") as countfile:
+        count_results = countfile.read()
 
+    return JSONResponse(content={"tracking_results": tracking_results, "vehicle_counts": count_results})
 
-def get_mime_type(filename: str) -> str:
-    if filename.endswith(".mp4"):
-        return "video/mp4"
-    elif filename.endswith(".csv"):
-        return "text/csv"
-    return "application/octet-stream"
+@app.post("/blur/")
+async def blur_video(
+    file: UploadFile = File(...),
+    stride: int = 1,
+    save_frames: bool = False
+):
+    # 1) stash upload in a temp file
+    suffix = Path(file.filename).suffix or ".mp4"
+    with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp_in:
+        shutil.copyfileobj(file.file, tmp_in)
+        in_path = Path(tmp_in.name)
+
+    # 2) choose a unique name for the output
+    out_name = f"{uuid.uuid4().hex}{suffix}"
+    out_path = OUTPUT_DIR / out_name
+
+    # 3) run the heavy work off-thread
+    try:
+        await run_in_threadpool(
+            blur_plates_yolo,
+            video_path=str(in_path),
+            output_video=str(out_path),
+            save_frames=save_frames,
+            stride=max(1, stride),
+        )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+    # 4) respond with a JSON pointer, not the file contents
+    return {
+        "status": "done",
+        "video_url": f"/videos/{out_name}"
+    }
