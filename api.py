@@ -20,7 +20,7 @@ app = FastAPI()
 # CORS middleware
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # Replace with frontend domain in production
+    allow_origins=["https://zp1v56uxy8rdx5ypatb0ockcb9tr6a-oci3--5173--4d9fd228.local-credentialless.webcontainer-api.io"],  # Replace with frontend domain in production
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
