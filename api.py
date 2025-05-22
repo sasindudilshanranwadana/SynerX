@@ -39,13 +39,15 @@ class VideoInput(BaseModel):
 async def root():
     return {"message": "API is running."}
 
-# Upload and process video from URL
 @app.post("/upload-video", include_in_schema=True)
 async def upload_video_from_url(data: VideoInput):
     try:
-        # Download video
+        print(f"[DEBUG] Received request: upload_id={data.upload_id}, video_url={data.video_url}")
+
+        # Step 1: Download video from URL
         response = requests.get(data.video_url, stream=True)
         if response.status_code != 200:
+            print("[ERROR] Failed to download video from URL.")
             raise HTTPException(status_code=400, detail="Failed to download video.")
 
         suffix = ".mp4"
@@ -54,9 +56,11 @@ async def upload_video_from_url(data: VideoInput):
             tmp_file.write(chunk)
         tmp_file.close()
         raw_path = Path(tmp_file.name)
+        print(f"[INFO] Downloaded video to: {raw_path}")
 
-        # Blur video
+        # Step 2: Blur license plates
         blur_path = OUTPUT_DIR / f"{uuid.uuid4().hex}_blur{suffix}"
+        print(f"[INFO] Blurring video to: {blur_path}")
         await run_in_threadpool(
             blur_plates_yolo,
             video_path=str(raw_path),
@@ -65,15 +69,18 @@ async def upload_video_from_url(data: VideoInput):
             stride=1,
         )
 
-        # Run analytics
+        # Step 3: Run analytics
         analytic_path = OUTPUT_DIR / f"{uuid.uuid4().hex}_out{suffix}"
+        print(f"[INFO] Running analytics on: {blur_path}")
         await run_in_threadpool(main, str(blur_path), str(analytic_path))
 
-        # Read CSV results
+        # Step 4: Read CSV results
         with open(OUTPUT_CSV_PATH) as f:
             tracking_csv = f.read()
         with open(COUNT_CSV_PATH) as f:
             counts_csv = f.read()
+
+        print(f"[SUCCESS] Processing completed.")
 
         return {
             "status": "done",
@@ -84,7 +91,10 @@ async def upload_video_from_url(data: VideoInput):
         }
 
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        print("[ERROR] Exception in /upload-video")
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
+
 
 # Get previous CSV results
 @app.get("/get-results/")
