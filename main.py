@@ -16,6 +16,12 @@ OUTPUT_CSV_PATH = './asset/tracking_results.csv'
 COUNT_CSV_PATH = './asset/vehicle_count.csv'
 MODEL_PATH = 'yolo11n.pt'
 
+# Ensure output directories exist
+os.makedirs(os.path.dirname(OUTPUT_VIDEO_PATH), exist_ok=True)
+os.makedirs(os.path.dirname(OUTPUT_CSV_PATH), exist_ok=True)
+os.makedirs(os.path.dirname(COUNT_CSV_PATH), exist_ok=True)
+
+
 SOURCE_POLYGON = np.array([
     (422, 10),   # Top-left
     (594, 16),   # Top-right
@@ -384,7 +390,7 @@ def main(video_path=VIDEO_PATH, output_video_path=OUTPUT_VIDEO_PATH):
                             cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 1)
                 
                 sink.write_frame(annotated)
-                cv2.imshow("Tracking with Stop", annotated)
+                #cv2.imshow("Tracking with Stop", annotated)
 
                 if frame_idx % 30 == 0:
                     now = time.time()
@@ -392,8 +398,8 @@ def main(video_path=VIDEO_PATH, output_video_path=OUTPUT_VIDEO_PATH):
                     prev_fps_time = now
                     print(f"[INFO] FPS: {fps:.2f}")
 
-                if cv2.waitKey(1) & 0xFF == ord('q'):
-                    break
+                #if cv2.waitKey(1) & 0xFF == ord('q'):
+                #    break
 
     except Exception as e:
         print(f"[ERROR] {e}")
@@ -415,6 +421,6 @@ def main(video_path=VIDEO_PATH, output_video_path=OUTPUT_VIDEO_PATH):
             cv2.imwrite("./asset/heatmap_overlay.png", overlay)
         print("[INFO] Heat-map images saved ➜ asset/heatmap*.png")
         print(f"[INFO] Total Time: {total_time:.2f}s, Frames: {frame_idx}, Avg FPS: {avg_fps:.2f}")
-        cv2.destroyAllWindows()
+        #cv2.destroyAllWindows()
         print("[INFO] Tracking and counting completed successfully.")
 
