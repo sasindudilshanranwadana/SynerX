@@ -10,6 +10,9 @@ from fastapi.staticfiles import StaticFiles
 
 from fastapi.concurrency import run_in_threadpool
 
+from fastapi.responses import StreamingResponse
+import api_plots as plot
+
 OUTPUT_DIR = Path("processed")
 OUTPUT_DIR.mkdir(exist_ok=True)
 
@@ -106,3 +109,24 @@ async def blur_video(
         "status": "done",
         "video_url": f"/videos/{out_name}"
     }
+
+
+@app.get("/plot/status_by_type")
+def get_status_by_type():
+    buf = plot.plot_status_by_type()
+    return StreamingResponse(buf, media_type="image/png")
+
+@app.get("/plot/compliance_pie")
+def get_compliance_pie():
+    buf = plot.plot_compliance_pie()
+    return StreamingResponse(buf, media_type="image/png")
+
+@app.get("/plot/reaction_time_hist")
+def get_reaction_time_hist():
+    buf = plot.plot_reaction_time_hist()
+    return StreamingResponse(buf, media_type="image/png")
+
+@app.get("/plot/vehicle_count")
+def get_vehicle_count():
+    buf = plot.plot_vehicle_count()
+    return StreamingResponse(buf, media_type="image/png")
