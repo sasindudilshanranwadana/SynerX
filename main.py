@@ -68,7 +68,7 @@ THRESHOLD_LINE_THICKNESS = 1                             # Thickness of classifi
 
 # Anchor Point Visualization
 # Anchor Point Settings
-ANCHOR_Y_OFFSET = -70                                       # Offset to move anchor point up (negative values move up, positive move down)
+ANCHOR_Y_OFFSET = 0                                       # Offset to move anchor point up (negative values move up, positive move down)
 SHOW_ANCHOR_POINTS = True                                 # Whether to show anchor points on video
 ANCHOR_POINT_COLOR = (255, 0, 255)                      # Magenta color for anchor points
 ANCHOR_POINT_RADIUS = 5                                 # Radius of anchor point circles
