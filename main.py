@@ -9,13 +9,16 @@ import os
 from datetime import datetime  # Add import for datetime
 
 # ---------- CONFIGURATION ---------- #
+# These parameters can be adjusted to fine-tune the system performance
 
-VIDEO_PATH = './asset/videoplayback.mp4'
-OUTPUT_VIDEO_PATH = './asset/TrackingWithStopResult.mp4'
-OUTPUT_CSV_PATH = './asset/tracking_results.csv'
-COUNT_CSV_PATH = './asset/vehicle_count.csv'
-MODEL_PATH = 'yolo11n.pt'
+# File Paths
+VIDEO_PATH = './asset/videoplayback.mp4'                    # Input video file path
+OUTPUT_VIDEO_PATH = './asset/TrackingWithStopResult.mp4'    # Output annotated video path
+OUTPUT_CSV_PATH = './asset/tracking_results.csv'            # Tracking results CSV output
+COUNT_CSV_PATH = './asset/vehicle_count.csv'                # Vehicle count CSV output
+MODEL_PATH = 'yolo11n.pt'                                   # YOLO model file path
 
+# Detection Zone - Polygon coordinates for the area to monitor
 SOURCE_POLYGON = np.array([
     (422, 10),   # Top-left
     (594, 16),   # Top-right
@@ -23,21 +26,53 @@ SOURCE_POLYGON = np.array([
     (535, 649)   # Bottom-left
 ])
 
+# Stop Zone - Polygon coordinates where vehicles should stop
 STOP_ZONE_POLYGON = np.array([(507, 199), (681, 209), (751, 555), (484, 541)])
-TARGET_WIDTH, TARGET_HEIGHT = 50, 130
-VELOCITY_THRESHOLD = 0.5 # Adjusted for normalized space (tune this value)
-FRAME_BUFFER = 20
 
-CLASS_NAMES = {
+# Perspective Transform Settings
+TARGET_WIDTH, TARGET_HEIGHT = 50, 130                       # Target dimensions for bird's eye view (affects distance calculations)
+
+# Detection & Tracking Thresholds
+DETECTION_CONFIDENCE = 0.3                                   # Minimum confidence for object detection (0.0-1.0)
+NMS_THRESHOLD = 0.3                                    # Non-Maximum Suppression threshold (0.0-1.0)
+VELOCITY_THRESHOLD = 0.6                                    # Velocity threshold to determine if vehicle is stationary (tune this value)
+FRAME_BUFFER = 10                                           # Number of frames to analyze for velocity calculation
+
+
+# Classification Settings
+CLASS_NAMES = {                                             # Vehicle class mappings
     2: "car",
-    3: "motorcycle",
+    3: "motorcycle", 
     5: "bus",
     7: "truck"
 }
 
-# Distance-based classification thresholds
-# Y-coordinate threshold for correcting misclassified vehicles
-DISTANCE_THRESHOLD = 300  # Adjust based on frame height
+# Distance-based Classification Correction
+DISTANCE_THRESHOLD = 300                                    # Y-coordinate threshold for correcting misclassified vehicles (adjust based on frame height)
+
+# Video Processing Settings
+TARGET_FPS = 25                                           # Target FPS for video processing
+FPS_UPDATE_INTERVAL = 30                                   # Frames between FPS updates in console
+
+# Annotation Settings
+ANNOTATION_THICKNESS = 1                                   # Thickness of bounding boxes and traces
+TEXT_SCALE = 0.4                                          # Scale of text labels
+TEXT_THICKNESS = 1                                        # Thickness of text
+TRACE_LENGTH_SECONDS = 2                                  # Length of vehicle traces in seconds
+
+# Color Settings (BGR format)
+STOP_ZONE_COLOR = (0, 255, 255)                          # Yellow color for stop zone outline
+THRESHOLD_LINE_COLOR = (0, 255, 0)                       # Green color for classification threshold line
+STOP_ZONE_LINE_THICKNESS = 2                             # Thickness of stop zone outline
+THRESHOLD_LINE_THICKNESS = 1                             # Thickness of classification threshold line
+
+# Anchor Point Visualization
+# Anchor Point Settings
+ANCHOR_Y_OFFSET = -70                                       # Offset to move anchor point up (negative values move up, positive move down)
+SHOW_ANCHOR_POINTS = True                                 # Whether to show anchor points on video
+ANCHOR_POINT_COLOR = (255, 0, 255)                      # Magenta color for anchor points
+ANCHOR_POINT_RADIUS = 5                                 # Radius of anchor point circles
+ANCHOR_POINT_THICKNESS = -1                             # Thickness (-1 for filled circle)
 
 # ---------- CLASSES ---------- #
 
@@ -111,15 +146,6 @@ def update_csv_files(output_path, count_path, history_dict, vehicle_counter):
         return False
 
 def correct_vehicle_type(class_id, y_position, confidence=None):
-    """
-    Correct vehicle classification based on position in the frame
-    Args:
-        class_id: detected class ID
-        y_position: y-coordinate of the vehicle in the frame
-        confidence: detection confidence (optional)
-    Returns:
-        corrected class_id
-    """
     # If the detected vehicle is a truck and it's close to the camera (higher y value)
     if class_id == 7 and y_position > DISTANCE_THRESHOLD:
         # More likely to be a car when close to the camera
@@ -132,20 +158,30 @@ def correct_vehicle_type(class_id, y_position, confidence=None):
 
 def main():
     video_info = sv.VideoInfo.from_video_path(video_path=VIDEO_PATH)
-    video_info.fps = 30
+    video_info.fps = TARGET_FPS
 
     model = YOLO(MODEL_PATH)
     model.fuse()
     tracker = sv.ByteTrack(frame_rate=video_info.fps)
     frame_gen = sv.get_video_frames_generator(source_path=VIDEO_PATH)
 
-    thickness = 1
-    text_scale = 0.4
     annotators = {
-        'box': sv.BoxAnnotator(thickness=thickness),
-        'trace': sv.TraceAnnotator(thickness=thickness, trace_length=video_info.fps * 2, position=sv.Position.BOTTOM_CENTER),
-        'label_top': sv.LabelAnnotator(text_scale=text_scale, text_thickness=1, text_position=sv.Position.TOP_LEFT),
-        'label_bottom': sv.LabelAnnotator(text_scale=text_scale, text_thickness=1, text_position=sv.Position.BOTTOM_CENTER)
+        'box': sv.BoxAnnotator(thickness=ANNOTATION_THICKNESS),
+        'trace': sv.TraceAnnotator(
+            thickness=ANNOTATION_THICKNESS, 
+            trace_length=video_info.fps * TRACE_LENGTH_SECONDS, 
+            position=sv.Position.BOTTOM_CENTER
+        ),
+        'label_top': sv.LabelAnnotator(
+            text_scale=TEXT_SCALE, 
+            text_thickness=TEXT_THICKNESS, 
+            text_position=sv.Position.TOP_LEFT
+        ),
+        'label_bottom': sv.LabelAnnotator(
+            text_scale=TEXT_SCALE, 
+            text_thickness=TEXT_THICKNESS, 
+            text_position=sv.Position.BOTTOM_CENTER
+        )
     }
 
     polygon_zone = sv.PolygonZone(polygon=SOURCE_POLYGON)
@@ -162,15 +198,12 @@ def main():
     entry_times = {}
     reaction_times = {}
     
-    # Track which vehicle records have been written to CSV
     written_records = set()  # Set of (tracker_id, status) tuples
     
-    # New set to track vehicles that have been marked as stationary
     stationary_vehicles = set()
     
     stop_zone_history_dict = read_csv_to_dict(OUTPUT_CSV_PATH)
     
-    # Check for previously marked stationary vehicles in existing CSV
     for track_id, data in stop_zone_history_dict.items():
         if data.get('status') == 'stationary':
             stationary_vehicles.add(int(track_id))
@@ -208,25 +241,23 @@ def main():
                 frame_idx += 1
                 result = model(frame, verbose=False)[0]
                 detections = sv.Detections.from_ultralytics(result)
-                detections = detections[detections.confidence > 0.3]
-                detections = detections[polygon_zone.trigger(detections)].with_nms(threshold=0.6)
+                detections = detections[detections.confidence > DETECTION_CONFIDENCE]
+                detections = detections[polygon_zone.trigger(detections)].with_nms(threshold=NMS_THRESHOLD)
                 detections = tracker.update_with_detections(detections)
 
-                # Shift track IDs by offset
                 detections.tracker_id = [tid + tracker_id_offset for tid in detections.tracker_id]
 
                 anchor_pts = detections.get_anchors_coordinates(anchor=sv.Position.BOTTOM_CENTER)
                 
-                # Apply distance-based classification correction
+                # Apply anchor offset to move the core point up
+                anchor_pts = anchor_pts + np.array([0, ANCHOR_Y_OFFSET])
+                
                 corrected_class_ids = []
                 for i, (pt, class_id) in enumerate(zip(anchor_pts, detections.class_id)):
-                    # Get y-coordinate (higher y = closer to camera)
                     y_pos = pt[1]
-                    # Apply correction based on distance
                     corrected_class_id = correct_vehicle_type(class_id, y_pos, detections.confidence[i])
                     corrected_class_ids.append(corrected_class_id)
                 
-                # Update class IDs with corrections
                 detections.class_id = np.array(corrected_class_ids)
                 
                 transformed_pts = transformer.transform(anchor_pts).astype(float)
@@ -348,19 +379,28 @@ def main():
                 annotated = annotators['label_top'].annotate(annotated, detections, top_labels)
                 annotated = annotators['label_bottom'].annotate(annotated, detections, bottom_labels)
 
-                cv2.polylines(annotated, [STOP_ZONE_POLYGON], True, (0, 255, 255), 2)
+                # Draw anchor points if enabled
+                if SHOW_ANCHOR_POINTS:
+                    for anchor_pt in anchor_pts:
+                        cv2.circle(annotated, 
+                                 (int(anchor_pt[0]), int(anchor_pt[1])), 
+                                 ANCHOR_POINT_RADIUS, 
+                                 ANCHOR_POINT_COLOR, 
+                                 ANCHOR_POINT_THICKNESS)
+
+                cv2.polylines(annotated, [STOP_ZONE_POLYGON], True, STOP_ZONE_COLOR, STOP_ZONE_LINE_THICKNESS)
                 
                 # Add a visualization line for the distance threshold
-                cv2.line(annotated, (0, DISTANCE_THRESHOLD), (annotated.shape[1], DISTANCE_THRESHOLD), (0, 255, 0), 1)
+                cv2.line(annotated, (0, DISTANCE_THRESHOLD), (annotated.shape[1], DISTANCE_THRESHOLD), THRESHOLD_LINE_COLOR, THRESHOLD_LINE_THICKNESS)
                 cv2.putText(annotated, "Classification Correction Line", (10, DISTANCE_THRESHOLD - 10), 
-                            cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 1)
+                            cv2.FONT_HERSHEY_SIMPLEX, TEXT_SCALE, THRESHOLD_LINE_COLOR, TEXT_THICKNESS)
                 
                 sink.write_frame(annotated)
                 cv2.imshow("Tracking with Stop", annotated)
 
-                if frame_idx % 30 == 0:
+                if frame_idx % FPS_UPDATE_INTERVAL == 0:
                     now = time.time()
-                    fps = 30 / (now - prev_fps_time)
+                    fps = FPS_UPDATE_INTERVAL / (now - prev_fps_time)
                     prev_fps_time = now
                     print(f"[INFO] FPS: {fps:.2f}")
 
