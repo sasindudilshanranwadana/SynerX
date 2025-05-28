@@ -75,6 +75,14 @@ def main(video_path=Config.VIDEO_PATH, output_video_path=Config.OUTPUT_VIDEO_PAT
     # Initialize tracking variables
     counted_ids = set()
     vehicle_type_counter = Counter()
+    
+    # Load existing count data for current date
+    existing_count_data = csv_manager.read_existing_count_data()
+    current_date = datetime.now().strftime("%Y-%m-%d")
+    if current_date in existing_count_data:
+        vehicle_type_counter.update(existing_count_data[current_date])
+        print(f"[INFO] Continuing count from existing data: {dict(vehicle_type_counter)}")
+    
     tracker_types = {}
     
     # Load existing stationary vehicles
@@ -146,6 +154,8 @@ def main(video_path=Config.VIDEO_PATH, output_video_path=Config.OUTPUT_VIDEO_PAT
                         if track_id not in counted_ids:
                             vehicle_type_counter[vehicle_type] += 1
                             counted_ids.add(track_id)
+                            # Update CSV immediately when vehicle is counted
+                            csv_manager.update_count_file(vehicle_type_counter)
                         
                         # Record entry time
                         if track_id not in vehicle_tracker.entry_times:
@@ -214,7 +224,7 @@ def main(video_path=Config.VIDEO_PATH, output_video_path=Config.OUTPUT_VIDEO_PAT
                 
                 # Update CSV files if needed
                 if csv_update_needed:
-                    if csv_manager.update_files(stop_zone_history_dict, vehicle_type_counter):
+                    if csv_manager.update_tracking_file(stop_zone_history_dict):
                         print(f"[INFO] CSV files updated at frame {frame_idx}")
                 
                 # Ensure label lists match detection count
@@ -258,7 +268,8 @@ def main(video_path=Config.VIDEO_PATH, output_video_path=Config.OUTPUT_VIDEO_PAT
         print(f"[ERROR] {e}")
     finally:
         # Final cleanup
-        csv_manager.update_files(stop_zone_history_dict, vehicle_type_counter)
+        csv_manager.update_tracking_file(stop_zone_history_dict)
+        csv_manager.update_count_file(vehicle_type_counter)
         heat_map.save_heat_maps(first_frame)
         
         end_time = time.time()
