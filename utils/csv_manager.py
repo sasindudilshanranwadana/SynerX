@@ -1,0 +1,57 @@
+import csv
+import os
+from datetime import datetime
+from config.config import Config
+
+class CSVManager:
+    """Handles all CSV file operations"""
+    
+    @staticmethod
+    def initialize_csv_files():
+        """Initialize CSV files with headers if they don't exist"""
+        os.makedirs(os.path.dirname(Config.OUTPUT_CSV_PATH), exist_ok=True)
+        
+        tracking_fields = ["tracker_id", "vehicle_type", "status", "compliance", "reaction_time", "date"]
+        count_fields = ["vehicle_type", "count", "date"]
+        
+        for path, fields in [(Config.OUTPUT_CSV_PATH, tracking_fields), (Config.COUNT_CSV_PATH, count_fields)]:
+            if not os.path.exists(path) or os.path.getsize(path) == 0:
+                with open(path, 'w', newline='') as f:
+                    csv.DictWriter(f, fieldnames=fields).writeheader()
+    
+    @staticmethod
+    def read_existing_data():
+        """Read existing tracking data from CSV"""
+        data = {}
+        if os.path.exists(Config.OUTPUT_CSV_PATH):
+            with open(Config.OUTPUT_CSV_PATH, 'r', newline='') as file:
+                for row in csv.DictReader(file):
+                    data[row['tracker_id']] = row
+        return data
+    
+    @staticmethod
+    def update_files(history_dict, vehicle_counter):
+        """Update CSV files with current data"""
+        try:
+            current_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            
+            # Update tracking results
+            with open(Config.OUTPUT_CSV_PATH, 'w', newline='') as f:
+                writer = csv.DictWriter(f, fieldnames=["tracker_id", "vehicle_type", "status", "compliance", "reaction_time", "date"])
+                writer.writeheader()
+                for tid, data in history_dict.items():
+                    data_with_date = data.copy()
+                    data_with_date.setdefault("date", current_time)
+                    writer.writerow(data_with_date)
+            
+            # Update vehicle counts
+            with open(Config.COUNT_CSV_PATH, 'w', newline='') as f:
+                writer = csv.DictWriter(f, fieldnames=["vehicle_type", "count", "date"])
+                writer.writeheader()
+                for v_type, count in vehicle_counter.items():
+                    writer.writerow({"vehicle_type": v_type, "count": count, "date": current_time})
+            
+            return True
+        except Exception as e:
+            print(f"[WARNING] Failed to update CSV files: {e}")
+            return False

@@ -4,7 +4,7 @@ import seaborn as sns
 from io import BytesIO
 
 def plot_status_by_type():
-    tracking_df = pd.read_csv('./asset/tracking_results.csv')
+    tracking_df = pd.read_csv('./data/tracking_results.csv')
     status_counts = tracking_df.groupby(['vehicle_type', 'status']).size().unstack(fill_value=0)
     fig, ax = plt.subplots()
     status_counts.plot(kind='bar', stacked=True, ax=ax)
@@ -19,7 +19,7 @@ def plot_status_by_type():
     return buf
 
 def plot_compliance_pie():
-    tracking_df = pd.read_csv('./asset/tracking_results.csv')
+    tracking_df = pd.read_csv('./data/tracking_results.csv')
     compliance_counts = tracking_df['compliance'].value_counts().rename({1: 'Compliant', 0: 'Non-compliant'})
     fig, ax = plt.subplots()
     compliance_counts.plot(kind='pie', autopct='%1.1f%%', startangle=90, ax=ax)
@@ -33,7 +33,7 @@ def plot_compliance_pie():
     return buf
 
 def plot_reaction_time_hist():
-    tracking_df = pd.read_csv('./asset/tracking_results.csv')
+    tracking_df = pd.read_csv('./data/tracking_results.csv')
     plt.figure(figsize=(8, 4))
     for vtype in tracking_df['vehicle_type'].unique():
         subset = tracking_df[(tracking_df['vehicle_type'] == vtype) & (tracking_df['reaction_time'].notnull())]
@@ -49,7 +49,7 @@ def plot_reaction_time_hist():
     return buf
 
 def plot_vehicle_count():
-    count_df = pd.read_csv('./asset/vehicle_count.csv')
+    count_df = pd.read_csv('./data/vehicle_count.csv')
     if 'date' in count_df.columns and count_df['date'].nunique() > 1:
         count_df['date'] = pd.to_datetime(count_df['date'])
         pivot = count_df.pivot_table(index='date', columns='vehicle_type', values='count', aggfunc='sum')
