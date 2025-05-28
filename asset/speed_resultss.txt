@@ -1,0 +1,12 @@
+Tracker ID: 2, Type: car, Speed: 34 km/h
+Tracker ID: 1, Type: car, Speed: 13 km/h
+Tracker ID: 2, Type: car, Speed: 38 km/h
+Tracker ID: 1, Type: car, Speed: 12 km/h
+Tracker ID: 2, Type: car, Speed: 36 km/h
+Tracker ID: 1, Type: car, Speed: 12 km/h
+Tracker ID: 2, Type: car, Speed: 39 km/h
+Tracker ID: 1, Type: car, Speed: 16 km/h
+Tracker ID: 2, Type: car, Speed: 37 km/h
+Tracker ID: 1, Type: car, Speed: 21 km/h
+Tracker ID: 2, Type: car, Speed: 40 km/h
+Tracker ID: 1, Type: car, Speed: 20 km/h
