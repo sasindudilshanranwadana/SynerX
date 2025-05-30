@@ -1,4 +1,4 @@
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, UploadFile, File
 from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
@@ -20,24 +20,62 @@ app = FastAPI()
 # === CORS fix ===
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # For production, replace with your frontend domain
+    allow_origins=["*"],  # For production, replace with your frontend domain(s)
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
+# === Static file serving ===
 app.mount("/videos", StaticFiles(directory=OUTPUT_DIR), name="videos")
 
-# === Input schema ===
+# === Input schema for old (Supabase) endpoint ===
 class VideoInput(BaseModel):
     upload_id: str
     video_url: str
 
-# === Main video processing endpoint ===
+# === NEW: Main video file upload endpoint ===
+@app.post("/upload-video/")
+async def upload_video(file: UploadFile = File(...)):
+    try:
+        # 1. Save uploaded file to disk
+        file_id = uuid.uuid4().hex
+        suffix = Path(file.filename).suffix or ".mp4"
+        raw_path = OUTPUT_DIR / f"{file_id}_raw{suffix}"
+
+        with open(raw_path, "wb") as buffer:
+            shutil.copyfileobj(file.file, buffer)
+
+        # 2. Plate blurring
+        blur_path = OUTPUT_DIR / f"{file_id}_blur{suffix}"
+        await run_in_threadpool(blur_plates_yolo, str(raw_path), str(blur_path), save_frames=False, stride=1)
+
+        # 3. Analytics
+        analytic_path = OUTPUT_DIR / f"{file_id}_out{suffix}"
+        await run_in_threadpool(main, str(blur_path), str(analytic_path))
+
+        # 4. Read CSV results
+        with open(OUTPUT_CSV_PATH) as f:
+            tracking_csv = f.read()
+        with open(COUNT_CSV_PATH) as f:
+            counts_csv = f.read()
+
+        return {
+            "status": "done",
+            "blurred_video": f"/videos/{blur_path.name}",
+            "analytic_video": f"/videos/{analytic_path.name}",
+            "tracking": tracking_csv,
+            "vehicle_counts": counts_csv
+        }
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+# === (Optional) Existing: URL-to-video pipeline endpoint ===
 @app.post("/upload-video")
 async def upload_video_from_url(data: VideoInput):
     try:
-        # 1. Download from public Supabase URL
+        # 1. Download from public URL
         response = requests.get(data.video_url, stream=True)
         if response.status_code != 200:
             raise HTTPException(status_code=400, detail="Failed to download video")
@@ -73,7 +111,7 @@ async def upload_video_from_url(data: VideoInput):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-# Optional: test GET route
+# === Test route ===
 @app.get("/")
 async def root():
     return {"message": "Backend is up and running!"}
