@@ -1,3 +1,6 @@
 datasets
 models
 .venv
+__pycache__
+source
+venv
