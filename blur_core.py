@@ -1,61 +1,89 @@
 import cv2
+import glob
 import os
+from ultralytics import YOLO
 
-def process_video(video_path='sample_video.mp4', output_video='processed_video.mp4', frames_dir='frames'):
-    # Load Haar cascade for license plate detection
-    plate_cascade = cv2.CascadeClassifier(cv2.data.haarcascades + 'haarcascade_russian_plate_number.xml')
+# ========== CONFIGURATION ==========
+MODEL_PATH = 'models/best.pt'
+INPUT_DIR = 'videos'
+OUTPUT_DIR = 'output'
+BLUR_KERNEL_SIZE = (23, 23)
+BLUR_SIGMA = 30
+BOX_COLOR = (0, 255, 255)      # Yellow (BGR)
+BOX_BORDER_COLOR = (0, 0, 0)   # Black
+BOX_THICKNESS = 2
+BOX_BORDER_THICKNESS = 4
 
-    # Create 'frames' directory if it doesn't exist
-    os.makedirs(frames_dir, exist_ok=True)
+# ========== LOAD MODEL ==========
+print(f" ✅Loading YOLOv8 model from '{MODEL_PATH}'...")
+model = YOLO(MODEL_PATH)
+print("✅ Model loaded successfully.\n")
 
-    # Open the video file
+# ========== CREATE OUTPUT FOLDER ==========
+os.makedirs(OUTPUT_DIR, exist_ok=True)
+
+# ========== FUNCTION TO PROCESS EACH VIDEO ==========
+def blur_license_plates(video_path, output_path, model):
+    print(f"🎬 Starting video: {os.path.basename(video_path)}")
+
     cap = cv2.VideoCapture(video_path)
-
-    # Check if the video opened successfully
     if not cap.isOpened():
-        raise FileNotFoundError("Error: Couldn't open video.")
+        print(f"❌ Error: Cannot open {video_path}")
+        return
+
+    width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+    height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+    fps = cap.get(cv2.CAP_PROP_FPS)
+    fourcc = cv2.VideoWriter_fourcc(*'mp4v')
+    out = cv2.VideoWriter(output_path, fourcc, fps, (width, height))
 
     frame_count = 0
-    frame_width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
-    frame_height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
-    fps = int(cap.get(cv2.CAP_PROP_FPS))
-
-    # Define the codec and create a VideoWriter object
-    out = cv2.VideoWriter(output_video, cv2.VideoWriter_fourcc(*'mp4v'), fps, (frame_width, frame_height))
-
     while True:
         ret, frame = cap.read()
         if not ret:
             break
-
-        # Convert to grayscale and enhance contrast
-        gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-        gray = cv2.equalizeHist(gray)  # Improve contrast
-
-        # Detect plates with tuned parameters
-        plates = plate_cascade.detectMultiScale(
-            gray,
-            scaleFactor=1.05,    # more sensitive
-            minNeighbors=3,      # less strict, detects more
-            minSize=(20, 20)     # smaller plates
-        )
-
-        # Blur all detected plates
-        for (x, y, w, h) in plates:
-            roi = frame[y:y+h, x:x+w]
-            blurred_roi = cv2.GaussianBlur(roi, (25, 25), 30)
-            frame[y:y+h, x:x+w] = blurred_roi
-
-        # Save the processed frame
         frame_count += 1
-        cv2.imwrite(f"{frames_dir}/frame_{frame_count:04d}.jpg", frame)
 
-        # Write the frame to the video file
+        results = model(frame)[0]
+
+        for det in results.boxes:
+            x1, y1, x2, y2 = map(int, det.xyxy[0])
+
+            # Blur the detected region
+            roi = frame[y1:y2, x1:x2]
+            if roi.size > 0:
+                blurred_roi = cv2.GaussianBlur(roi, BLUR_KERNEL_SIZE, BLUR_SIGMA)
+                frame[y1:y2, x1:x2] = blurred_roi
+
+            # Draw black border (thicker)
+            cv2.rectangle(frame, (x1, y1), (x2, y2), BOX_BORDER_COLOR, BOX_BORDER_THICKNESS)
+
+            # Draw yellow rectangle on top
+            cv2.rectangle(frame, (x1, y1), (x2, y2), BOX_COLOR, BOX_THICKNESS)
+
         out.write(frame)
 
     cap.release()
     out.release()
-    return {
-        "message": f"✅ Processing complete. {frame_count} frames saved in '{frames_dir}' folder.",
-        "video_output": f"✅ Processed video saved as '{output_video}'."
-    }
+    print(f"✅ Finished: {video_path} -> {output_path} ({frame_count} frames processed)\n")
+
+# ========== PROCESS ALL VIDEOS ==========
+def process_all_videos(input_folder, output_folder, model):
+    video_files = glob.glob(os.path.join(input_folder, '*.mp4'))
+
+    if not video_files:
+        print("⚠️ No MP4 files found in 'videos' directory.")
+        return
+
+    print(f"🔍 Found {len(video_files)} video(s) in '{input_folder}'...\n")
+
+    for video_file in video_files:
+        base_name = os.path.basename(video_file)
+        output_file = os.path.join(output_folder, f"blurred_{base_name}")
+        blur_license_plates(video_file, output_file, model)
+
+    print("✅ All videos processed successfully.")
+
+# ========== MAIN ==========
+if __name__ == "__main__":
+    process_all_videos(INPUT_DIR, OUTPUT_DIR, model)

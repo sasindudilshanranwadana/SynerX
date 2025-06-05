@@ -11,6 +11,7 @@ from utils.csv_manager import CSVManager
 from utils.heatmap import HeatMapGenerator
 from utils.view_transformer import ViewTransformer
 from utils.vehicle_tracker import VehicleTracker
+from utils.correlation_analysis import run_correlation_analysis
 
 def point_inside_polygon(point, polygon):
     """Check if point is inside polygon"""
@@ -279,6 +280,11 @@ def main(video_path=Config.VIDEO_PATH, output_video_path=Config.OUTPUT_VIDEO_PAT
         print(f"[INFO] Total Time: {total_time:.2f}s, Frames: {frame_idx}, Avg FPS: {avg_fps:.2f}")
         cv2.destroyAllWindows()
         print("[INFO] Tracking and counting completed successfully.")
+
+
+        # # Call after AI has processed video and output merged data
+        # print("\n>>> Running Correlation Analysis...")
+        # run_correlation_analysis()
 
 if __name__ == "__main__":
     main()

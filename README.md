@@ -46,7 +46,7 @@ This helps keep dependencies isolated.
 
 ```bash
 python -m venv venv
-source venv/bin/activate  # For Windows: venv\Scripts\activate
+source venv/bin/activate  # For Windows: venv\Scripts\activate   # For Windows using CMD: venv\Scripts\activate.bat
 ```
 
 ### 📦 3. Install Requirements

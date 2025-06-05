@@ -3,8 +3,9 @@ from fastapi.responses import JSONResponse
 import shutil
 from pathlib import Path
 import os, tempfile, uuid
-from main import main, OUTPUT_CSV_PATH, COUNT_CSV_PATH, VIDEO_PATH, OUTPUT_VIDEO_PATH
-from blur_core import blur_plates_yolo
+from config.config import Config
+from main import main
+from blur_core import blur_license_plates
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
@@ -13,17 +14,25 @@ from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import StreamingResponse
 import api_plots as plot
 
+OUTPUT_CSV_PATH = Config.OUTPUT_CSV_PATH
+COUNT_CSV_PATH = Config.COUNT_CSV_PATH
+VIDEO_PATH = Config.VIDEO_PATH
+OUTPUT_VIDEO_PATH = Config.OUTPUT_VIDEO_PATH
 OUTPUT_DIR = Path("processed")
 OUTPUT_DIR.mkdir(exist_ok=True)
+
+from ultralytics import YOLO
+MODEL_PATH = 'models/best.pt' # Ensure this path is correct relative to where you run api.py
+print(f" ✅Loading Blur model from '{MODEL_PATH}'...")
+model = YOLO(MODEL_PATH)
+print("✅ Model loaded successfully.\n")
 
 app = FastAPI()
 app.mount("/videos", StaticFiles(directory=OUTPUT_DIR), name="videos")
 
 @app.post("/upload-video/")
 async def upload_video(
-    file: UploadFile = File(...),
-    stride: int = 1,
-    save_frames: bool = False
+    file: UploadFile = File(...)
 ):
     # 1. save raw upload
     suffix = Path(file.filename).suffix or ".mp4"
@@ -34,11 +43,10 @@ async def upload_video(
     # 2. blur into processed/<uuid>_blur.mp4
     blur_path = OUTPUT_DIR / f"{uuid.uuid4().hex}_blur{suffix}"
     await run_in_threadpool(
-        blur_plates_yolo,
+        blur_license_plates,
         video_path=str(raw_path),
-        output_video=str(blur_path),
-        save_frames=save_frames,
-        stride=max(1, stride),
+        output_path=str(blur_path),
+        model=model  # Pass the loaded model
     )
 
     # 3. run analytics **into a second file** so nothing overwrites
@@ -78,9 +86,7 @@ async def get_results():
 
 @app.post("/blur/")
 async def blur_video(
-    file: UploadFile = File(...),
-    stride: int = 1,
-    save_frames: bool = False
+    file: UploadFile = File(...)
 ):
     # 1) stash upload in a temp file
     suffix = Path(file.filename).suffix or ".mp4"
@@ -95,11 +101,10 @@ async def blur_video(
     # 3) run the heavy work off-thread
     try:
         await run_in_threadpool(
-            blur_plates_yolo,
+            blur_license_plates,
             video_path=str(in_path),
-            output_video=str(out_path),
-            save_frames=save_frames,
-            stride=max(1, stride),
+            output_path=str(out_path),
+            model=model, # Pass the loaded model
         )
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
