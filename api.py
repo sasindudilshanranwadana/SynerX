@@ -110,6 +110,46 @@ async def upload_video_from_url(data: VideoInput):
 
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+@app.post("/process-video/")
+async def process_video_url(data: VideoInput = Body(...)):
+    try:
+        upload_id = data.upload_id
+        video_url = data.video_url
+
+        # Download the video from the provided URL
+        response = requests.get(video_url, stream=True)
+        if response.status_code != 200:
+            raise HTTPException(status_code=400, detail="Failed to download video.")
+
+        suffix = ".mp4"
+        raw_path = OUTPUT_DIR / f"{upload_id}_raw{suffix}"
+        with open(raw_path, "wb") as f:
+            for chunk in response.iter_content(chunk_size=8192):
+                f.write(chunk)
+
+        # Plate blurring
+        blur_path = OUTPUT_DIR / f"{upload_id}_blur{suffix}"
+        await run_in_threadpool(blur_plates_yolo, str(raw_path), str(blur_path), save_frames=False, stride=1)
+
+        # Run analytics
+        analytic_path = OUTPUT_DIR / f"{upload_id}_out{suffix}"
+        await run_in_threadpool(main, str(blur_path), str(analytic_path))
+
+        # Read results
+        with open(OUTPUT_CSV_PATH) as f:
+            tracking_csv = f.read()
+        with open(COUNT_CSV_PATH) as f:
+            counts_csv = f.read()
+
+        return {
+            "upload_id": upload_id,
+            "tracking_csv": tracking_csv,
+            "counts_csv": counts_csv
+        }
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+        
 
 # === Test route ===
 @app.get("/")
