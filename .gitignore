@@ -1,5 +1,5 @@
 datasets
-models
+models/yolo12s.pt
 .venv
 __pycache__
 source
