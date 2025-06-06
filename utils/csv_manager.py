@@ -36,11 +36,18 @@ class CSVManager:
         if os.path.exists(Config.COUNT_CSV_PATH):
             with open(Config.COUNT_CSV_PATH, 'r', newline='') as file:
                 for row in csv.DictReader(file):
-                    date_key = row['date'].split(' ')[0]  # Extract date part only (YYYY-MM-DD)
-                    vehicle_type = row['vehicle_type']
-                    if date_key not in count_data:
-                        count_data[date_key] = {}
-                    count_data[date_key][vehicle_type] = int(row['count'])
+                    try:
+                        if not row['date'] or not row['vehicle_type'] or not row['count']:
+                            continue
+                        date_key = row['date'].split(' ')[0]  # Extract date part only (YYYY-MM-DD)
+                        vehicle_type = row['vehicle_type']
+                        if date_key not in count_data:
+                            count_data[date_key] = {}
+                        count_data[date_key][vehicle_type] = int(row['count'])
+                    except (ValueError, KeyError, AttributeError) as e:
+                        continue
+            
+           
         return count_data
     
     @staticmethod
