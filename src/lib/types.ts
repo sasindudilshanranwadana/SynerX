@@ -29,4 +29,18 @@ export interface PriorityCounts {
   high: number;
   medium: number;
   low: number;
+<<<<<<< Updated upstream
+=======
+}
+
+export interface Upload {
+  id: string;
+  file_name: string;
+  file_size: number;
+  status: 'uploading' | 'completed' | 'failed';
+  progress: number;
+  error?: string;
+  model_type?: 'plate' | 'vehicle';
+  created_at: string;
+>>>>>>> Stashed changes
 }

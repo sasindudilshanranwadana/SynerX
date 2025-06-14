@@ -20,9 +20,39 @@ A comprehensive web application for analyzing road user behavior at level crossi
 - **Analytics**: Recharts
 - **Storage**: Firebase Storage
 
+<<<<<<< Updated upstream
 ## Access
 
 https://synerx.netlify.app/
+=======
+## Getting Started
+
+1. Clone the repository
+2. Install dependencies:
+   ```bash
+   npm install
+   ```
+3. Set up environment variables in `.env`:
+   ```
+   VITE_FIREBASE_API_KEY=
+   VITE_FIREBASE_AUTH_DOMAIN=
+   VITE_FIREBASE_PROJECT_ID=
+   VITE_FIREBASE_STORAGE_BUCKET=
+   VITE_FIREBASE_MESSAGING_SENDER_ID=
+   VITE_FIREBASE_APP_ID=
+   
+   VITE_CONFLUENCE_TOKEN=
+   VITE_PROJECT_KEY=
+   VITE_JIRA_URL=
+   
+   VITE_SUPABASE_URL=
+   VITE_SUPABASE_ANON_KEY=
+   ```
+4. Start the development server:
+   ```bash
+   npm run dev
+   ```
+>>>>>>> Stashed changes
 
 ## Project Structure
 
@@ -87,4 +117,8 @@ This project is licensed under the MIT License - see the LICENSE file for detail
 - VicRoads
 - Department of Transport
 - V/Line
+<<<<<<< Updated upstream
 - Swinburne University of Technology
+=======
+- Swinburne University of Technology
+>>>>>>> Stashed changes

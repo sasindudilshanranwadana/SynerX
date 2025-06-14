@@ -1,5 +1,9 @@
 import React from 'react';
+<<<<<<< Updated upstream
 import { getAuth, updateProfile, updateEmail } from 'firebase/auth';
+=======
+import { supabase } from '../lib/supabase';
+>>>>>>> Stashed changes
 import {
   User, Mail, Moon, Sun, Bell, Shield, Trash2, Save,
   CheckCircle, AlertCircle
@@ -8,7 +12,11 @@ import Header from '../components/Header';
 import Sidebar from '../components/Sidebar';
 
 function Settings() {
+<<<<<<< Updated upstream
   const auth = getAuth();
+=======
+  const [user, setUser] = React.useState<any>(null);
+>>>>>>> Stashed changes
   const [darkMode, setDarkMode] = React.useState(true);
   const [showToast, setShowToast] = React.useState(false);
   const [toastMessage, setToastMessage] = React.useState('');
@@ -17,8 +25,13 @@ function Settings() {
   const [sidebarOpen, setSidebarOpen] = React.useState(false);
   
   const [formData, setFormData] = React.useState({
+<<<<<<< Updated upstream
     displayName: auth.currentUser?.displayName || '',
     email: auth.currentUser?.email || '',
+=======
+    displayName: '',
+    email: '',
+>>>>>>> Stashed changes
     modelThreshold: '0.75',
     alertThreshold: '3',
     retentionDays: '30',
@@ -27,6 +40,34 @@ function Settings() {
     dataCollection: true
   });
 
+<<<<<<< Updated upstream
+=======
+  React.useEffect(() => {
+    supabase.auth.getUser().then(({ data: { user } }) => {
+      setUser(user);
+      setFormData(prev => ({
+        ...prev,
+        displayName: user?.user_metadata?.full_name || '',
+        email: user?.email || ''
+      }));
+    });
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+      const currentUser = session?.user;
+      setUser(currentUser);
+      if (currentUser) {
+        setFormData(prev => ({
+          ...prev,
+          displayName: currentUser.user_metadata?.full_name || '',
+          email: currentUser.email || ''
+        }));
+      }
+    });
+
+    return () => subscription.unsubscribe();
+  }, []);
+
+>>>>>>> Stashed changes
   const showNotification = (message: string, type: 'success' | 'error') => {
     setToastMessage(message);
     setToastType(type);
@@ -39,6 +80,7 @@ function Settings() {
     setLoading(true);
 
     try {
+<<<<<<< Updated upstream
       if (auth.currentUser) {
         // Update profile information
         await updateProfile(auth.currentUser, {
@@ -52,6 +94,17 @@ function Settings() {
 
         showNotification('Settings updated successfully', 'success');
       }
+=======
+      const { error } = await supabase.auth.updateUser({
+        email: formData.email,
+        data: {
+          full_name: formData.displayName
+        }
+      });
+
+      if (error) throw error;
+      showNotification('Settings updated successfully', 'success');
+>>>>>>> Stashed changes
     } catch (error: any) {
       showNotification(error.message, 'error');
     } finally {
