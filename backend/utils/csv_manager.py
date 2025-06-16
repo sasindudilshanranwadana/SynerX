@@ -104,10 +104,12 @@ class CSVManager:
                 writer.writeheader()
                 for date_key, vehicle_counts in updated_count_data.items():
                     for v_type, count in vehicle_counts.items():
+                        # Use actual current time for today's entries, keep historical data as is
+                        timestamp = current_time if date_key == current_date else f"{date_key} 23:59:59"
                         writer.writerow({
                             "vehicle_type": v_type, 
                             "count": count, 
-                            "date": f"{date_key} 23:59:59"  # Use end of day timestamp
+                            "date": timestamp
                         })
             
             return True
