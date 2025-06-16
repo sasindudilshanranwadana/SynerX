@@ -1,7 +1,0 @@
-datasets
-models/
-!models/best.pt
-.venv
-__pycache__
-source
-venv
