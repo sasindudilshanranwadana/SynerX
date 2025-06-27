@@ -4,7 +4,7 @@
 -- Create tracking_results table
 CREATE TABLE IF NOT EXISTS tracking_results (
     id BIGSERIAL PRIMARY KEY,
-    tracker_id INTEGER NOT NULL,
+    tracker_id INTEGER NOT NULL UNIQUE,
     vehicle_type VARCHAR(50) NOT NULL,
     status VARCHAR(20) NOT NULL CHECK (status IN ('moving', 'stationary')),
     compliance INTEGER NOT NULL DEFAULT 0 CHECK (compliance IN (0, 1)),
@@ -19,7 +19,8 @@ CREATE TABLE IF NOT EXISTS vehicle_counts (
     vehicle_type VARCHAR(50) NOT NULL,
     count INTEGER NOT NULL DEFAULT 0,
     date DATE NOT NULL,
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    UNIQUE(vehicle_type, date)
 );
 
 -- Create indexes for better performance
@@ -42,11 +43,17 @@ CREATE POLICY "Allow public read access to tracking_results" ON tracking_results
 CREATE POLICY "Allow public insert access to tracking_results" ON tracking_results
     FOR INSERT WITH CHECK (true);
 
+CREATE POLICY "Allow public update access to tracking_results" ON tracking_results
+    FOR UPDATE USING (true);
+
 CREATE POLICY "Allow public read access to vehicle_counts" ON vehicle_counts
     FOR SELECT USING (true);
 
 CREATE POLICY "Allow public insert access to vehicle_counts" ON vehicle_counts
     FOR INSERT WITH CHECK (true);
+
+CREATE POLICY "Allow public update access to vehicle_counts" ON vehicle_counts
+    FOR UPDATE USING (true);
 
 -- Storage bucket setup (run this manually in Supabase dashboard)
 -- Go to Storage > Create bucket
@@ -56,8 +63,3 @@ CREATE POLICY "Allow public insert access to vehicle_counts" ON vehicle_counts
 -- Allowed MIME types: video/mp4, video/avi, video/mov, video/wmv
 
 -- Storage policies (run after creating the bucket)
-CREATE POLICY "Allow public read access to videos" ON storage.objects
-    FOR SELECT USING (bucket_id = 'videos');
-
-CREATE POLICY "Allow public upload access to videos" ON storage.objects
-    FOR INSERT WITH CHECK (bucket_id = 'videos'); 

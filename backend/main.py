@@ -223,6 +223,7 @@ def main(video_path=Config.VIDEO_PATH, output_video_path=Config.OUTPUT_VIDEO_PAT
                             print(f"[DEBUG] Vehicle counter updated: {dict(vehicle_type_counter)}")
                             # Update CSV immediately when vehicle is counted
                             csv_manager.update_count_file(vehicle_type_counter)
+                            print(f"[DEBUG] Vehicle count saved to database for {vehicle_type}: {vehicle_type_counter[vehicle_type]}")
                         
                         # Record entry time
                         if track_id not in vehicle_tracker.entry_times:
@@ -281,9 +282,10 @@ def main(video_path=Config.VIDEO_PATH, output_video_path=Config.OUTPUT_VIDEO_PAT
                     top_labels.append(f"{vehicle_type} {current_status}" if current_status != "moving" else vehicle_type)
                     bottom_labels.append(f"#{track_id}")
                     
-                    # Update history dictionary
+                    # Update history dictionary ONLY for vehicles that have entered the stop zone
                     if track_id in vehicle_tracker.entry_times:
-                        stop_zone_history_dict[str(track_id)] = {
+                        # Only update if this is a new entry or status has changed
+                        current_record = {
                             "tracker_id": track_id,
                             "vehicle_type": vehicle_type,
                             "status": current_status,
@@ -291,6 +293,25 @@ def main(video_path=Config.VIDEO_PATH, output_video_path=Config.OUTPUT_VIDEO_PAT
                             "reaction_time": vehicle_tracker.reaction_times.get(track_id),
                             "date": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
                         }
+                        
+                        # Check if this is a new record or if status has changed
+                        existing_record = stop_zone_history_dict.get(str(track_id))
+                        should_update = False
+                        
+                        if existing_record is None:
+                            # New vehicle in stop zone
+                            should_update = True
+                            print(f"[DEBUG] New vehicle in stop zone: track_id={track_id}, type={vehicle_type}")
+                        elif (existing_record.get('status') != current_status or 
+                              existing_record.get('compliance') != compliance or
+                              existing_record.get('reaction_time') != vehicle_tracker.reaction_times.get(track_id)):
+                            # Status has changed
+                            should_update = True
+                            print(f"[DEBUG] Status changed for vehicle: track_id={track_id}, status={existing_record.get('status')} -> {current_status}")
+                        
+                        if should_update:
+                            stop_zone_history_dict[str(track_id)] = current_record
+                            csv_update_needed = True
                 
                 # Update CSV files if needed
                 if csv_update_needed:
@@ -301,6 +322,8 @@ def main(video_path=Config.VIDEO_PATH, output_video_path=Config.OUTPUT_VIDEO_PAT
                         for track_id_str, data in stop_zone_history_dict.items():
                             if data.get('status') in ['stationary', 'entered']:
                                 print(f"[DEBUG] Saved to DB: track_id={data.get('tracker_id')}, type={data.get('vehicle_type')}, status={data.get('status')}, compliance={data.get('compliance')}")
+                    # Reset the flag to prevent duplicate saves
+                    csv_update_needed = False
                 
                 # Ensure label lists match detection count
                 top_labels += [""] * (len(detections) - len(top_labels))

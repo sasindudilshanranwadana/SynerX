@@ -1,10 +1,2 @@
 tracker_id,vehicle_type,status,compliance,reaction_time,date
-6,truck,moving,0,,2025-06-27T20:45:51+00:00
-5,car,moving,0,,2025-06-27T20:44:12+00:00
-4,car,moving,0,,2025-06-27T20:43:34+00:00
-3,car,moving,0,,2025-06-27T20:43:05+00:00
-2,car,moving,0,,2025-06-27T20:42:10+00:00
-1,car,moving,0,,2025-06-27T20:41:44+00:00
-7,car,moving,0,,2025-06-27 20:50:00
-8,car,stationary,1,4.82,2025-06-27 20:50:31
-9,car,stationary,1,5.41,2025-06-27 20:50:43
+781,car,stationary,1,4.8,2025-06-27 21:31:10
