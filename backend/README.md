@@ -76,6 +76,84 @@ backend/models/best.pt
 
 Run the SQL commands in `supabase_tables.sql` in your Supabase SQL editor to create the required tables and storage bucket.
 
+## ⚡ Quick Development Commands
+
+### Using npm-style scripts (Recommended)
+
+```bash
+# Start development server with hot reload
+npm run dev
+
+# Start production server
+npm start
+
+# Run tests
+npm test
+
+# Run video processor
+npm run process
+
+# Install dependencies
+npm run install-deps
+```
+
+### Using Make commands
+
+```bash
+# Start development server with hot reload
+make dev
+
+# Start production server
+make start
+
+# Run tests
+make test
+
+# Run video processor
+make process
+
+# Install dependencies
+make install
+
+# Clean cache files
+make clean
+```
+
+### Using Python dev script
+
+```bash
+# Start development server with hot reload
+python dev.py dev
+
+# Start production server
+python dev.py start
+
+# Run tests
+python dev.py test
+
+# Run video processor
+python dev.py process
+
+# Install dependencies
+python dev.py install
+
+# Clean cache files
+python dev.py clean
+```
+
+### Traditional commands
+
+```bash
+# Start development server with hot reload
+uvicorn main:app --reload --host 0.0.0.0 --port 8000
+
+# Start production server
+uvicorn main:app --host 0.0.0.0 --port 8000
+
+# Run video processor
+python core/video_processor.py
+```
+
 ## 🔄 Dual-Mode Workflow
 
 ### 🏠 Local Development Mode
@@ -85,8 +163,8 @@ Run the SQL commands in `supabase_tables.sql` in your Supabase SQL editor to cre
 **Input**: Video from config file
 
 ```bash
-# Run local development mode
-python main.py
+# Run local development mode (from backend root directory)
+python core/video_processor.py
 ```
 
 **Features:**
@@ -104,7 +182,7 @@ python main.py
 
 ```bash
 # 1. Start FastAPI server
-uvicorn api:app --reload
+uvicorn main:app --reload
 
 # 2. Open web interface
 # http://localhost:8000/docs
@@ -181,7 +259,6 @@ Check processing status.
 }
 ```
 
-
 ### Testing
 
 #### `GET /test-db/`
@@ -236,8 +313,8 @@ cp .env.example .env
 # 2. Configure video path in config/config.py
 VIDEO_PATH = "path/to/your/video.mp4"
 
-# 3. Run local processing
-python main.py
+# 3. Run local processing (from backend root directory)
+python core/video_processor.py
 
 # 4. Check results in data/ folder
 cat data/tracking_results.csv
@@ -248,7 +325,7 @@ cat data/vehicle_count.csv
 
 ```bash
 # 1. Start FastAPI server
-uvicorn api:app --reload
+uvicorn main:app --reload
 
 # 2. Open web interface
 # http://localhost:8000/docs
@@ -303,22 +380,28 @@ DEBUG=True
 
 ```
 backend/
-├── api.py                 # FastAPI server
-├── main.py               # Main processing function
+├── main.py                 # FastAPI server (entrypoint)
+├── dev.py                  # Development script
+├── package.json            # npm-style scripts
+├── Makefile                # Make commands
+├── core/
+│   ├── __init__.py
+│   ├── video_processor.py  # Main processing function (YOLO/OpenCV)
+│   └── license_plate_blur.py # License plate blurring module
 ├── config/
-│   └── config.py         # Configuration settings
+│   └── config.py           # Configuration settings
 ├── utils/
-│   ├── csv_manager.py    # CSV and database operations
-│   ├── vehicle_tracker.py # Vehicle tracking logic
-│   ├── heatmap.py        # Heat map generation
+│   ├── data_manager.py     # CSV and database operations
+│   ├── vehicle_tracker.py  # Vehicle tracking logic
+│   ├── heatmap.py          # Heat map generation
 │   └── view_transformer.py # Coordinate transformation
 ├── models/
-│   └── best.pt           # YOLO model file
-├── data/                 # CSV output (local mode)
-├── processed/            # Processed videos
-├── requirements.txt      # Python dependencies
-├── .env                  # Environment variables
-└── README.md            # This file
+│   └── best.pt             # YOLO model file
+├── data/                   # CSV output (local mode)
+├── processed/              # Processed videos
+├── requirements.txt        # Python dependencies
+├── .env                    # Environment variables
+└── README.md               # This file
 ```
 
 ## 🤝 Contributing

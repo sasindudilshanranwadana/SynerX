@@ -1,4 +1,28 @@
 tracker_id,vehicle_type,status,compliance,reaction_time,date
+58,car,stationary,1,2.43,2025-06-27T23:12:43+00:00
+56,car,stationary,1,2.33,2025-06-27T23:12:25+00:00
+55,car,stationary,1,2.49,2025-06-27T23:12:11+00:00
+54,car,moving,0,,2025-06-27T23:11:56+00:00
+53,car,stationary,1,2.39,2025-06-27T23:10:43+00:00
+51,car,stationary,1,2.74,2025-06-27T23:10:26+00:00
+47,car,stationary,1,2.56,2025-06-27T23:10:06+00:00
+49,car,stationary,1,2.91,2025-06-27T23:09:43+00:00
+45,car,stationary,1,3.62,2025-06-27T23:09:27+00:00
+44,car,stationary,1,4.75,2025-06-27T23:08:58+00:00
+34,car,stationary,1,2.85,2025-06-27T23:08:23+00:00
+33,car,stationary,1,5.83,2025-06-27T23:05:42+00:00
+32,truck,stationary,1,3.22,2025-06-27T23:02:45+00:00
+31,car,stationary,1,14.06,2025-06-27T23:01:37+00:00
+30,car,stationary,1,2.46,2025-06-27T23:01:04+00:00
+29,car,stationary,1,5.73,2025-06-27T23:00:32+00:00
+28,car,stationary,1,9.22,2025-06-27T22:59:27+00:00
+27,car,moving,0,,2025-06-27T22:58:58+00:00
+24,car,moving,0,,2025-06-27T22:53:19+00:00
+26,car,stationary,1,11.43,2025-06-27T22:55:01+00:00
+25,car,stationary,1,5.06,2025-06-27T22:53:46+00:00
+21,car,moving,0,,2025-06-27T22:50:51+00:00
+23,car,stationary,1,5.83,2025-06-27T22:52:14+00:00
+22,car,stationary,1,3.94,2025-06-27T22:51:28+00:00
 20,car,moving,0,,2025-06-27T22:43:32+00:00
 19,car,stationary,1,5.37,2025-06-27T22:33:07+00:00
 18,car,moving,0,,2025-06-27T22:32:29+00:00
@@ -17,6 +41,9 @@ tracker_id,vehicle_type,status,compliance,reaction_time,date
 5,car,stationary,1,3.22,2025-06-27T21:45:24+00:00
 4,car,moving,0,,2025-06-27T21:53:57+00:00
 3,car,stationary,1,2.8,2025-06-27T21:53:57+00:00
-2,truck,moving,0,,2025-06-27T21:53:57+00:00
-1,car,stationary,1,3.5,2025-06-27T21:53:57+00:00
-21,car,moving,0,,2025-06-27 22:46:12
+2,car,stationary,1,8.86,2025-06-27T22:47:50+00:00
+1,car,moving,0,,2025-06-27T22:47:15+00:00
+59,car,moving,0,,2025-06-27 23:48:28
+60,car,stationary,1,2.89,2025-06-27 23:48:52
+61,car,stationary,1,2.35,2025-06-27 23:49:23
+62,car,stationary,1,2.92,2025-06-27 23:49:54

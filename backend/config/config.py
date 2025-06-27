@@ -1,13 +1,17 @@
 import numpy as np
+import os
 
 class Config:
     """Configuration class to centralize all settings"""
-    # File Paths
-    VIDEO_PATH = './asset/videoplayback.mp4'  # Input video file path
-    OUTPUT_VIDEO_PATH = './asset/TrackingWithStopResult.mp4'  # Output processed video path
-    OUTPUT_CSV_PATH = './data/tracking_results.csv'  # CSV file for tracking results
-    COUNT_CSV_PATH = './data/vehicle_count.csv'  # CSV file for vehicle counts
-    MODEL_PATH = './models/yolo12s.pt'  # YOLO model weights file path
+    # Get the backend root directory (parent of config directory)
+    BACKEND_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    
+    # File Paths (relative to backend root)
+    VIDEO_PATH = os.path.join(BACKEND_ROOT, 'asset', 'videoplayback.mp4')  # Input video file path
+    OUTPUT_VIDEO_PATH = os.path.join(BACKEND_ROOT, 'asset', 'TrackingWithStopResult.mp4')  # Output processed video path
+    OUTPUT_CSV_PATH = os.path.join(BACKEND_ROOT, 'data', 'tracking_results.csv')  # CSV file for tracking results
+    COUNT_CSV_PATH = os.path.join(BACKEND_ROOT, 'data', 'vehicle_count.csv')  # CSV file for vehicle counts
+    MODEL_PATH = os.path.join(BACKEND_ROOT, 'models', 'yolo12s.pt')  # YOLO model weights file path
     
     # Detection Zones
     SOURCE_POLYGON = np.array([(422, 10), (594, 16), (801, 665), (535, 649)])  # Detection area polygon coordinates
