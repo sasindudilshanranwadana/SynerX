@@ -5,6 +5,9 @@ from collections import Counter
 from ultralytics import YOLO
 import supervision as sv
 from datetime import datetime
+import signal
+import sys
+import threading
 
 from config.config import Config
 from utils.csv_manager import CSVManager
@@ -12,6 +15,36 @@ from utils.heatmap import HeatMapGenerator
 from utils.view_transformer import ViewTransformer
 from utils.vehicle_tracker import VehicleTracker
 from utils.correlation_analysis import run_correlation_analysis
+from supabase_client import supabase_manager
+
+# Global flag for graceful shutdown
+shutdown_requested = False
+shutdown_lock = threading.Lock()
+
+def signal_handler(signum, frame):
+    """Handle interrupt signals gracefully"""
+    global shutdown_requested
+    with shutdown_lock:
+        shutdown_requested = True
+    print(f"\n[INFO] Received signal {signum}. Shutting down gracefully...")
+
+def check_shutdown():
+    """Check if shutdown has been requested"""
+    global shutdown_requested
+    with shutdown_lock:
+        return shutdown_requested
+
+def set_shutdown_flag():
+    """Set the shutdown flag (called from API)"""
+    global shutdown_requested
+    with shutdown_lock:
+        shutdown_requested = True
+
+def reset_shutdown_flag():
+    """Reset the shutdown flag"""
+    global shutdown_requested
+    with shutdown_lock:
+        shutdown_requested = False
 
 def point_inside_polygon(point, polygon):
     """Check if point is inside polygon"""
@@ -40,6 +73,17 @@ def setup_annotators():
 
 def main(video_path=Config.VIDEO_PATH, output_video_path=Config.OUTPUT_VIDEO_PATH):
     """Main processing function"""
+    global shutdown_requested
+    
+    # Setup signal handlers for graceful shutdown (only in main thread)
+    try:
+        signal.signal(signal.SIGINT, signal_handler)   # Ctrl+C
+        signal.signal(signal.SIGTERM, signal_handler)  # Termination signal
+        print("[INFO] Press Ctrl+C to stop processing gracefully")
+    except ValueError:
+        # Signal handling only works in main thread, skip in worker threads
+        print("[INFO] Running in worker thread - signal handling disabled")
+    
     # Initialize components
     video_info = sv.VideoInfo.from_video_path(video_path)
     video_info.fps = Config.TARGET_FPS
@@ -77,12 +121,27 @@ def main(video_path=Config.VIDEO_PATH, output_video_path=Config.OUTPUT_VIDEO_PAT
     counted_ids = set()
     vehicle_type_counter = Counter()
     
-    # Load existing count data for current date
-    existing_count_data = csv_manager.read_existing_count_data()
+    # Load existing count data for current date from DATABASE (not CSV)
     current_date = datetime.now().strftime("%Y-%m-%d")
-    if current_date in existing_count_data:
-        vehicle_type_counter.update(existing_count_data[current_date])
-        print(f"[INFO] Continuing count from existing data: {dict(vehicle_type_counter)}")
+    try:
+        # Get current counts from database
+        db_vehicle_counts = supabase_manager.get_vehicle_counts(limit=1000)
+        for row in db_vehicle_counts:
+            if row.get('date') and row.get('vehicle_type') and row.get('count'):
+                # Check if it's from today
+                row_date = row['date'].split(' ')[0] if ' ' in row['date'] else row['date'].split('T')[0]
+                if row_date == current_date:
+                    vehicle_type = row['vehicle_type']
+                    count = int(row['count'])
+                    vehicle_type_counter[vehicle_type] = count  # Set to current total
+        print(f"[INFO] Loaded existing counts from database: {dict(vehicle_type_counter)}")
+    except Exception as e:
+        print(f"[WARNING] Failed to load counts from database, using CSV fallback: {e}")
+        # Fallback to CSV
+        existing_count_data = csv_manager.read_existing_count_data()
+        if current_date in existing_count_data:
+            vehicle_type_counter.update(existing_count_data[current_date])
+            print(f"[INFO] Continuing count from CSV fallback: {dict(vehicle_type_counter)}")
     
     tracker_types = {}
     
@@ -91,7 +150,7 @@ def main(video_path=Config.VIDEO_PATH, output_video_path=Config.OUTPUT_VIDEO_PAT
         if data.get('status') == 'stationary':
             vehicle_tracker.stationary_vehicles.add(int(track_id))
     
-    # Get tracker ID offset
+    # Restore tracker_id offset logic for global unique IDs
     max_track_id = max((int(tid) for tid in stop_zone_history_dict.keys() if tid.isdigit()), default=0)
     tracker_id_offset = max_track_id
     if max_track_id > 0:
@@ -106,6 +165,11 @@ def main(video_path=Config.VIDEO_PATH, output_video_path=Config.OUTPUT_VIDEO_PAT
     try:
         with sv.VideoSink(output_video_path, video_info) as sink:
             for frame in frame_gen:
+                # Check for shutdown request
+                if check_shutdown():
+                    print(f"[INFO] Shutdown requested at frame {frame_idx}. Stopping gracefully...")
+                    break
+                
                 frame_idx += 1
                 
                 # Detection and tracking
@@ -120,7 +184,7 @@ def main(video_path=Config.VIDEO_PATH, output_video_path=Config.OUTPUT_VIDEO_PAT
                 # Heat map accumulation
                 heat_map.accumulate(detections)
                 
-                # Apply tracker ID offset
+                # Apply tracker ID offset for global uniqueness
                 detections.tracker_id = [tid + tracker_id_offset for tid in detections.tracker_id]
                 
                 # Get anchor points
@@ -153,8 +217,10 @@ def main(video_path=Config.VIDEO_PATH, output_video_path=Config.OUTPUT_VIDEO_PAT
                     if point_inside_polygon(orig_pt, Config.STOP_ZONE_POLYGON):
                         # Count vehicle if first time in zone
                         if track_id not in counted_ids:
+                            print(f"[DEBUG] New vehicle counted: track_id={track_id}, type={vehicle_type}")
                             vehicle_type_counter[vehicle_type] += 1
                             counted_ids.add(track_id)
+                            print(f"[DEBUG] Vehicle counter updated: {dict(vehicle_type_counter)}")
                             # Update CSV immediately when vehicle is counted
                             csv_manager.update_count_file(vehicle_type_counter)
                         
@@ -162,6 +228,7 @@ def main(video_path=Config.VIDEO_PATH, output_video_path=Config.OUTPUT_VIDEO_PAT
                         if track_id not in vehicle_tracker.entry_times:
                             current_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
                             vehicle_tracker.entry_times[track_id] = time.time()
+                            print(f"[DEBUG] Vehicle {track_id} ({vehicle_type}) entered stop zone at {current_time}")
                             
                             record_key = (track_id, "entered")
                             if record_key not in vehicle_tracker.written_records:
@@ -182,9 +249,9 @@ def main(video_path=Config.VIDEO_PATH, output_video_path=Config.OUTPUT_VIDEO_PAT
                                 current_status, compliance = "stationary", 1
                                 
                                 if track_id not in vehicle_tracker.reaction_times:
-                                    vehicle_tracker.reaction_times[track_id] = round(
-                                        time.time() - vehicle_tracker.entry_times[track_id], 2
-                                    )
+                                    reaction_time = round(time.time() - vehicle_tracker.entry_times[track_id], 2)
+                                    vehicle_tracker.reaction_times[track_id] = reaction_time
+                                    print(f"[DEBUG] Vehicle {track_id} ({vehicle_type}) became stationary after {reaction_time}s")
                     else:
                         vehicle_tracker.position_history[track_id].clear()
                         if track_id in vehicle_tracker.entry_times and track_id not in vehicle_tracker.reaction_times:
@@ -197,6 +264,7 @@ def main(video_path=Config.VIDEO_PATH, output_video_path=Config.OUTPUT_VIDEO_PAT
                     
                     # Update CSV on status change
                     if previous_status != current_status and previous_status != "":
+                        print(f"[DEBUG] Vehicle {track_id} ({vehicle_type}) status changed: {previous_status} -> {current_status}")
                         if current_status == "stationary" or track_id not in vehicle_tracker.stationary_vehicles:
                             record_key = (track_id, current_status)
                             if record_key not in vehicle_tracker.written_records:
@@ -205,6 +273,7 @@ def main(video_path=Config.VIDEO_PATH, output_video_path=Config.OUTPUT_VIDEO_PAT
                                 
                                 if current_status == "stationary":
                                     vehicle_tracker.stationary_vehicles.add(track_id)
+                                    print(f"[DEBUG] Vehicle {track_id} added to stationary vehicles list")
                     
                     vehicle_tracker.status_cache[track_id] = current_status
                     
@@ -225,8 +294,13 @@ def main(video_path=Config.VIDEO_PATH, output_video_path=Config.OUTPUT_VIDEO_PAT
                 
                 # Update CSV files if needed
                 if csv_update_needed:
+                    print(f"[DEBUG] Updating tracking data to database at frame {frame_idx}")
                     if csv_manager.update_tracking_file(stop_zone_history_dict):
-                        print(f"[INFO] CSV files updated at frame {frame_idx}")
+                        print(f"[INFO] Tracking data updated at frame {frame_idx}")
+                        # Log what was updated
+                        for track_id_str, data in stop_zone_history_dict.items():
+                            if data.get('status') in ['stationary', 'entered']:
+                                print(f"[DEBUG] Saved to DB: track_id={data.get('tracker_id')}, type={data.get('vehicle_type')}, status={data.get('status')}, compliance={data.get('compliance')}")
                 
                 # Ensure label lists match detection count
                 top_labels += [""] * (len(detections) - len(top_labels))
@@ -253,7 +327,7 @@ def main(video_path=Config.VIDEO_PATH, output_video_path=Config.OUTPUT_VIDEO_PAT
                 
                 # Output frame
                 sink.write_frame(annotated)
-                cv2.imshow("Tracking with Stop", annotated)
+                # cv2.imshow("Tracking with Stop", annotated)  # Commented out for headless/server use
                 
                 # Update FPS display
                 if frame_idx % Config.FPS_UPDATE_INTERVAL == 0:
@@ -262,29 +336,38 @@ def main(video_path=Config.VIDEO_PATH, output_video_path=Config.OUTPUT_VIDEO_PAT
                     prev_fps_time = now
                     print(f"[INFO] FPS: {fps:.2f}")
                 
-                if cv2.waitKey(1) & 0xFF == ord('q'):
+                # Check for shutdown more frequently (every 10 frames)
+                if frame_idx % 10 == 0 and check_shutdown():
+                    print(f"[INFO] Shutdown requested at frame {frame_idx}. Stopping gracefully...")
                     break
+                
+                # Check for keyboard interrupt (for local testing)
+                # if cv2.waitKey(1) & 0xFF == ord('q'):
+                #     print("[INFO] 'q' pressed. Stopping gracefully...")
+                #     break
     
+    except KeyboardInterrupt:
+        print(f"\n[INFO] Keyboard interrupt received at frame {frame_idx}. Stopping gracefully...")
     except Exception as e:
         print(f"[ERROR] {e}")
     finally:
         # Final cleanup
+        print(f"[INFO] Finalizing processing at frame {frame_idx}...")
         csv_manager.update_tracking_file(stop_zone_history_dict)
         csv_manager.update_count_file(vehicle_type_counter)
         heat_map.save_heat_maps(first_frame)
         
         end_time = time.time()
         total_time = end_time - start_time
-        avg_fps = frame_idx / total_time
+        avg_fps = frame_idx / total_time if total_time > 0 else 0
         
         print(f"[INFO] Total Time: {total_time:.2f}s, Frames: {frame_idx}, Avg FPS: {avg_fps:.2f}")
         cv2.destroyAllWindows()
-        print("[INFO] Tracking and counting completed successfully.")
-
-
-        # # Call after AI has processed video and output merged data
-        # print("\n>>> Running Correlation Analysis...")
-        # run_correlation_analysis()
+        
+        if check_shutdown():
+            print("[INFO] Processing stopped by user request.")
+        else:
+            print("[INFO] Tracking and counting completed successfully.")
 
 if __name__ == "__main__":
     main()

@@ -2,13 +2,14 @@ import csv
 import os
 from datetime import datetime
 from config.config import Config
+from supabase_client import supabase_manager
 
 class CSVManager:
-    """Handles all CSV file operations"""
+    """Handles all CSV file operations with Supabase integration"""
     
     @staticmethod
     def initialize_csv_files():
-        """Initialize CSV files with headers if they don't exist"""
+        """Initialize CSV files with headers if they don't exist - kept for backward compatibility"""
         os.makedirs(os.path.dirname(Config.OUTPUT_CSV_PATH), exist_ok=True)
         
         tracking_fields = ["tracker_id", "vehicle_type", "status", "compliance", "reaction_time", "date"]
@@ -21,49 +22,101 @@ class CSVManager:
     
     @staticmethod
     def read_existing_data():
-        """Read existing tracking data from CSV"""
-        data = {}
-        if os.path.exists(Config.OUTPUT_CSV_PATH):
-            with open(Config.OUTPUT_CSV_PATH, 'r', newline='') as file:
-                for row in csv.DictReader(file):
-                    data[row['tracker_id']] = row
-        return data
+        """Read existing tracking data from Supabase"""
+        try:
+            data = {}
+            tracking_data = supabase_manager.get_tracking_data(limit=10000)
+            
+            for row in tracking_data:
+                if row.get('tracker_id'):
+                    data[str(row['tracker_id'])] = {
+                        "tracker_id": row['tracker_id'],
+                        "vehicle_type": row.get('vehicle_type', 'unknown'),
+                        "status": row.get('status', 'moving'),
+                        "compliance": row.get('compliance', 0),
+                        "reaction_time": row.get('reaction_time'),
+                        "date": row.get('date', '')
+                    }
+            return data
+        except Exception as e:
+            print(f"[WARNING] Failed to read from Supabase, falling back to CSV: {e}")
+            # Fallback to CSV if Supabase fails
+            data = {}
+            if os.path.exists(Config.OUTPUT_CSV_PATH):
+                with open(Config.OUTPUT_CSV_PATH, 'r', newline='') as file:
+                    for row in csv.DictReader(file):
+                        data[row['tracker_id']] = row
+            return data
     
     @staticmethod
     def read_existing_count_data():
-        """Read existing vehicle count data from CSV"""
-        count_data = {}
-        if os.path.exists(Config.COUNT_CSV_PATH):
-            with open(Config.COUNT_CSV_PATH, 'r', newline='') as file:
-                for row in csv.DictReader(file):
-                    try:
-                        if not row['date'] or not row['vehicle_type'] or not row['count']:
-                            continue
-                        date_key = row['date'].split(' ')[0]  # Extract date part only (YYYY-MM-DD)
-                        vehicle_type = row['vehicle_type']
-                        if date_key not in count_data:
-                            count_data[date_key] = {}
-                        count_data[date_key][vehicle_type] = int(row['count'])
-                    except (ValueError, KeyError, AttributeError) as e:
-                        continue
+        """Read existing vehicle count data from Supabase"""
+        try:
+            count_data = {}
+            vehicle_counts = supabase_manager.get_vehicle_counts(limit=10000)
             
-           
-        return count_data
+            for row in vehicle_counts:
+                try:
+                    if not row.get('date') or not row.get('vehicle_type') or not row.get('count'):
+                        continue
+                    date_key = row['date'].split(' ')[0] if ' ' in row['date'] else row['date'].split('T')[0]
+                    vehicle_type = row['vehicle_type']
+                    if date_key not in count_data:
+                        count_data[date_key] = {}
+                    count_data[date_key][vehicle_type] = int(row['count'])
+                except (ValueError, KeyError, AttributeError) as e:
+                    continue
+            
+            return count_data
+        except Exception as e:
+            print(f"[WARNING] Failed to read from Supabase, falling back to CSV: {e}")
+            # Fallback to CSV if Supabase fails
+            count_data = {}
+            if os.path.exists(Config.COUNT_CSV_PATH):
+                with open(Config.COUNT_CSV_PATH, 'r', newline='') as file:
+                    for row in csv.DictReader(file):
+                        try:
+                            if not row['date'] or not row['vehicle_type'] or not row['count']:
+                                continue
+                            date_key = row['date'].split(' ')[0]
+                            vehicle_type = row['vehicle_type']
+                            if date_key not in count_data:
+                                count_data[date_key] = {}
+                            count_data[date_key][vehicle_type] = int(row['count'])
+                        except (ValueError, KeyError, AttributeError) as e:
+                            continue
+            return count_data
     
     @staticmethod
     def update_files(history_dict, vehicle_counter):
-        """Update CSV files with current data - kept for backward compatibility"""
+        """Update data - save to Supabase and local CSV for backup"""
         tracking_success = CSVManager.update_tracking_file(history_dict)
         count_success = CSVManager.update_count_file(vehicle_counter)
         return tracking_success and count_success
     
     @staticmethod
     def update_tracking_file(history_dict):
-        """Update only the tracking results CSV file"""
+        """Update tracking results - save to Supabase and local CSV for backup"""
         try:
             current_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            success_count = 0
             
-            # Update tracking results
+            print(f"[DEBUG] update_tracking_file called with {len(history_dict)} records")
+            
+            # Save to Supabase
+            for tid, data in history_dict.items():
+                data_with_date = data.copy()
+                data_with_date.setdefault("date", current_time)
+                
+                print(f"[DEBUG] Saving tracking data to DB: track_id={data.get('tracker_id')}, type={data.get('vehicle_type')}, status={data.get('status')}")
+                
+                if supabase_manager.save_tracking_data(data_with_date):
+                    success_count += 1
+                    print(f"[DEBUG] Successfully saved tracking data for track_id={data.get('tracker_id')}")
+                else:
+                    print(f"[DEBUG] Failed to save tracking data for track_id={data.get('tracker_id')}")
+            
+            # Also save to local CSV for backup
             with open(Config.OUTPUT_CSV_PATH, 'w', newline='') as f:
                 writer = csv.DictWriter(f, fieldnames=["tracker_id", "vehicle_type", "status", "compliance", "reaction_time", "date"])
                 writer.writeheader()
@@ -72,47 +125,44 @@ class CSVManager:
                     data_with_date.setdefault("date", current_time)
                     writer.writerow(data_with_date)
             
+            print(f"[INFO] Saved {success_count}/{len(history_dict)} tracking records to Supabase")
             return True
         except Exception as e:
-            print(f"[WARNING] Failed to update tracking CSV file: {e}")
+            print(f"[WARNING] Failed to update tracking data: {e}")
             return False
     
     @staticmethod
     def update_count_file(vehicle_counter):
-        """Update only the vehicle count CSV file"""
+        """Update vehicle count data - save to Supabase and local CSV for backup"""
         try:
             current_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-            current_date = current_time.split(' ')[0]  # Extract date part only (YYYY-MM-DD)
+            current_date = current_time.split(' ')[0]
+            success_count = 0
             
-            # Read existing count data
-            existing_count_data = CSVManager.read_existing_count_data()
+            print(f"[DEBUG] update_count_file called with: {dict(vehicle_counter)}")
             
-            # Update vehicle counts with date-based logic
-            updated_count_data = {}
+            # Save to Supabase
+            for vehicle_type, count in vehicle_counter.items():
+                print(f"[DEBUG] Saving to DB: vehicle_type={vehicle_type}, count={count}, date={current_date}")
+                if supabase_manager.save_vehicle_count(vehicle_type, count, current_date):
+                    success_count += 1
+                    print(f"[DEBUG] Successfully saved {vehicle_type}: {count}")
+                else:
+                    print(f"[DEBUG] Failed to save {vehicle_type}: {count}")
             
-            # Copy all existing data from other dates
-            for date_key, vehicle_counts in existing_count_data.items():
-                if date_key != current_date:  # Keep other dates as is
-                    updated_count_data[date_key] = vehicle_counts.copy()
-            
-            # For current date, use the vehicle_counter values directly (they already include existing counts)
-            updated_count_data[current_date] = dict(vehicle_counter)
-            
-            # Write updated count data back to CSV
+            # Also save to local CSV for backup
             with open(Config.COUNT_CSV_PATH, 'w', newline='') as f:
                 writer = csv.DictWriter(f, fieldnames=["vehicle_type", "count", "date"])
                 writer.writeheader()
-                for date_key, vehicle_counts in updated_count_data.items():
-                    for v_type, count in vehicle_counts.items():
-                        # Use actual current time for today's entries, keep historical data as is
-                        timestamp = current_time if date_key == current_date else f"{date_key} 23:59:59"
-                        writer.writerow({
-                            "vehicle_type": v_type, 
-                            "count": count, 
-                            "date": timestamp
-                        })
+                for v_type, count in vehicle_counter.items():
+                    writer.writerow({
+                        "vehicle_type": v_type, 
+                        "count": count, 
+                        "date": current_time
+                    })
             
+            print(f"[INFO] Saved {success_count}/{len(vehicle_counter)} vehicle counts to Supabase")
             return True
         except Exception as e:
-            print(f"[WARNING] Failed to update count CSV file: {e}")
+            print(f"[WARNING] Failed to update count data: {e}")
             return False
