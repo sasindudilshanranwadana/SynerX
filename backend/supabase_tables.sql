@@ -63,3 +63,14 @@ CREATE POLICY "Allow public update access to vehicle_counts" ON vehicle_counts
 -- Allowed MIME types: video/mp4, video/avi, video/mov, video/wmv
 
 -- Storage policies (run after creating the bucket)
+CREATE POLICY "Allow public read access to videos" ON storage.objects
+    FOR SELECT USING (bucket_id = 'videos');
+
+CREATE POLICY "Allow public insert access to videos" ON storage.objects
+    FOR INSERT WITH CHECK (bucket_id = 'videos');
+
+CREATE POLICY "Allow public update access to videos" ON storage.objects
+    FOR UPDATE USING (bucket_id = 'videos');
+
+CREATE POLICY "Allow public delete access to videos" ON storage.objects
+    FOR DELETE USING (bucket_id = 'videos');
