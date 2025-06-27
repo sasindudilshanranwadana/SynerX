@@ -15,7 +15,6 @@ from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import StreamingResponse
 import api_plots as plot
 import time
-import signal
 import threading
 
 # Add middleware for larger uploads
@@ -26,19 +25,8 @@ from starlette.responses import Response
 # Global shutdown flag for graceful termination
 api_shutdown_requested = False
 api_shutdown_lock = threading.Lock()
-
-def signal_handler(signum, frame):
-    """Handle interrupt signals gracefully"""
-    global api_shutdown_requested
-    with api_shutdown_lock:
-        api_shutdown_requested = True
-    # Also set the main module's shutdown flag
-    set_shutdown_flag()
-    print(f"\n[API] Received signal {signum}. Shutting down gracefully...")
-
-# Set up signal handlers for the main process
-signal.signal(signal.SIGINT, signal_handler)   # Ctrl+C
-signal.signal(signal.SIGTERM, signal_handler)  # Termination signal
+processing_start_time = None
+processing_lock = threading.Lock()
 
 class LimitUploadSizeMiddleware(BaseHTTPMiddleware):
     def __init__(self, app, max_upload_size: int):
@@ -74,12 +62,29 @@ def check_api_shutdown():
     with api_shutdown_lock:
         return api_shutdown_requested
 
+def set_processing_start_time():
+    """Set the processing start time"""
+    global processing_start_time
+    with processing_lock:
+        processing_start_time = time.time()
+
+def get_processing_time():
+    """Get the current processing time in seconds"""
+    global processing_start_time
+    with processing_lock:
+        if processing_start_time is None:
+            return 0
+        return time.time() - processing_start_time
+
 @app.post("/upload-video/")
 async def upload_video(
     file: UploadFile = File(...)
 ):
     # Reset shutdown flag for this request
     reset_shutdown_flag()
+    
+    # Set processing start time
+    set_processing_start_time()
     
     start_time = time.time()
     print("[UPLOAD] Step 1: File received")
@@ -103,7 +108,8 @@ async def upload_video(
         )
         print(f"[UPLOAD] Step 4: Analytics done: {analytic_path}")
     except KeyboardInterrupt:
-        print("[UPLOAD] Processing interrupted by user (Ctrl+C)")
+        processing_time = get_processing_time()
+        print(f"[UPLOAD] Processing interrupted by user (Ctrl+C) after {processing_time:.2f} seconds")
         # Clean up temporary files
         try:
             os.unlink(raw_path)
@@ -111,9 +117,10 @@ async def upload_video(
                 os.unlink(analytic_path)
         except Exception as e:
             print(f"[WARNING] Failed to clean up files after interrupt: {e}")
-        raise HTTPException(status_code=499, detail="Processing interrupted by user")
+        raise HTTPException(status_code=499, detail=f"Processing interrupted by user after {processing_time:.2f} seconds")
     except Exception as e:
-        print(f"[ERROR] Processing failed: {e}")
+        processing_time = get_processing_time()
+        print(f"[ERROR] Processing failed after {processing_time:.2f} seconds: {e}")
         # Clean up temporary files
         try:
             os.unlink(raw_path)
@@ -121,7 +128,7 @@ async def upload_video(
                 os.unlink(analytic_path)
         except Exception as cleanup_error:
             print(f"[WARNING] Failed to clean up files after error: {cleanup_error}")
-        raise HTTPException(status_code=500, detail=f"Processing failed: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Processing failed after {processing_time:.2f} seconds: {str(e)}")
 
     # 3. Upload ONLY the processed video to Supabase storage
     processed_video_url = None
@@ -156,10 +163,11 @@ async def upload_video(
 
     # 5. Calculate processing statistics
     processing_time = time.time() - start_time
+    total_processing_time = get_processing_time()
     total_vehicles = len(tracking_data) if isinstance(tracking_data, list) else 0
     compliance_count = sum(1 for item in tracking_data if isinstance(item, dict) and item.get('compliance') == 1)
     compliance_rate = (compliance_count / total_vehicles * 100) if total_vehicles > 0 else 0
-    print(f"[UPLOAD] Step 9: Processing stats calculated. Time: {processing_time:.2f}s, Vehicles: {total_vehicles}, Compliance: {compliance_rate:.2f}%")
+    print(f"[UPLOAD] Step 9: Processing stats calculated. Time: {processing_time:.2f}s, Total Time: {total_processing_time:.2f}s, Vehicles: {total_vehicles}, Compliance: {compliance_rate:.2f}%")
 
     # 6. Clean up temporary files
     try:
@@ -178,7 +186,8 @@ async def upload_video(
         "processing_stats": {
             "total_vehicles": total_vehicles,
             "compliance_rate": compliance_rate,
-            "processing_time": processing_time
+            "processing_time": processing_time,
+            "total_processing_time": total_processing_time
         }
     }
 
@@ -327,9 +336,14 @@ async def test_database():
 async def shutdown_processing():
     """Stop any ongoing video processing"""
     try:
+        processing_time = get_processing_time()
         set_shutdown_flag()
-        print("[API] Shutdown requested via HTTP endpoint")
-        return {"status": "shutdown_requested", "message": "Processing will stop gracefully"}
+        print(f"[API] Shutdown requested via HTTP endpoint after {processing_time:.2f} seconds of processing")
+        return {
+            "status": "shutdown_requested", 
+            "message": "Processing will stop gracefully",
+            "processing_time": processing_time
+        }
     except Exception as e:
         return {"status": "error", "error": str(e)}
 
@@ -338,9 +352,11 @@ async def get_processing_status():
     """Check if processing is currently active"""
     try:
         is_shutdown_requested = check_shutdown()
+        processing_time = get_processing_time()
         return {
             "processing_active": not is_shutdown_requested,
-            "shutdown_requested": is_shutdown_requested
+            "shutdown_requested": is_shutdown_requested,
+            "processing_time": processing_time
         }
     except Exception as e:
         return {"status": "error", "error": str(e)}

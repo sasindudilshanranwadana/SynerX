@@ -5,7 +5,6 @@ from collections import Counter
 from ultralytics import YOLO
 import supervision as sv
 from datetime import datetime
-import signal
 import sys
 import threading
 
@@ -20,13 +19,6 @@ from supabase_client import supabase_manager
 # Global flag for graceful shutdown
 shutdown_requested = False
 shutdown_lock = threading.Lock()
-
-def signal_handler(signum, frame):
-    """Handle interrupt signals gracefully"""
-    global shutdown_requested
-    with shutdown_lock:
-        shutdown_requested = True
-    print(f"\n[INFO] Received signal {signum}. Shutting down gracefully...")
 
 def check_shutdown():
     """Check if shutdown has been requested"""
@@ -74,15 +66,6 @@ def setup_annotators():
 def main(video_path=Config.VIDEO_PATH, output_video_path=Config.OUTPUT_VIDEO_PATH):
     """Main processing function"""
     global shutdown_requested
-    
-    # Setup signal handlers for graceful shutdown (only in main thread)
-    try:
-        signal.signal(signal.SIGINT, signal_handler)   # Ctrl+C
-        signal.signal(signal.SIGTERM, signal_handler)  # Termination signal
-        print("[INFO] Press Ctrl+C to stop processing gracefully")
-    except ValueError:
-        # Signal handling only works in main thread, skip in worker threads
-        print("[INFO] Running in worker thread - signal handling disabled")
     
     # Initialize components
     video_info = sv.VideoInfo.from_video_path(video_path)
@@ -145,16 +128,23 @@ def main(video_path=Config.VIDEO_PATH, output_video_path=Config.OUTPUT_VIDEO_PAT
     
     tracker_types = {}
     
-    # Load existing stationary vehicles
+    # Load existing stationary vehicles and counted vehicles from history
     for track_id, data in stop_zone_history_dict.items():
         if data.get('status') == 'stationary':
             vehicle_tracker.stationary_vehicles.add(int(track_id))
+        # Also add to counted_ids if they were previously counted
+        if data.get('tracker_id'):
+            counted_ids.add(int(data.get('tracker_id')))
     
     # Restore tracker_id offset logic for global unique IDs
     max_track_id = max((int(tid) for tid in stop_zone_history_dict.keys() if tid.isdigit()), default=0)
     tracker_id_offset = max_track_id
     if max_track_id > 0:
         print(f"[INFO] Continuing from tracker ID: {tracker_id_offset + 1}")
+    
+    print(f"[INFO] Loaded {len(stop_zone_history_dict)} existing tracking records from database/CSV")
+    print(f"[INFO] Loaded {len(counted_ids)} previously counted vehicles")
+    print(f"[INFO] Loaded {len(vehicle_tracker.stationary_vehicles)} previously stationary vehicles")
     
     # Processing variables
     frame_idx = 0
@@ -312,12 +302,18 @@ def main(video_path=Config.VIDEO_PATH, output_video_path=Config.OUTPUT_VIDEO_PAT
                         if should_update:
                             stop_zone_history_dict[str(track_id)] = current_record
                             csv_update_needed = True
+                            print(f"[DEBUG] Added/updated vehicle {track_id} in history dict. Total records: {len(stop_zone_history_dict)}")
                 
                 # Update CSV files if needed
                 if csv_update_needed:
                     print(f"[DEBUG] Updating tracking data to database at frame {frame_idx}")
+                    print(f"[DEBUG] History dict has {len(stop_zone_history_dict)} records before update")
+                    for tid, data in stop_zone_history_dict.items():
+                        print(f"[DEBUG] History: track_id={data.get('tracker_id')}, type={data.get('vehicle_type')}, status={data.get('status')}")
+                    
                     if csv_manager.update_tracking_file(stop_zone_history_dict):
                         print(f"[INFO] Tracking data updated at frame {frame_idx}")
+                        print(f"[DEBUG] History dict still has {len(stop_zone_history_dict)} records after update")
                         # Log what was updated
                         for track_id_str, data in stop_zone_history_dict.items():
                             if data.get('status') in ['stationary', 'entered']:
