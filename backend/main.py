@@ -300,9 +300,10 @@ def main(video_path=Config.VIDEO_PATH, output_video_path=Config.OUTPUT_VIDEO_PAT
                             print(f"[DEBUG] Status changed for vehicle: track_id={track_id}, status={existing_record.get('status')} -> {current_status}")
                         
                         if should_update:
+                            # Update both the existing data cache and the changed records
                             stop_zone_history_dict[str(track_id)] = current_record
                             csv_update_needed = True
-                            print(f"[DEBUG] Added/updated vehicle {track_id} in history dict. Total records: {len(stop_zone_history_dict)}")
+                            print(f"[DEBUG] Added/updated vehicle {track_id} in changed records. Changed records: {len(stop_zone_history_dict)}")
                 
                 # Update CSV files if needed
                 if csv_update_needed:

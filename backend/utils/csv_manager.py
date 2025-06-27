@@ -167,7 +167,9 @@ class CSVManager:
                         reader = csv.DictReader(f)
                         for row in reader:
                             if row.get('vehicle_type') and row.get('date'):
-                                key = f"{row['vehicle_type']}_{row['date']}"
+                                # Use only the date part as key, not the full timestamp
+                                row_date = row['date'].split(' ')[0]
+                                key = f"{row['vehicle_type']}_{row_date}"
                                 existing_csv_data[key] = row
                 except Exception as e:
                     print(f"[WARNING] Failed to read existing count CSV: {e}")
