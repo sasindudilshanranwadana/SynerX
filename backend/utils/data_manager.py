@@ -2,10 +2,10 @@ import csv
 import os
 from datetime import datetime
 from config.config import Config
-from supabase_client import supabase_manager
+from utils.supabase_manager import supabase_manager
 
 class DataManager:
-    """Handles all CSV file operations with Supabase integration"""
+    """Handles all data operations (CSV and Supabase) for SynerX"""
     
     @staticmethod
     def initialize_csv_files():

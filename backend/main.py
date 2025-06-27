@@ -8,7 +8,7 @@ from core.video_processor import main, set_shutdown_flag, reset_shutdown_flag, c
 from core.license_plate_blur import blur_license_plates
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
-from supabase_client import supabase_manager
+from utils.supabase_manager import supabase_manager
 
 from fastapi.concurrency import run_in_threadpool
 
@@ -107,7 +107,7 @@ async def upload_video(
         raw_path = Path(tmp_in.name)
     print(f"[UPLOAD] Step 2: File saved to {raw_path}")
 
-    # 2. run analytics using main.py (skip blurring)
+    # 2. run analytics using main.py
     analytic_path = OUTPUT_DIR / f"{uuid.uuid4().hex}_out{suffix}"
     print(f"[UPLOAD] Step 3: Running analytics to {analytic_path}")
     

@@ -97,50 +97,6 @@ npm run process
 npm run install-deps
 ```
 
-### Using Make commands
-
-```bash
-# Start development server with hot reload
-make dev
-
-# Start production server
-make start
-
-# Run tests
-make test
-
-# Run video processor
-make process
-
-# Install dependencies
-make install
-
-# Clean cache files
-make clean
-```
-
-### Using Python dev script
-
-```bash
-# Start development server with hot reload
-python dev.py dev
-
-# Start production server
-python dev.py start
-
-# Run tests
-python dev.py test
-
-# Run video processor
-python dev.py process
-
-# Install dependencies
-python dev.py install
-
-# Clean cache files
-python dev.py clean
-```
-
 ### Traditional commands
 
 ```bash
@@ -381,9 +337,10 @@ DEBUG=True
 ```
 backend/
 ├── main.py                 # FastAPI server (entrypoint)
-├── dev.py                  # Development script
 ├── package.json            # npm-style scripts
-├── Makefile                # Make commands
+├── clients/
+│   ├── __init__.py
+│   └── supabase_client.py  # Supabase client setup
 ├── core/
 │   ├── __init__.py
 │   ├── video_processor.py  # Main processing function (YOLO/OpenCV)
@@ -391,7 +348,8 @@ backend/
 ├── config/
 │   └── config.py           # Configuration settings
 ├── utils/
-│   ├── data_manager.py     # CSV and database operations
+│   ├── supabase_manager.py # Supabase database operations
+│   ├── data_manager.py     # CSV and data orchestration
 │   ├── vehicle_tracker.py  # Vehicle tracking logic
 │   ├── heatmap.py          # Heat map generation
 │   └── view_transformer.py # Coordinate transformation

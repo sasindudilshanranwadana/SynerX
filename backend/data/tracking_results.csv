@@ -1,4 +1,12 @@
 tracker_id,vehicle_type,status,compliance,reaction_time,date
+66,car,moving,0,,2025-06-28T00:03:30+00:00
+65,car,stationary,1,4.21,2025-06-28T00:01:01+00:00
+64,car,moving,0,,2025-06-28T00:00:25+00:00
+63,car,stationary,1,3.29,2025-06-27T23:59:59+00:00
+62,car,stationary,1,3.53,2025-06-27T23:59:13+00:00
+61,car,stationary,1,2.71,2025-06-27T23:58:35+00:00
+60,car,stationary,1,2.89,2025-06-27T23:57:49+00:00
+59,car,moving,0,,2025-06-27T23:57:30+00:00
 58,car,stationary,1,2.43,2025-06-27T23:12:43+00:00
 56,car,stationary,1,2.33,2025-06-27T23:12:25+00:00
 55,car,stationary,1,2.49,2025-06-27T23:12:11+00:00
@@ -43,7 +51,5 @@ tracker_id,vehicle_type,status,compliance,reaction_time,date
 3,car,stationary,1,2.8,2025-06-27T21:53:57+00:00
 2,car,stationary,1,8.86,2025-06-27T22:47:50+00:00
 1,car,moving,0,,2025-06-27T22:47:15+00:00
-59,car,moving,0,,2025-06-27 23:48:28
-60,car,stationary,1,2.89,2025-06-27 23:48:52
-61,car,stationary,1,2.35,2025-06-27 23:49:23
-62,car,stationary,1,2.92,2025-06-27 23:49:54
+67,car,moving,0,,2025-06-28 00:24:22
+68,car,stationary,1,3.09,2025-06-28 00:24:38
