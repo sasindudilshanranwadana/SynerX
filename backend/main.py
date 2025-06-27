@@ -63,9 +63,21 @@ def setup_annotators():
         )
     }
 
-def main(video_path=Config.VIDEO_PATH, output_video_path=Config.OUTPUT_VIDEO_PATH):
-    """Main processing function"""
+def main(video_path=Config.VIDEO_PATH, output_video_path=Config.OUTPUT_VIDEO_PATH, mode="local"):
+    """Main processing function
+    
+    Args:
+        video_path: Path to input video
+        output_video_path: Path to output video
+        mode: "local" for CSV-only development, "api" for database-only API mode
+    """
     global shutdown_requested
+    
+    print(f"[INFO] Running in {mode.upper()} mode")
+    if mode == "local":
+        print("[INFO] Local mode: Saving to CSV files only")
+    elif mode == "api":
+        print("[INFO] API mode: Saving to database only")
     
     # Initialize components
     video_info = sv.VideoInfo.from_video_path(video_path)
@@ -96,35 +108,48 @@ def main(video_path=Config.VIDEO_PATH, output_video_path=Config.OUTPUT_VIDEO_PAT
     # Setup annotators
     annotators = setup_annotators()
     
-    # Initialize CSV files and load existing data
-    csv_manager.initialize_csv_files()
-    stop_zone_history_dict = csv_manager.read_existing_data()
+    # Initialize CSV files and load existing data based on mode
+    if mode == "local":
+        # Local mode: Use CSV files
+        csv_manager.initialize_csv_files()
+        stop_zone_history_dict = csv_manager.read_existing_data()
+        print("[INFO] Local mode: Using CSV files for data storage")
+    else:
+        # API mode: Use database
+        csv_manager.initialize_csv_files()  # Still initialize CSV for backup
+        stop_zone_history_dict = csv_manager.read_existing_data()  # Load from database
+        print("[INFO] API mode: Using database for data storage")
     
     # Initialize tracking variables
     counted_ids = set()
     vehicle_type_counter = Counter()
+    changed_records = {}  # Track only new/changed records for API mode
     
-    # Load existing count data for current date from DATABASE (not CSV)
+    # Load existing count data based on mode
     current_date = datetime.now().strftime("%Y-%m-%d")
-    try:
-        # Get current counts from database
-        db_vehicle_counts = supabase_manager.get_vehicle_counts(limit=1000)
-        for row in db_vehicle_counts:
-            if row.get('date') and row.get('vehicle_type') and row.get('count'):
-                # Check if it's from today
-                row_date = row['date'].split(' ')[0] if ' ' in row['date'] else row['date'].split('T')[0]
-                if row_date == current_date:
-                    vehicle_type = row['vehicle_type']
-                    count = int(row['count'])
-                    vehicle_type_counter[vehicle_type] = count  # Set to current total
-        print(f"[INFO] Loaded existing counts from database: {dict(vehicle_type_counter)}")
-    except Exception as e:
-        print(f"[WARNING] Failed to load counts from database, using CSV fallback: {e}")
-        # Fallback to CSV
-        existing_count_data = csv_manager.read_existing_count_data()
-        if current_date in existing_count_data:
-            vehicle_type_counter.update(existing_count_data[current_date])
-            print(f"[INFO] Continuing count from CSV fallback: {dict(vehicle_type_counter)}")
+    if mode == "local":
+        # Local mode: Load from CSV
+        try:
+            existing_count_data = csv_manager.read_existing_count_data()
+            if current_date in existing_count_data:
+                vehicle_type_counter.update(existing_count_data[current_date])
+                print(f"[INFO] Loaded counts from CSV: {dict(vehicle_type_counter)}")
+        except Exception as e:
+            print(f"[WARNING] Failed to load counts from CSV: {e}")
+    else:
+        # API mode: Load from database
+        try:
+            db_vehicle_counts = supabase_manager.get_vehicle_counts(limit=1000)
+            for row in db_vehicle_counts:
+                if row.get('date') and row.get('vehicle_type') and row.get('count'):
+                    row_date = row['date'].split(' ')[0] if ' ' in row['date'] else row['date'].split('T')[0]
+                    if row_date == current_date:
+                        vehicle_type = row['vehicle_type']
+                        count = int(row['count'])
+                        vehicle_type_counter[vehicle_type] = count
+            print(f"[INFO] Loaded counts from database: {dict(vehicle_type_counter)}")
+        except Exception as e:
+            print(f"[WARNING] Failed to load counts from database: {e}")
     
     tracker_types = {}
     
@@ -132,7 +157,6 @@ def main(video_path=Config.VIDEO_PATH, output_video_path=Config.OUTPUT_VIDEO_PAT
     for track_id, data in stop_zone_history_dict.items():
         if data.get('status') == 'stationary':
             vehicle_tracker.stationary_vehicles.add(int(track_id))
-        # Also add to counted_ids if they were previously counted
         if data.get('tracker_id'):
             counted_ids.add(int(data.get('tracker_id')))
     
@@ -142,7 +166,7 @@ def main(video_path=Config.VIDEO_PATH, output_video_path=Config.OUTPUT_VIDEO_PAT
     if max_track_id > 0:
         print(f"[INFO] Continuing from tracker ID: {tracker_id_offset + 1}")
     
-    print(f"[INFO] Loaded {len(stop_zone_history_dict)} existing tracking records from database/CSV")
+    print(f"[INFO] Loaded {len(stop_zone_history_dict)} existing tracking records")
     print(f"[INFO] Loaded {len(counted_ids)} previously counted vehicles")
     print(f"[INFO] Loaded {len(vehicle_tracker.stationary_vehicles)} previously stationary vehicles")
     
@@ -212,7 +236,7 @@ def main(video_path=Config.VIDEO_PATH, output_video_path=Config.OUTPUT_VIDEO_PAT
                             counted_ids.add(track_id)
                             print(f"[DEBUG] Vehicle counter updated: {dict(vehicle_type_counter)}")
                             # Update CSV immediately when vehicle is counted
-                            csv_manager.update_count_file(vehicle_type_counter)
+                            csv_manager.update_count_file(vehicle_type_counter, mode)
                             print(f"[DEBUG] Vehicle count saved to database for {vehicle_type}: {vehicle_type_counter[vehicle_type]}")
                         
                         # Record entry time
@@ -302,25 +326,42 @@ def main(video_path=Config.VIDEO_PATH, output_video_path=Config.OUTPUT_VIDEO_PAT
                         if should_update:
                             # Update both the existing data cache and the changed records
                             stop_zone_history_dict[str(track_id)] = current_record
+                            if mode == "api":
+                                # In API mode, track changed records for database save
+                                changed_records[str(track_id)] = current_record
                             csv_update_needed = True
-                            print(f"[DEBUG] Added/updated vehicle {track_id} in changed records. Changed records: {len(stop_zone_history_dict)}")
+                            print(f"[DEBUG] Added/updated vehicle {track_id} in changed records. Changed records: {len(changed_records)}")
                 
                 # Update CSV files if needed
                 if csv_update_needed:
-                    print(f"[DEBUG] Updating tracking data to database at frame {frame_idx}")
+                    print(f"[DEBUG] Updating tracking data at frame {frame_idx}")
                     print(f"[DEBUG] History dict has {len(stop_zone_history_dict)} records before update")
-                    for tid, data in stop_zone_history_dict.items():
-                        print(f"[DEBUG] History: track_id={data.get('tracker_id')}, type={data.get('vehicle_type')}, status={data.get('status')}")
                     
-                    if csv_manager.update_tracking_file(stop_zone_history_dict):
-                        print(f"[INFO] Tracking data updated at frame {frame_idx}")
-                        print(f"[DEBUG] History dict still has {len(stop_zone_history_dict)} records after update")
-                        # Log what was updated
+                    if mode == "local":
+                        # Local mode: Save to CSV only
+                        if csv_manager.update_tracking_file(stop_zone_history_dict, mode):
+                            print(f"[INFO] Tracking data saved to CSV at frame {frame_idx}")
                         for track_id_str, data in stop_zone_history_dict.items():
                             if data.get('status') in ['stationary', 'entered']:
-                                print(f"[DEBUG] Saved to DB: track_id={data.get('tracker_id')}, type={data.get('vehicle_type')}, status={data.get('status')}, compliance={data.get('compliance')}")
+                                print(f"[DEBUG] Saved to CSV: track_id={data.get('tracker_id')}, type={data.get('vehicle_type')}, status={data.get('status')}, compliance={data.get('compliance')}")
+                    else:
+                        # API mode: Save only new/changed records to database
+                        for track_id_str, data in changed_records.items():
+                            print(f"[DEBUG] Saving new/changed to DB: track_id={data.get('tracker_id')}, type={data.get('vehicle_type')}, status={data.get('status')}")
+                            supabase_manager.save_tracking_data(data)
+                        
+                        if changed_records:
+                            print(f"[INFO] Saved {len(changed_records)} new/changed records to database")
+                            # Clear changed records after saving
+                            changed_records.clear()
+                    
                     # Reset the flag to prevent duplicate saves
                     csv_update_needed = False
+                
+                # Check for shutdown after processing each frame
+                if check_shutdown():
+                    print(f"[INFO] Shutdown requested at frame {frame_idx}. Stopping gracefully...")
+                    break
                 
                 # Ensure label lists match detection count
                 top_labels += [""] * (len(detections) - len(top_labels))
@@ -356,8 +397,8 @@ def main(video_path=Config.VIDEO_PATH, output_video_path=Config.OUTPUT_VIDEO_PAT
                     prev_fps_time = now
                     print(f"[INFO] FPS: {fps:.2f}")
                 
-                # Check for shutdown more frequently (every 10 frames)
-                if frame_idx % 10 == 0 and check_shutdown():
+                # Check for shutdown every frame for better responsiveness
+                if check_shutdown():
                     print(f"[INFO] Shutdown requested at frame {frame_idx}. Stopping gracefully...")
                     break
                 
@@ -373,8 +414,21 @@ def main(video_path=Config.VIDEO_PATH, output_video_path=Config.OUTPUT_VIDEO_PAT
     finally:
         # Final cleanup
         print(f"[INFO] Finalizing processing at frame {frame_idx}...")
-        csv_manager.update_tracking_file(stop_zone_history_dict)
-        csv_manager.update_count_file(vehicle_type_counter)
+        
+        if mode == "local":
+            # Local mode: Save to CSV only
+            csv_manager.update_tracking_file(stop_zone_history_dict, mode)
+            csv_manager.update_count_file(vehicle_type_counter, mode)
+            print("[INFO] Local mode: Final data saved to CSV files")
+        else:
+            # API mode: Save to database only
+            for track_id_str, data in stop_zone_history_dict.items():
+                supabase_manager.save_tracking_data(data)
+            for vehicle_type, count in vehicle_type_counter.items():
+                current_date = datetime.now().strftime("%Y-%m-%d")
+                supabase_manager.save_vehicle_count(vehicle_type, count, current_date)
+            print("[INFO] API mode: Final data saved to database")
+        
         heat_map.save_heat_maps(first_frame)
         
         end_time = time.time()

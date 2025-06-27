@@ -104,7 +104,8 @@ async def upload_video(
         await run_in_threadpool(
             main,                   # your analytics
             str(raw_path),          # input video (original)
-            str(analytic_path)      # processed output
+            str(analytic_path),     # processed output
+            "api"                   # API mode - save to database only
         )
         print(f"[UPLOAD] Step 4: Analytics done: {analytic_path}")
     except KeyboardInterrupt:

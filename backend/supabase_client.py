@@ -33,7 +33,6 @@ class SupabaseManager:
             return val
         try:
             tracker_id = to_py(tracking_data.get("tracker_id"))
-            print(f"[DEBUG] save_tracking_data: tracker_id={tracker_id}")
             
             # Use upsert with unique constraint on tracker_id
             data_to_upsert = {
@@ -49,21 +48,20 @@ class SupabaseManager:
                 result = self.client.table("tracking_results") \
                     .upsert(data_to_upsert, on_conflict="tracker_id") \
                     .execute()
-                print(f"[DEBUG] Tracking upsert result: {result.data}")
                 
                 if result.data and len(result.data) > 0:
-                    print(f"[DEBUG] Tracking data upserted successfully: {result.data[0]}")
+                    print(f"✅ Vehicle {tracker_id} ({data_to_upsert['vehicle_type']}) saved to database successfully")
                     return True
                 else:
-                    print(f"[WARNING] Tracking upsert returned empty result")
+                    print(f"❌ Failed to save vehicle {tracker_id} to database")
                     return False
                     
             except Exception as e:
-                print(f"[ERROR] Failed to upsert tracking data: {e}")
+                print(f"❌ Database error saving vehicle {tracker_id}: {e}")
                 return False
                 
         except Exception as e:
-            print(f"[ERROR] Failed to save tracking data: {e}")
+            print(f"❌ Error processing vehicle data: {e}")
             return False
     
     def save_vehicle_count(self, vehicle_type: str, count: int, date: str = None) -> bool:
@@ -71,8 +69,6 @@ class SupabaseManager:
         try:
             if date is None:
                 date = datetime.now().strftime("%Y-%m-%d")
-
-            print(f"[DEBUG] save_vehicle_count: type={vehicle_type}, count={count}, date={date}")
 
             # Use upsert with unique constraint on (vehicle_type, date)
             data_to_upsert = {
@@ -85,21 +81,20 @@ class SupabaseManager:
                 result = self.client.table("vehicle_counts") \
                     .upsert(data_to_upsert, on_conflict="vehicle_type,date") \
                     .execute()
-                print(f"[DEBUG] Upsert result: {result.data}")
                 
                 if result.data and len(result.data) > 0:
-                    print(f"[DEBUG] Vehicle count upserted successfully: {result.data[0]}")
+                    print(f"✅ {vehicle_type} count ({count}) saved to database successfully")
                     return True
                 else:
-                    print(f"[WARNING] Upsert returned empty result")
+                    print(f"❌ Failed to save {vehicle_type} count to database")
                     return False
                     
             except Exception as e:
-                print(f"[ERROR] Failed to upsert vehicle count: {e}")
+                print(f"❌ Database error saving {vehicle_type} count: {e}")
                 return False
                 
         except Exception as e:
-            print(f"[ERROR] Failed to upsert vehicle count: {e}")
+            print(f"❌ Error processing {vehicle_type} count: {e}")
             return False
     
     def get_tracking_data(self, limit: int = 1000) -> List[Dict]:
