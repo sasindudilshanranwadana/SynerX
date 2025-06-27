@@ -2,6 +2,7 @@ datasets
 models/
 !models/best.pt
 .venv
+.env
 __pycache__
 source
 venv

@@ -1,10 +1,20 @@
-from supabase import create_client, Client
 import os
+from dotenv import load_dotenv
+from supabase import create_client, Client
+import json
 from datetime import datetime
 from typing import Dict, List, Any
 import numpy as np
 
-# Supabase configuration
+# Load environment variables from .env file
+load_dotenv()
+
+# Get Supabase credentials from environment variables
+SUPABASE_URL = os.getenv("SUPABASE_URL")
+SUPABASE_KEY = os.getenv("SUPABASE_KEY")
+
+if not SUPABASE_URL or not SUPABASE_KEY:
+    raise ValueError("Missing SUPABASE_URL or SUPABASE_KEY in environment variables. Please check your .env file.")
 
 # Create Supabase client
 supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
@@ -23,13 +33,10 @@ class SupabaseManager:
             return val
         try:
             tracker_id = to_py(tracking_data.get("tracker_id"))
-            # Check if tracker_id already exists
-            existing = self.client.table("tracking_results") \
-                .select("id") \
-                .eq("tracker_id", tracker_id) \
-                .limit(1) \
-                .execute()
-            data_to_save = {
+            print(f"[DEBUG] save_tracking_data: tracker_id={tracker_id}")
+            
+            # Use upsert with unique constraint on tracker_id
+            data_to_upsert = {
                 "tracker_id": tracker_id,
                 "vehicle_type": to_py(tracking_data.get("vehicle_type")),
                 "status": to_py(tracking_data.get("status")),
@@ -37,15 +44,24 @@ class SupabaseManager:
                 "reaction_time": to_py(tracking_data.get("reaction_time")),
                 "date": to_py(tracking_data.get("date", datetime.now().isoformat()))
             }
-            if existing.data and len(existing.data) > 0:
-                row = existing.data[0]
-                self.client.table("tracking_results") \
-                    .update(data_to_save) \
-                    .eq("id", row["id"]) \
+            
+            try:
+                result = self.client.table("tracking_results") \
+                    .upsert(data_to_upsert, on_conflict="tracker_id") \
                     .execute()
-            else:
-                self.client.table("tracking_results").insert(data_to_save).execute()
-            return True
+                print(f"[DEBUG] Tracking upsert result: {result.data}")
+                
+                if result.data and len(result.data) > 0:
+                    print(f"[DEBUG] Tracking data upserted successfully: {result.data[0]}")
+                    return True
+                else:
+                    print(f"[WARNING] Tracking upsert returned empty result")
+                    return False
+                    
+            except Exception as e:
+                print(f"[ERROR] Failed to upsert tracking data: {e}")
+                return False
+                
         except Exception as e:
             print(f"[ERROR] Failed to save tracking data: {e}")
             return False
@@ -58,49 +74,30 @@ class SupabaseManager:
 
             print(f"[DEBUG] save_vehicle_count: type={vehicle_type}, count={count}, date={date}")
 
-            # Check if a row exists for this vehicle_type and date
+            # Use upsert with unique constraint on (vehicle_type, date)
+            data_to_upsert = {
+                "vehicle_type": vehicle_type,
+                "count": count,
+                "date": date
+            }
+            
             try:
-                existing = self.client.table("vehicle_counts") \
-                    .select("id, count") \
-                    .eq("vehicle_type", vehicle_type) \
-                    .eq("date", date) \
-                    .limit(1) \
+                result = self.client.table("vehicle_counts") \
+                    .upsert(data_to_upsert, on_conflict="vehicle_type,date") \
                     .execute()
-                print(f"[DEBUG] Existing data: {existing.data}")
+                print(f"[DEBUG] Upsert result: {result.data}")
+                
+                if result.data and len(result.data) > 0:
+                    print(f"[DEBUG] Vehicle count upserted successfully: {result.data[0]}")
+                    return True
+                else:
+                    print(f"[WARNING] Upsert returned empty result")
+                    return False
+                    
             except Exception as e:
-                print(f"[ERROR] Failed to query existing data: {e}")
+                print(f"[ERROR] Failed to upsert vehicle count: {e}")
                 return False
-
-            if existing.data and len(existing.data) > 0:
-                # Row exists: set count to the current total
-                row = existing.data[0]
-                print(f"[DEBUG] Updating existing row {row['id']}: count {row.get('count')} -> {count}")
-                try:
-                    result = self.client.table("vehicle_counts") \
-                        .update({"count": count}) \
-                        .eq("id", row["id"]) \
-                        .execute()
-                    print(f"[DEBUG] Update result: {result.data}")
-                    print(f"[DEBUG] Updated successfully")
-                except Exception as e:
-                    print(f"[ERROR] Failed to update: {e}")
-                    return False
-            else:
-                # No row: insert new
-                print(f"[DEBUG] Inserting new row: type={vehicle_type}, count={count}, date={date}")
-                try:
-                    data_to_insert = {
-                        "vehicle_type": vehicle_type,
-                        "count": count,
-                        "date": date
-                    }
-                    result = self.client.table("vehicle_counts").insert(data_to_insert).execute()
-                    print(f"[DEBUG] Insert result: {result.data}")
-                    print(f"[DEBUG] Inserted successfully")
-                except Exception as e:
-                    print(f"[ERROR] Failed to insert: {e}")
-                    return False
-            return True
+                
         except Exception as e:
             print(f"[ERROR] Failed to upsert vehicle count: {e}")
             return False
