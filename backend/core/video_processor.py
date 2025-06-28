@@ -147,8 +147,12 @@ def main(video_path=Config.VIDEO_PATH, output_video_path=Config.OUTPUT_VIDEO_PAT
         try:
             existing_count_data = data_manager.read_existing_count_data()
             if current_date in existing_count_data:
+                # Load existing counts for today
                 vehicle_type_counter.update(existing_count_data[current_date])
-                print(f"[INFO] Loaded counts from CSV: {dict(vehicle_type_counter)}")
+                print(f"[INFO] Loaded existing counts for today: {dict(vehicle_type_counter)}")
+            else:
+                # If no data for today, start fresh
+                print(f"[INFO] No existing counts for today, starting fresh")
         except Exception as e:
             print(f"[WARNING] Failed to load counts from CSV: {e}")
     else:
@@ -178,10 +182,11 @@ def main(video_path=Config.VIDEO_PATH, output_video_path=Config.OUTPUT_VIDEO_PAT
         else:
             print(f"[INFO] Starting fresh with tracker ID: {next_tracker_id}")
     else:
-        # Local mode: Load existing stationary vehicles and counted vehicles from history
+        # Local mode: Load existing stationary vehicles and mark existing vehicles as counted
         for track_id, data in stop_zone_history_dict.items():
             if data.get('status') == 'stationary':
                 vehicle_tracker.stationary_vehicles.add(int(track_id))
+            # Mark existing vehicles as already counted
             if data.get('tracker_id'):
                 counted_ids.add(int(data.get('tracker_id')))
         
@@ -194,12 +199,17 @@ def main(video_path=Config.VIDEO_PATH, output_video_path=Config.OUTPUT_VIDEO_PAT
     print(f"[INFO] Loaded {len(stop_zone_history_dict)} existing tracking records")
     print(f"[INFO] Loaded {len(counted_ids)} previously counted vehicles")
     print(f"[INFO] Loaded {len(vehicle_tracker.stationary_vehicles)} previously stationary vehicles")
+    print(f"[INFO] Current vehicle counts: {dict(vehicle_type_counter)}")
     
     # Processing variables
     frame_idx = 0
     start_time = time.time()
     prev_fps_time = start_time
     frame_gen = sv.get_video_frames_generator(source_path=video_path)
+    
+    # Performance optimization for local mode
+    frame_skip = Config.DISPLAY_FRAME_SKIP if mode == "local" else 1  # Use config for frame skipping
+    print(f"[INFO] Frame skip: {frame_skip} (for better responsiveness in local mode)")
     
     try:
         with sv.VideoSink(output_video_path, video_info) as sink:
@@ -210,6 +220,10 @@ def main(video_path=Config.VIDEO_PATH, output_video_path=Config.OUTPUT_VIDEO_PAT
                     break
                 
                 frame_idx += 1
+                
+                # Skip frames for better performance in local mode
+                if frame_idx % frame_skip != 0:
+                    continue
                 
                 # Detection and tracking
                 result = model(frame, verbose=False)[0]
@@ -257,6 +271,7 @@ def main(video_path=Config.VIDEO_PATH, output_video_path=Config.OUTPUT_VIDEO_PAT
                         # Count vehicle if first time in zone
                         if track_id not in counted_ids:
                             print(f"[DEBUG] New vehicle counted: track_id={track_id}, type={vehicle_type}")
+                            print(f"[DEBUG] Before increment: {vehicle_type} = {vehicle_type_counter[vehicle_type]}")
                             vehicle_type_counter[vehicle_type] += 1
                             counted_ids.add(track_id)
                             
@@ -264,8 +279,21 @@ def main(video_path=Config.VIDEO_PATH, output_video_path=Config.OUTPUT_VIDEO_PAT
                             session_tracker_ids.add(track_id)
                             session_vehicle_counts[vehicle_type] += 1
                             
-                            print(f"[DEBUG] Vehicle counter updated: {dict(vehicle_type_counter)}")
-                            # Don't save immediately - save at the end to prevent multiple saves
+                            print(f"[DEBUG] After increment: {vehicle_type} = {vehicle_type_counter[vehicle_type]}")
+                            print(f"[DEBUG] Total counted vehicles: {len(counted_ids)}")
+                            
+                            # Update vehicle counts in real-time
+                            if mode == "local":
+                                # Local mode: Update CSV counts immediately
+                                data_manager.update_count_file(vehicle_type_counter, mode)
+                                print(f"[INFO] Vehicle counts updated in real-time: {dict(vehicle_type_counter)}")
+                            else:
+                                # API mode: Update database counts immediately
+                                current_date = datetime.now().strftime("%Y-%m-%d")
+                                supabase_manager.save_vehicle_count(vehicle_type, vehicle_type_counter[vehicle_type], current_date)
+                                print(f"[INFO] Vehicle count updated in database: {vehicle_type} = {vehicle_type_counter[vehicle_type]}")
+                            
+                            # Don't save tracking data immediately - save at the end to prevent multiple saves
                         
                         # Record entry time
                         if track_id not in vehicle_tracker.entry_times:
@@ -354,24 +382,19 @@ def main(video_path=Config.VIDEO_PATH, output_video_path=Config.OUTPUT_VIDEO_PAT
                         if should_update:
                             # Update both the existing data cache and the changed records
                             stop_zone_history_dict[str(track_id)] = current_record
-                            if mode == "api":
-                                # In API mode, track changed records for database save
-                                changed_records[str(track_id)] = current_record
+                            # Track changed records for both modes
+                            changed_records[str(track_id)] = current_record
                             csv_update_needed = True
                             print(f"[DEBUG] Added/updated vehicle {track_id} in changed records. Changed records: {len(changed_records)}")
                 
                 # Update CSV files if needed
                 if csv_update_needed:
                     print(f"[DEBUG] Updating tracking data at frame {frame_idx}")
-                    print(f"[DEBUG] History dict has {len(stop_zone_history_dict)} records before update")
                     
                     if mode == "local":
-                        # Local mode: Save to CSV only
+                        # Local mode: Save to CSV
                         if data_manager.update_tracking_file(stop_zone_history_dict, mode):
                             print(f"[INFO] Tracking data saved to CSV at frame {frame_idx}")
-                        for track_id_str, data in stop_zone_history_dict.items():
-                            if data.get('status') in ['stationary', 'entered']:
-                                print(f"[DEBUG] Saved to CSV: track_id={data.get('tracker_id')}, type={data.get('vehicle_type')}, status={data.get('status')}, compliance={data.get('compliance')}")
                     else:
                         # API mode: Save only new/changed records to database
                         for track_id_str, data in changed_records.items():
@@ -416,8 +439,33 @@ def main(video_path=Config.VIDEO_PATH, output_video_path=Config.OUTPUT_VIDEO_PAT
                 
                 # Output frame
                 sink.write_frame(annotated)
-                if mode == "local":
-                    cv2.imshow("Tracking with Stop", annotated)  # Commented out for headless/server use
+                if mode == "local" and Config.ENABLE_DISPLAY:
+                    # Resize frame for display if too large
+                    display_frame = annotated.copy()
+                    height, width = display_frame.shape[:2]
+                    if width > Config.MAX_DISPLAY_WIDTH:  # Use config for max width
+                        scale = Config.MAX_DISPLAY_WIDTH / width
+                        new_width = int(width * scale)
+                        new_height = int(height * scale)
+                        display_frame = cv2.resize(display_frame, (new_width, new_height))
+                    
+                    cv2.imshow("Tracking with Stop", display_frame)
+                    
+                    # Handle keyboard input and window events
+                    key = cv2.waitKey(Config.DISPLAY_WAIT_KEY_DELAY) & 0xFF
+                    if key == ord('q'):
+                        print("[INFO] 'q' pressed. Stopping gracefully...")
+                        break
+                    elif key == ord('p'):
+                        print("[INFO] 'p' pressed. Pausing... Press any key to continue...")
+                        cv2.waitKey(0)
+                    elif key == ord('s'):
+                        print("[INFO] 's' pressed. Saving current frame...")
+                        cv2.imwrite(f"debug_frame_{frame_idx}.jpg", annotated)
+                    elif key == ord('h'):
+                        print("[INFO] 'h' pressed. Displaying help...")
+                        print("Controls: q=quit, p=pause, s=save frame, h=help")
+                        cv2.waitKey(2000)  # Show help for 2 seconds
                 
                 # Update FPS display
                 if frame_idx % Config.FPS_UPDATE_INTERVAL == 0:
@@ -430,11 +478,6 @@ def main(video_path=Config.VIDEO_PATH, output_video_path=Config.OUTPUT_VIDEO_PAT
                 if check_shutdown():
                     print(f"[INFO] Shutdown requested at frame {frame_idx}. Stopping gracefully...")
                     break
-                
-                # Check for keyboard interrupt (for local testing)
-                # if cv2.waitKey(1) & 0xFF == ord('q'):
-                #     print("[INFO] 'q' pressed. Stopping gracefully...")
-                #     break
     
     except KeyboardInterrupt:
         print(f"\n[INFO] Keyboard interrupt received at frame {frame_idx}. Stopping gracefully...")
@@ -447,8 +490,8 @@ def main(video_path=Config.VIDEO_PATH, output_video_path=Config.OUTPUT_VIDEO_PAT
         if mode == "local":
             # Local mode: Save to CSV only
             data_manager.update_tracking_file(stop_zone_history_dict, mode)
-            data_manager.update_count_file(vehicle_type_counter, mode)
-            print("[INFO] Local mode: Final data saved to CSV files")
+            # Vehicle counts are already saved in real-time, no need to save again
+            print("[INFO] Local mode: Final tracking data saved to CSV files")
         else:
             # API mode: Save remaining changed records to database only
             if changed_records:
@@ -456,11 +499,8 @@ def main(video_path=Config.VIDEO_PATH, output_video_path=Config.OUTPUT_VIDEO_PAT
                 for track_id_str, data in changed_records.items():
                     supabase_manager.save_tracking_data(data)
             
-            # Save vehicle counts
-            for vehicle_type, count in vehicle_type_counter.items():
-                current_date = datetime.now().strftime("%Y-%m-%d")
-                supabase_manager.save_vehicle_count(vehicle_type, count, current_date)
-            print("[INFO] API mode: Final data saved to database")
+            # Vehicle counts are already saved in real-time, no need to save again
+            print("[INFO] API mode: Final tracking data saved to database")
         
         heat_map.save_heat_maps(first_frame)
         

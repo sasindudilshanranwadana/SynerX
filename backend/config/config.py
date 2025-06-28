@@ -46,3 +46,9 @@ class Config:
     
     # Vehicle Classes
     CLASS_NAMES = {2: "car", 3: "motorcycle", 5: "bus", 7: "truck"}  # YOLO class ID to vehicle type mapping
+    
+    # Display Settings (for local mode)
+    ENABLE_DISPLAY = True  # Whether to show live video window in local mode
+    MAX_DISPLAY_WIDTH = 1280  # Maximum width for display window (resize if larger)
+    DISPLAY_FRAME_SKIP = 1  # Skip every N frames for better performance (1 = no skip, 2 = skip every other frame)
+    DISPLAY_WAIT_KEY_DELAY = 1  # Delay in milliseconds for cv2.waitKey() (1 = responsive, 0 = fastest)

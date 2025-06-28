@@ -95,66 +95,49 @@ class DataManager:
     
     @staticmethod
     def read_existing_data():
-        """Read existing tracking data from Supabase - DEPRECATED: Use get_highest_tracker_id() instead"""
+        """Read existing tracking data from CSV in local mode, database in API mode"""
         try:
             data = {}
-            tracking_data = supabase_manager.get_tracking_data(limit=10000)
-            print(f"[DEBUG] read_existing_data: Got {len(tracking_data)} records from database")
             
-            for row in tracking_data:
-                if row.get('tracker_id'):
-                    data[str(row['tracker_id'])] = {
-                        "tracker_id": row['tracker_id'],
-                        "vehicle_type": row.get('vehicle_type', 'unknown'),
-                        "status": row.get('status', 'moving'),
-                        "compliance": row.get('compliance', 0),
-                        "reaction_time": row.get('reaction_time'),
-                        "date": row.get('date', '')
-                    }
-                    print(f"[DEBUG] Loaded existing: track_id={row['tracker_id']}, type={row.get('vehicle_type')}, status={row.get('status')}")
-            
-            print(f"[DEBUG] read_existing_data: Returning {len(data)} records")
-            return data
-        except Exception as e:
-            print(f"[WARNING] Failed to read from Supabase, falling back to CSV: {e}")
-            # Fallback to CSV if Supabase fails
-            data = {}
+            # Read from CSV file (for local mode)
             if os.path.exists(Config.OUTPUT_CSV_PATH):
                 with open(Config.OUTPUT_CSV_PATH, 'r', newline='') as file:
-                    for row in csv.DictReader(file):
-                        data[row['tracker_id']] = row
-                        print(f"[DEBUG] Loaded from CSV fallback: track_id={row['tracker_id']}, type={row.get('vehicle_type')}, status={row.get('status')}")
-            return data
+                    reader = csv.DictReader(file)
+                    for row in reader:
+                        if row.get('tracker_id'):
+                            data[row['tracker_id']] = {
+                                "tracker_id": int(row['tracker_id']),
+                                "vehicle_type": row.get('vehicle_type', 'unknown'),
+                                "status": row.get('status', 'moving'),
+                                "compliance": int(row.get('compliance', 0)),
+                                "reaction_time": float(row.get('reaction_time')) if row.get('reaction_time') else None,
+                                "date": row.get('date', '')
+                            }
+                            print(f"[DEBUG] Loaded from CSV: track_id={row['tracker_id']}, type={row.get('vehicle_type')}, status={row.get('status')}")
+                
+                print(f"[DEBUG] read_existing_data: Returning {len(data)} records from CSV")
+                return data
+            else:
+                print("[DEBUG] read_existing_data: No CSV file found")
+                return data
+                
+        except Exception as e:
+            print(f"[WARNING] Failed to read from CSV: {e}")
+            return {}
     
     @staticmethod
     def read_existing_count_data():
-        """Read existing vehicle count data from Supabase"""
+        """Read existing vehicle count data from CSV in local mode, database in API mode"""
         try:
             count_data = {}
-            vehicle_counts = supabase_manager.get_vehicle_counts(limit=10000)
             
-            for row in vehicle_counts:
-                try:
-                    if not row.get('date') or not row.get('vehicle_type') or not row.get('count'):
-                        continue
-                    date_key = row['date'].split(' ')[0] if ' ' in row['date'] else row['date'].split('T')[0]
-                    vehicle_type = row['vehicle_type']
-                    if date_key not in count_data:
-                        count_data[date_key] = {}
-                    count_data[date_key][vehicle_type] = int(row['count'])
-                except (ValueError, KeyError, AttributeError) as e:
-                    continue
-            
-            return count_data
-        except Exception as e:
-            print(f"[WARNING] Failed to read from Supabase, falling back to CSV: {e}")
-            # Fallback to CSV if Supabase fails
-            count_data = {}
+            # Read from CSV file first (for local mode)
             if os.path.exists(Config.COUNT_CSV_PATH):
                 with open(Config.COUNT_CSV_PATH, 'r', newline='') as file:
-                    for row in csv.DictReader(file):
+                    reader = csv.DictReader(file)
+                    for row in reader:
                         try:
-                            if not row['date'] or not row['vehicle_type'] or not row['count']:
+                            if not row.get('date') or not row.get('vehicle_type') or not row.get('count'):
                                 continue
                             date_key = row['date'].split(' ')[0]
                             vehicle_type = row['vehicle_type']
@@ -163,7 +146,16 @@ class DataManager:
                             count_data[date_key][vehicle_type] = int(row['count'])
                         except (ValueError, KeyError, AttributeError) as e:
                             continue
-            return count_data
+                
+                print(f"[DEBUG] read_existing_count_data: Loaded from CSV: {count_data}")
+                return count_data
+            else:
+                print("[DEBUG] read_existing_count_data: No CSV file found")
+                return count_data
+                
+        except Exception as e:
+            print(f"[WARNING] Failed to read from CSV: {e}")
+            return {}
     
     @staticmethod
     def update_files(history_dict, vehicle_counter, mode="local"):
@@ -173,14 +165,14 @@ class DataManager:
         return tracking_success and count_success
     
     @staticmethod
-    def update_tracking_file(history_dict, mode="local"):
+    def update_tracking_file(history_dict, mode="local", changed_records=None):
         """Update tracking results - save to CSV only in local mode, database only in API mode"""
         try:
             current_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
             success_count = 0
             
             if mode == "local":
-                # Local mode: Save to CSV only
+                # Local mode: Save to CSV only - rewrite entire file with current data
                 with open(Config.OUTPUT_CSV_PATH, 'w', newline='') as f:
                     writer = csv.DictWriter(f, fieldnames=["tracker_id", "vehicle_type", "status", "compliance", "reaction_time", "date"])
                     writer.writeheader()
@@ -199,14 +191,12 @@ class DataManager:
                     
                     if supabase_manager.save_tracking_data(data_with_date):
                         success_count += 1
-                    else:
-                        print(f"❌ Failed to save tracking data for vehicle {data.get('tracker_id')}")
                 
-                print(f"✅ {success_count}/{len(history_dict)} tracking records saved to database")
-                return True
+                print(f"✅ {success_count} tracking records saved to database")
+                return success_count > 0
                 
         except Exception as e:
-            print(f"❌ Failed to update tracking data: {e}")
+            print(f"[ERROR] Failed to update tracking file: {e}")
             return False
     
     @staticmethod
@@ -218,41 +208,57 @@ class DataManager:
             success_count = 0
             
             if mode == "local":
-                # Local mode: Save to CSV only
-                csv_exists = os.path.exists(Config.COUNT_CSV_PATH)
+                # Local mode: Save to CSV only - read existing counts and increment
+                existing_counts = {}
                 
                 # Read existing CSV data if file exists
-                existing_csv_data = {}
-                if csv_exists:
+                if os.path.exists(Config.COUNT_CSV_PATH):
                     try:
                         with open(Config.COUNT_CSV_PATH, 'r', newline='') as f:
                             reader = csv.DictReader(f)
                             for row in reader:
-                                if row.get('vehicle_type') and row.get('date'):
-                                    # Use only the date part as key, not the full timestamp
+                                if row.get('vehicle_type') and row.get('date') and row.get('count'):
                                     row_date = row['date'].split(' ')[0]
-                                    key = f"{row['vehicle_type']}_{row_date}"
-                                    existing_csv_data[key] = row
+                                    if row_date == current_date:
+                                        # This is today's data, use it as base
+                                        existing_counts[row['vehicle_type']] = int(row['count'])
+                                    else:
+                                        # This is from a different date, keep it
+                                        existing_counts[f"{row['vehicle_type']}_{row_date}"] = {
+                                            "vehicle_type": row['vehicle_type'],
+                                            "count": row['count'],
+                                            "date": row['date']
+                                        }
                     except Exception as e:
                         print(f"⚠️ Failed to read existing count CSV: {e}")
                 
-                # Update existing data with current vehicle counts
-                for vehicle_type, count in vehicle_counter.items():
-                    key = f"{vehicle_type}_{current_date}"
-                    existing_csv_data[key] = {
-                        "vehicle_type": vehicle_type,
-                        "count": count,
-                        "date": current_time
-                    }
+                # Update counts for current date
+                updated_counts = {}
+                for vehicle_type, new_count in vehicle_counter.items():
+                    # Get existing count for today, or start from 0
+                    existing_count = existing_counts.get(vehicle_type, 0)
+                    # The new_count should be the total count, not an increment
+                    updated_counts[vehicle_type] = new_count
                 
-                # Write all data back to CSV (preserving all records)
+                # Write all data back to CSV
                 with open(Config.COUNT_CSV_PATH, 'w', newline='') as f:
                     writer = csv.DictWriter(f, fieldnames=["vehicle_type", "count", "date"])
                     writer.writeheader()
-                    for record in existing_csv_data.values():
-                        writer.writerow(record)
+                    
+                    # Write today's updated counts
+                    for vehicle_type, count in updated_counts.items():
+                        writer.writerow({
+                            "vehicle_type": vehicle_type,
+                            "count": count,
+                            "date": current_time
+                        })
+                    
+                    # Write historical data from other dates
+                    for key, record in existing_counts.items():
+                        if '_' in key:  # This is historical data
+                            writer.writerow(record)
                 
-                print(f"✅ {len(vehicle_counter)} vehicle counts saved to CSV")
+                print(f"✅ {len(updated_counts)} vehicle counts updated for {current_date}")
                 return True
             else:
                 # API mode: Save to database only
