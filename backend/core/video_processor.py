@@ -136,6 +136,10 @@ def main(video_path=Config.VIDEO_PATH, output_video_path=Config.OUTPUT_VIDEO_PAT
     session_tracker_ids = set()
     session_vehicle_counts = Counter()
     
+    # Track session data for both modes
+    session_tracking_data = []
+    session_vehicle_counts_formatted = []
+    
     # Load existing count data based on mode
     current_date = datetime.now().strftime("%Y-%m-%d")
     if mode == "local":
@@ -256,10 +260,9 @@ def main(video_path=Config.VIDEO_PATH, output_video_path=Config.OUTPUT_VIDEO_PAT
                             vehicle_type_counter[vehicle_type] += 1
                             counted_ids.add(track_id)
                             
-                            # Track session data for API mode
-                            if mode == "api":
-                                session_tracker_ids.add(track_id)
-                                session_vehicle_counts[vehicle_type] += 1
+                            # Track session data for both modes
+                            session_tracker_ids.add(track_id)
+                            session_vehicle_counts[vehicle_type] += 1
                             
                             print(f"[DEBUG] Vehicle counter updated: {dict(vehicle_type_counter)}")
                             # Don't save immediately - save at the end to prevent multiple saves
@@ -413,7 +416,8 @@ def main(video_path=Config.VIDEO_PATH, output_video_path=Config.OUTPUT_VIDEO_PAT
                 
                 # Output frame
                 sink.write_frame(annotated)
-                # cv2.imshow("Tracking with Stop", annotated)  # Commented out for headless/server use
+                if mode == "local":
+                    cv2.imshow("Tracking with Stop", annotated)  # Commented out for headless/server use
                 
                 # Update FPS display
                 if frame_idx % Config.FPS_UPDATE_INTERVAL == 0:
@@ -472,10 +476,10 @@ def main(video_path=Config.VIDEO_PATH, output_video_path=Config.OUTPUT_VIDEO_PAT
         else:
             print("[INFO] Tracking and counting completed successfully.")
 
-        # Prepare session data for API mode
+        # Prepare session data for both modes
         session_data = {}
         if mode == "api":
-            # Get tracking data only for session tracker_ids
+            # API mode: Get tracking data only for session tracker_ids from database
             session_tracking_data = []
             try:
                 if session_tracker_ids:
@@ -510,11 +514,48 @@ def main(video_path=Config.VIDEO_PATH, output_video_path=Config.OUTPUT_VIDEO_PAT
             }
             print(f"[INFO] Session vehicle counts: {dict(session_vehicle_counts)}")
         else:
-            # Local mode: return empty data
+            # Local mode: Get tracking data from CSV for session tracker_ids
+            session_tracking_data = []
+            try:
+                if session_tracker_ids:
+                    # Read from CSV and filter for session tracker_ids
+                    csv_data = data_manager.read_existing_data()
+                    for track_id_str, data in csv_data.items():
+                        if data.get('tracker_id') in session_tracker_ids:
+                            # Convert CSV data format to match database format
+                            session_record = {
+                                "tracker_id": data.get('tracker_id'),
+                                "vehicle_type": data.get('vehicle_type'),
+                                "status": data.get('status'),
+                                "compliance": data.get('compliance'),
+                                "reaction_time": data.get('reaction_time'),
+                                "date": data.get('date'),
+                                "created_at": data.get('date'),  # Use date as created_at for CSV
+                                "updated_at": data.get('date')   # Use date as updated_at for CSV
+                            }
+                            session_tracking_data.append(session_record)
+                    
+                    print(f"[INFO] Session tracking data: {len(session_tracking_data)} records for tracker_ids: {list(session_tracker_ids)}")
+                else:
+                    print("[INFO] No session tracking data (no vehicles processed)")
+            except Exception as e:
+                print(f"[WARNING] Failed to get session tracking data from CSV: {e}")
+            
+            # Format vehicle counts for session
+            session_vehicle_counts_formatted = []
+            current_date = datetime.now().strftime("%Y-%m-%d")
+            for vehicle_type, count in session_vehicle_counts.items():
+                session_vehicle_counts_formatted.append({
+                    "vehicle_type": vehicle_type,
+                    "count": count,
+                    "date": current_date
+                })
+            
             session_data = {
-                "tracking_data": [],
-                "vehicle_counts": []
+                "tracking_data": session_tracking_data,
+                "vehicle_counts": session_vehicle_counts_formatted
             }
+            print(f"[INFO] Session vehicle counts: {dict(session_vehicle_counts)}")
 
         return session_data
 
