@@ -111,8 +111,9 @@ async def upload_video(
     analytic_path = OUTPUT_DIR / f"{uuid.uuid4().hex}_out{suffix}"
     print(f"[UPLOAD] Step 3: Running analytics to {analytic_path}")
     
+    session_data = None
     try:
-        await run_in_threadpool(
+        session_data = await run_in_threadpool(
             main,                   # your analytics
             str(raw_path),          # input video (original)
             str(analytic_path),     # processed output
@@ -155,31 +156,50 @@ async def upload_video(
     except Exception as e:
         print(f"[WARNING] Failed to upload processed video to Supabase: {e}")
 
-    # 4. Get data from Supabase
+    # 4. Use session data from video processing
     tracking_data = []
     vehicle_counts = []
-    print("[UPLOAD] Step 7: Fetching analytics data from Supabase...")
-    try:
-        tracking_data = supabase_manager.get_tracking_data(limit=1000)
-        vehicle_counts = supabase_manager.get_vehicle_counts(limit=1000)
-        print(f"[UPLOAD] Step 8: Got {len(tracking_data)} tracking records and {len(vehicle_counts)} vehicle counts.")
-    except Exception as e:
-        print(f"[WARNING] Failed to retrieve data from Supabase: {e}")
-        # Fallback to CSV files
-        if os.path.exists(OUTPUT_CSV_PATH):
-            with open(OUTPUT_CSV_PATH) as f:
-                tracking_data = f.read()
-        if os.path.exists(COUNT_CSV_PATH):
-            with open(COUNT_CSV_PATH) as f:
-                vehicle_counts = f.read()
+    print("[UPLOAD] Step 7: Using session data from video processing...")
+    
+    if session_data:
+        tracking_data = session_data.get("tracking_data", [])
+        vehicle_counts = session_data.get("vehicle_counts", [])
+        print(f"[UPLOAD] Step 8: Got {len(tracking_data)} session tracking records and {len(vehicle_counts)} session vehicle counts.")
+    else:
+        print("[UPLOAD] Step 8: No session data available, using fallback...")
+        # Fallback to getting all data from database
+        try:
+            tracking_data = supabase_manager.get_tracking_data(limit=1000)
+            vehicle_counts = supabase_manager.get_vehicle_counts(limit=1000)
+            print(f"[UPLOAD] Step 8: Fallback - Got {len(tracking_data)} tracking records and {len(vehicle_counts)} vehicle counts.")
+        except Exception as e:
+            print(f"[WARNING] Failed to retrieve data from Supabase: {e}")
+            # Fallback to CSV files
+            if os.path.exists(OUTPUT_CSV_PATH):
+                with open(OUTPUT_CSV_PATH) as f:
+                    tracking_data = f.read()
+            if os.path.exists(COUNT_CSV_PATH):
+                with open(COUNT_CSV_PATH) as f:
+                    vehicle_counts = f.read()
 
     # 5. Calculate processing statistics
     processing_time = time.time() - start_time
     total_processing_time = get_processing_time()
-    total_vehicles = len(tracking_data) if isinstance(tracking_data, list) else 0
-    compliance_count = sum(1 for item in tracking_data if isinstance(item, dict) and item.get('compliance') == 1)
-    compliance_rate = (compliance_count / total_vehicles * 100) if total_vehicles > 0 else 0
-    print(f"[UPLOAD] Step 9: Processing stats calculated. Time: {processing_time:.2f}s, Total Time: {total_processing_time:.2f}s, Vehicles: {total_vehicles}, Compliance: {compliance_rate:.2f}%")
+    
+    # Use session data for statistics
+    if session_data:
+        session_tracking_data = session_data.get("tracking_data", [])
+        session_vehicle_counts = session_data.get("vehicle_counts", [])
+        total_vehicles = len(session_tracking_data)
+        compliance_count = sum(1 for item in session_tracking_data if isinstance(item, dict) and item.get('compliance') == 1)
+        compliance_rate = (compliance_count / total_vehicles * 100) if total_vehicles > 0 else 0
+        print(f"[UPLOAD] Step 9: Session processing stats calculated. Time: {processing_time:.2f}s, Total Time: {total_processing_time:.2f}s, Vehicles: {total_vehicles}, Compliance: {compliance_rate:.2f}%")
+    else:
+        # Fallback to all data
+        total_vehicles = len(tracking_data) if isinstance(tracking_data, list) else 0
+        compliance_count = sum(1 for item in tracking_data if isinstance(item, dict) and item.get('compliance') == 1)
+        compliance_rate = (compliance_count / total_vehicles * 100) if total_vehicles > 0 else 0
+        print(f"[UPLOAD] Step 9: Processing stats calculated. Time: {processing_time:.2f}s, Total Time: {total_processing_time:.2f}s, Vehicles: {total_vehicles}, Compliance: {compliance_rate:.2f}%")
 
     # 6. Clean up temporary files
     try:

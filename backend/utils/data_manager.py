@@ -21,8 +21,81 @@ class DataManager:
                     csv.DictWriter(f, fieldnames=fields).writeheader()
     
     @staticmethod
+    def initialize_tracker_sequence():
+        """Initialize the tracker_id sequence to continue from the highest existing tracker_id"""
+        try:
+            # Get the highest tracker_id from database
+            result = supabase_manager.client.table("tracking_results") \
+                .select("tracker_id") \
+                .order("tracker_id", desc=True) \
+                .limit(1) \
+                .execute()
+            
+            if result.data and len(result.data) > 0:
+                highest_id = result.data[0]['tracker_id']
+                
+                # Try to set the sequence using direct SQL
+                try:
+                    # Use a custom RPC function to set the sequence
+                    sequence_result = supabase_manager.client.rpc('setval', {
+                        'sequence_name': 'tracker_id_seq',
+                        'value': highest_id
+                    }).execute()
+                    print(f"[DEBUG] initialize_tracker_sequence: Set sequence to continue from {highest_id}")
+                except:
+                    # If RPC fails, we'll use the fallback method
+                    print(f"[DEBUG] initialize_tracker_sequence: RPC failed, will use fallback method. Highest ID: {highest_id}")
+                
+                return highest_id
+            else:
+                print("[DEBUG] initialize_tracker_sequence: No existing data")
+                return 0
+                
+        except Exception as e:
+            print(f"[WARNING] Failed to initialize tracker sequence: {e}")
+            return 0
+    
+    @staticmethod
+    def get_next_tracker_id():
+        """Get the next available tracker_id - robust approach that always works"""
+        try:
+            # Get the highest tracker_id from database
+            highest_id = DataManager.get_highest_tracker_id()
+            next_id = highest_id + 1
+            
+            print(f"[DEBUG] get_next_tracker_id: Highest existing: {highest_id}, Next will be: {next_id}")
+            return next_id
+                
+        except Exception as e:
+            print(f"[WARNING] Failed to get next tracker_id: {e}")
+            return 1
+    
+    @staticmethod
+    def get_highest_tracker_id():
+        """Get only the highest tracker_id from database - much more efficient than loading all data"""
+        try:
+            # Get the highest tracker_id from database
+            result = supabase_manager.client.table("tracking_results") \
+                .select("tracker_id") \
+                .order("tracker_id", desc=True) \
+                .limit(1) \
+                .execute()
+            
+            if result.data and len(result.data) > 0:
+                highest_id = result.data[0]['tracker_id']
+                print(f"[DEBUG] get_highest_tracker_id: Found highest tracker_id: {highest_id}")
+                return highest_id
+            else:
+                print("[DEBUG] get_highest_tracker_id: No existing tracker_ids found")
+                return 0
+                
+        except Exception as e:
+            print(f"[WARNING] Failed to get highest tracker_id from database: {e}")
+            return 0
+    
+    @staticmethod
     def read_existing_data():
-        """Read existing tracking data from Supabase"""
+        """Read existing tracking data from Supabase - DEPRECATED: Use get_highest_tracker_id() instead"""
         try:
             data = {}
             tracking_data = supabase_manager.get_tracking_data(limit=10000)

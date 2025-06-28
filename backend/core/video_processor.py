@@ -74,6 +74,9 @@ def main(video_path=Config.VIDEO_PATH, output_video_path=Config.OUTPUT_VIDEO_PAT
         video_path: Path to input video
         output_video_path: Path to output video
         mode: "local" for CSV-only development, "api" for database-only API mode
+    
+    Returns:
+        dict: Session data containing tracking_data and vehicle_counts for API mode
     """
     global shutdown_requested
     
@@ -119,15 +122,19 @@ def main(video_path=Config.VIDEO_PATH, output_video_path=Config.OUTPUT_VIDEO_PAT
         stop_zone_history_dict = data_manager.read_existing_data()
         print("[INFO] Local mode: Using CSV files for data storage")
     else:
-        # API mode: Use database
+        # API mode: Use database - only get highest tracker_id for continuation
         data_manager.initialize_csv_files()  # Still initialize CSV for backup
-        stop_zone_history_dict = data_manager.read_existing_data()  # Load from database
+        stop_zone_history_dict = {}  # Don't load all existing data
         print("[INFO] API mode: Using database for data storage")
     
     # Initialize tracking variables
     counted_ids = set()
     vehicle_type_counter = Counter()
     changed_records = {}  # Track only new/changed records for API mode
+    
+    # Track which tracker_ids were processed in this session (for API mode)
+    session_tracker_ids = set()
+    session_vehicle_counts = Counter()
     
     # Load existing count data based on mode
     current_date = datetime.now().strftime("%Y-%m-%d")
@@ -157,18 +164,28 @@ def main(video_path=Config.VIDEO_PATH, output_video_path=Config.OUTPUT_VIDEO_PAT
     
     tracker_types = {}
     
-    # Load existing stationary vehicles and counted vehicles from history
-    for track_id, data in stop_zone_history_dict.items():
-        if data.get('status') == 'stationary':
-            vehicle_tracker.stationary_vehicles.add(int(track_id))
-        if data.get('tracker_id'):
-            counted_ids.add(int(data.get('tracker_id')))
-    
-    # Restore tracker_id offset logic for global unique IDs
-    max_track_id = max((int(tid) for tid in stop_zone_history_dict.keys() if tid.isdigit()), default=0)
-    tracker_id_offset = max_track_id
-    if max_track_id > 0:
-        print(f"[INFO] Continuing from tracker ID: {tracker_id_offset + 1}")
+    # Get highest tracker_id for continuation (API mode only)
+    if mode == "api":
+        # Use the new method that gets the next available tracker_id
+        next_tracker_id = data_manager.get_next_tracker_id()
+        tracker_id_offset = next_tracker_id - 1  # Offset should be one less than the next ID
+        if next_tracker_id > 1:
+            print(f"[INFO] Continuing from tracker ID: {next_tracker_id}")
+        else:
+            print(f"[INFO] Starting fresh with tracker ID: {next_tracker_id}")
+    else:
+        # Local mode: Load existing stationary vehicles and counted vehicles from history
+        for track_id, data in stop_zone_history_dict.items():
+            if data.get('status') == 'stationary':
+                vehicle_tracker.stationary_vehicles.add(int(track_id))
+            if data.get('tracker_id'):
+                counted_ids.add(int(data.get('tracker_id')))
+        
+        # Restore tracker_id offset logic for global unique IDs
+        max_track_id = max((int(tid) for tid in stop_zone_history_dict.keys() if tid.isdigit()), default=0)
+        tracker_id_offset = max_track_id
+        if max_track_id > 0:
+            print(f"[INFO] Continuing from tracker ID: {tracker_id_offset + 1}")
     
     print(f"[INFO] Loaded {len(stop_zone_history_dict)} existing tracking records")
     print(f"[INFO] Loaded {len(counted_ids)} previously counted vehicles")
@@ -238,10 +255,14 @@ def main(video_path=Config.VIDEO_PATH, output_video_path=Config.OUTPUT_VIDEO_PAT
                             print(f"[DEBUG] New vehicle counted: track_id={track_id}, type={vehicle_type}")
                             vehicle_type_counter[vehicle_type] += 1
                             counted_ids.add(track_id)
+                            
+                            # Track session data for API mode
+                            if mode == "api":
+                                session_tracker_ids.add(track_id)
+                                session_vehicle_counts[vehicle_type] += 1
+                            
                             print(f"[DEBUG] Vehicle counter updated: {dict(vehicle_type_counter)}")
-                            # Update CSV immediately when vehicle is counted
-                            data_manager.update_count_file(vehicle_type_counter, mode)
-                            print(f"[DEBUG] Vehicle count saved to database for {vehicle_type}: {vehicle_type_counter[vehicle_type]}")
+                            # Don't save immediately - save at the end to prevent multiple saves
                         
                         # Record entry time
                         if track_id not in vehicle_tracker.entry_times:
@@ -425,9 +446,13 @@ def main(video_path=Config.VIDEO_PATH, output_video_path=Config.OUTPUT_VIDEO_PAT
             data_manager.update_count_file(vehicle_type_counter, mode)
             print("[INFO] Local mode: Final data saved to CSV files")
         else:
-            # API mode: Save to database only
-            for track_id_str, data in stop_zone_history_dict.items():
-                supabase_manager.save_tracking_data(data)
+            # API mode: Save remaining changed records to database only
+            if changed_records:
+                print(f"[INFO] Saving {len(changed_records)} remaining changed records to database...")
+                for track_id_str, data in changed_records.items():
+                    supabase_manager.save_tracking_data(data)
+            
+            # Save vehicle counts
             for vehicle_type, count in vehicle_type_counter.items():
                 current_date = datetime.now().strftime("%Y-%m-%d")
                 supabase_manager.save_vehicle_count(vehicle_type, count, current_date)
@@ -446,6 +471,52 @@ def main(video_path=Config.VIDEO_PATH, output_video_path=Config.OUTPUT_VIDEO_PAT
             print("[INFO] Processing stopped by user request.")
         else:
             print("[INFO] Tracking and counting completed successfully.")
+
+        # Prepare session data for API mode
+        session_data = {}
+        if mode == "api":
+            # Get tracking data only for session tracker_ids
+            session_tracking_data = []
+            try:
+                if session_tracker_ids:
+                    # Get tracking data from database for session tracker_ids only
+                    for tracker_id in session_tracker_ids:
+                        result = supabase_manager.client.table("tracking_results") \
+                            .select("*") \
+                            .eq("tracker_id", tracker_id) \
+                            .execute()
+                        if result.data:
+                            session_tracking_data.extend(result.data)
+                    
+                    print(f"[INFO] Session tracking data: {len(session_tracking_data)} records for tracker_ids: {list(session_tracker_ids)}")
+                else:
+                    print("[INFO] No session tracking data (no vehicles processed)")
+            except Exception as e:
+                print(f"[WARNING] Failed to get session tracking data: {e}")
+            
+            # Format vehicle counts for session
+            session_vehicle_counts_formatted = []
+            current_date = datetime.now().strftime("%Y-%m-%d")
+            for vehicle_type, count in session_vehicle_counts.items():
+                session_vehicle_counts_formatted.append({
+                    "vehicle_type": vehicle_type,
+                    "count": count,
+                    "date": current_date
+                })
+            
+            session_data = {
+                "tracking_data": session_tracking_data,
+                "vehicle_counts": session_vehicle_counts_formatted
+            }
+            print(f"[INFO] Session vehicle counts: {dict(session_vehicle_counts)}")
+        else:
+            # Local mode: return empty data
+            session_data = {
+                "tracking_data": [],
+                "vehicle_counts": []
+            }
+
+        return session_data
 
 if __name__ == "__main__":
     main()

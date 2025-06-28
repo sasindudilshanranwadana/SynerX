@@ -4,9 +4,9 @@ Debug script to identify Supabase update issues
 """
 import sys
 import os
-sys.path.append(os.path.dirname(os.path.abspath(__file__)))
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from supabase_client import supabase_manager
+from clients.supabase_client import supabase_manager
 from supabase import create_client, Client
 from datetime import datetime
 
