@@ -8,6 +8,7 @@ from datetime import datetime
 import sys
 import threading
 import os
+import torch
 
 # Add the parent directory to the path so we can import from backend root
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -23,6 +24,12 @@ from utils.supabase_manager import supabase_manager
 # Global flag for graceful shutdown
 shutdown_requested = False
 shutdown_lock = threading.Lock()
+
+def get_device():
+    """Get the best available device (CUDA GPU or CPU)"""
+    if torch.cuda.is_available():
+        return "cuda"
+    return "cpu"
 
 def check_shutdown():
     """Check if shutdown has been requested"""
@@ -80,6 +87,14 @@ def main(video_path=Config.VIDEO_PATH, output_video_path=Config.OUTPUT_VIDEO_PAT
     """
     global shutdown_requested
     
+    # Check and set device
+    device = get_device()
+    if device == "cuda":
+        gpu_name = torch.cuda.get_device_name(0)
+        print(f"[INFO] Using CUDA GPU: {gpu_name}")
+    else:
+        print("[INFO] Using CPU (CUDA not available)")
+    
     print(f"[INFO] Running in {mode.upper()} mode")
     if mode == "local":
         print("[INFO] Local mode: Saving to CSV files only")
@@ -102,10 +117,13 @@ def main(video_path=Config.VIDEO_PATH, output_video_path=Config.OUTPUT_VIDEO_PAT
     vehicle_tracker = VehicleTracker()
     data_manager = DataManager()
     
-    # Setup model and tracking
+    # Setup model and tracking with device selection
     model = YOLO(Config.MODEL_PATH)
+    model.to(device)  # Move model to GPU or CPU
     model.fuse()
     tracker = sv.ByteTrack(frame_rate=video_info.fps)
+    
+    print(f"[INFO] Model loaded on {device.upper()}")
     
     # Setup zones and transformer
     polygon_zone = sv.PolygonZone(polygon=Config.SOURCE_POLYGON)
@@ -226,7 +244,15 @@ def main(video_path=Config.VIDEO_PATH, output_video_path=Config.OUTPUT_VIDEO_PAT
                     continue
                 
                 # Detection and tracking
-                result = model(frame, verbose=False)[0]
+                try:
+                    result = model(frame, verbose=False)[0]
+                except RuntimeError as e:
+                    if "out of memory" in str(e).lower() and device == "cuda":
+                        print(f"[WARNING] GPU out of memory at frame {frame_idx}. Clearing cache and retrying...")
+                        torch.cuda.empty_cache()
+                        result = model(frame, verbose=False)[0]
+                    else:
+                        raise e
                 detections = sv.Detections.from_ultralytics(result)
                 detections = detections[detections.confidence > Config.DETECTION_CONFIDENCE]
                 detections = detections[polygon_zone.trigger(detections)].with_nms(threshold=Config.NMS_THRESHOLD)
@@ -509,6 +535,12 @@ def main(video_path=Config.VIDEO_PATH, output_video_path=Config.OUTPUT_VIDEO_PAT
         avg_fps = frame_idx / total_time if total_time > 0 else 0
         
         print(f"[INFO] Total Time: {total_time:.2f}s, Frames: {frame_idx}, Avg FPS: {avg_fps:.2f}")
+        
+        # Clean up GPU memory if using CUDA
+        if device == "cuda":
+            torch.cuda.empty_cache()
+            print("[INFO] GPU memory cleared")
+        
         cv2.destroyAllWindows()
         
         if check_shutdown():

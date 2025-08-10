@@ -11,8 +11,8 @@ from supabase import create_client, Client
 from datetime import datetime
 
 # Direct Supabase client for debugging
-SUPABASE_URL = "https://iqehkneolpesaqznkqjm.supabase.co"
-SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImlxZWhrbmVvbHBlc2Fxem5rcWptIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTA5MzkxNjgsImV4cCI6MjA2NjUxNTE2OH0.4N69aEfiQdcwW0Jw7061fRlSTF6QtPQQiQybUDFZsIg"
+SUPABASE_URL = ""
+SUPABASE_KEY = ""
 supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 
 def test_direct_supabase_operations():
