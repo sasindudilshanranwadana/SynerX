@@ -19,7 +19,7 @@ from utils.heatmap import HeatMapGenerator
 from utils.view_transformer import ViewTransformer
 from utils.vehicle_tracker import VehicleTracker
 from utils.correlation_analysis import run_correlation_analysis
-from utils.supabase_manager import supabase_manager
+from clients.supabase_client import supabase_manager
 
 # Global flag for graceful shutdown
 shutdown_requested = False

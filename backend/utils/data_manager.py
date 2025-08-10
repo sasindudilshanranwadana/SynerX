@@ -2,7 +2,7 @@ import csv
 import os
 from datetime import datetime
 from config.config import Config
-from utils.supabase_manager import supabase_manager
+from clients.supabase_client import supabase_manager
 
 class DataManager:
     """Handles all data operations (CSV and Supabase) for SynerX"""

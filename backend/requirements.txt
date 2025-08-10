@@ -12,4 +12,7 @@ plotly
 supabase
 python-multipart
 python-dotenv
-pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu121 
+torch
+torchvision
+torchaudio
+psutil 

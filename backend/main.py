@@ -8,7 +8,7 @@ from core.video_processor import main, set_shutdown_flag, reset_shutdown_flag, c
 from core.license_plate_blur import blur_license_plates
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
-from utils.supabase_manager import supabase_manager
+from clients.supabase_client import supabase_manager
 
 from fastapi.concurrency import run_in_threadpool
 
