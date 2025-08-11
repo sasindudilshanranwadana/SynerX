@@ -5,7 +5,7 @@ from pathlib import Path
 import os, tempfile, uuid
 from config.config import Config
 from core.video_processor import main, set_shutdown_flag, reset_shutdown_flag, check_shutdown
-from core.license_plate_blur import blur_license_plates
+
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from clients.supabase_client import supabase_manager
@@ -47,11 +47,7 @@ OUTPUT_VIDEO_PATH = Config.OUTPUT_VIDEO_PATH
 OUTPUT_DIR = Path("processed")
 OUTPUT_DIR.mkdir(exist_ok=True)
 
-from ultralytics import YOLO
-MODEL_PATH = 'models/best.pt' # Ensure this path is correct relative to where you run api.py
-print(f" ✅Loading Blur model from '{MODEL_PATH}'...")
-model = YOLO(MODEL_PATH)
-print("✅ Model loaded successfully.\n")
+
 
 app = FastAPI()
 app.add_middleware(LimitUploadSizeMiddleware, max_upload_size=1024*1024*1024)  # 1GB limit

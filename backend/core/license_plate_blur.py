@@ -4,9 +4,11 @@ import os
 from ultralytics import YOLO
 
 # ========== CONFIGURATION ==========
-MODEL_PATH = '../models/best.pt'
-INPUT_DIR = '../asset'
-OUTPUT_DIR = '../output'
+# Get the backend root directory (parent of core directory)
+BACKEND_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+MODEL_PATH = os.path.join(BACKEND_ROOT, 'models', 'best.pt')
+INPUT_DIR = os.path.join(BACKEND_ROOT, 'asset')
+OUTPUT_DIR = os.path.join(BACKEND_ROOT, 'output')
 BLUR_KERNEL_SIZE = (23, 23)
 BLUR_SIGMA = 30
 BOX_COLOR = (0, 255, 255)      # Yellow (BGR)
@@ -14,16 +16,25 @@ BOX_BORDER_COLOR = (0, 0, 0)   # Black
 BOX_THICKNESS = 2
 BOX_BORDER_THICKNESS = 4
 
-# ========== LOAD MODEL ==========
-print(f" ✅Loading YOLOv8 model from '{MODEL_PATH}'...")
-model = YOLO(MODEL_PATH)
-print("✅ Model loaded successfully.\n")
+# ========== MODEL LOADING ==========
+model = None
+
+def load_model():
+    """Load the YOLO model lazily"""
+    global model
+    if model is None:
+        print(f" ✅Loading YOLOv8 model from '{MODEL_PATH}'...")
+        model = YOLO(MODEL_PATH)
+        print("✅ Model loaded successfully.\n")
+    return model
 
 # ========== CREATE OUTPUT FOLDER ==========
 os.makedirs(OUTPUT_DIR, exist_ok=True)
 
 # ========== FUNCTION TO PROCESS EACH VIDEO ==========
-def blur_license_plates(video_path, output_path, model):
+def blur_license_plates(video_path, output_path, model=None):
+    if model is None:
+        model = load_model()
     print(f"🎬 Starting video: {os.path.basename(video_path)}")
 
     cap = cv2.VideoCapture(video_path)
@@ -68,7 +79,9 @@ def blur_license_plates(video_path, output_path, model):
     print(f"✅ Finished: {video_path} -> {output_path} ({frame_count} frames processed)\n")
 
 # ========== PROCESS ALL VIDEOS ==========
-def process_all_videos(input_folder, output_folder, model):
+def process_all_videos(input_folder, output_folder, model=None):
+    if model is None:
+        model = load_model()
     video_files = glob.glob(os.path.join(input_folder, '*.mp4'))
 
     if not video_files:
@@ -86,4 +99,4 @@ def process_all_videos(input_folder, output_folder, model):
 
 # ========== MAIN ==========
 if __name__ == "__main__":
-    process_all_videos(INPUT_DIR, OUTPUT_DIR, model)
+    process_all_videos(INPUT_DIR, OUTPUT_DIR)

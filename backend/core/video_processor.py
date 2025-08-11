@@ -469,7 +469,9 @@ def main(video_path=Config.VIDEO_PATH, output_video_path=Config.OUTPUT_VIDEO_PAT
                 
                 # Output frame
                 sink.write_frame(annotated)
-                if mode == "local" and Config.ENABLE_DISPLAY:
+                # if mode == "local" and Config.ENABLE_DISPLAY:
+                if Config.ENABLE_DISPLAY:  
+                    
                     # Resize frame for display if too large
                     display_frame = annotated.copy()
                     height, width = display_frame.shape[:2]
