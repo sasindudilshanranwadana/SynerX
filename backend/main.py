@@ -70,7 +70,6 @@ app = FastAPI()
 #     allow_headers=["*"],
 # )
 
-Option 2: PERMISSIVE - Allow all origins (NOT RECOMMENDED for production)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],  # Allows all origins
