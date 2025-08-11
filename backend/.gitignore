@@ -1,5 +1,4 @@
 datasets
-models/yolo12s.pt
 .venv
 .env
 __pycache__
