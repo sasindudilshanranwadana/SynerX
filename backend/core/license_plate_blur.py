@@ -4,9 +4,9 @@ import os
 from ultralytics import YOLO
 
 # ========== CONFIGURATION ==========
-MODEL_PATH = 'models/best.pt'
-INPUT_DIR = 'videos'
-OUTPUT_DIR = 'output'
+MODEL_PATH = '../models/best.pt'
+INPUT_DIR = '../asset'
+OUTPUT_DIR = '../output'
 BLUR_KERNEL_SIZE = (23, 23)
 BLUR_SIGMA = 30
 BOX_COLOR = (0, 255, 255)      # Yellow (BGR)

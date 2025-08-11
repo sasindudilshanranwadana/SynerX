@@ -52,3 +52,5 @@ class Config:
     MAX_DISPLAY_WIDTH = 1280  # Maximum width for display window (resize if larger)
     DISPLAY_FRAME_SKIP = 1  # Skip every N frames for better performance (1 = no skip, 2 = skip every other frame)
     DISPLAY_WAIT_KEY_DELAY = 1  # Delay in milliseconds for cv2.waitKey() (1 = responsive, 0 = fastest)
+    
+

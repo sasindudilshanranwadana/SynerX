@@ -123,6 +123,8 @@ def main(video_path=Config.VIDEO_PATH, output_video_path=Config.OUTPUT_VIDEO_PAT
     model.fuse()
     tracker = sv.ByteTrack(frame_rate=video_info.fps)
     
+
+    
     print(f"[INFO] Model loaded on {device.upper()}")
     
     # Setup zones and transformer
@@ -449,6 +451,8 @@ def main(video_path=Config.VIDEO_PATH, output_video_path=Config.OUTPUT_VIDEO_PAT
                 annotated = annotators['box'].annotate(annotated, detections)
                 annotated = annotators['label_top'].annotate(annotated, detections, top_labels)
                 annotated = annotators['label_bottom'].annotate(annotated, detections, bottom_labels)
+                
+
                 
                 # Draw anchor points if enabled
                 if Config.SHOW_ANCHOR_POINTS:
