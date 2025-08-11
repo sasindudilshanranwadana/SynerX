@@ -1,5 +1,6 @@
 from fastapi import FastAPI, UploadFile, File, HTTPException
 from fastapi.responses import JSONResponse
+from fastapi.middleware.cors import CORSMiddleware
 import shutil
 from pathlib import Path
 import os, tempfile, uuid
@@ -18,10 +19,11 @@ import threading
 import signal
 import sys
 
-# Add middleware for larger uploads
+# Add middleware for larger uploads and security
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
 from starlette.responses import Response
+from starlette.middleware.trustedhost import TrustedHostMiddleware
 
 # Global shutdown flag for graceful termination
 api_shutdown_requested = False
@@ -50,7 +52,41 @@ OUTPUT_DIR.mkdir(exist_ok=True)
 
 
 app = FastAPI()
-app.add_middleware(LimitUploadSizeMiddleware, max_upload_size=1024*1024*1024)  # 1GB limit
+
+
+# app.add_middleware(
+#     CORSMiddleware,
+#     allow_origins=[
+#         "http://localhost:3000",      # React dev server
+#         "http://localhost:8080",      # Vue dev server
+#         "http://127.0.0.1:3000",      # Alternative localhost
+#         "http://127.0.0.1:8080",      # Alternative localhost
+#         # Add your production domain here:
+#         # "https://yourdomain.com",
+#         # "https://www.yourdomain.com",
+#     ],
+#     allow_credentials=True,
+#     allow_methods=["GET", "POST", "PUT", "DELETE"],
+#     allow_headers=["*"],
+# )
+
+Option 2: PERMISSIVE - Allow all origins (NOT RECOMMENDED for production)
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],  # Allows all origins
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+app.add_middleware(LimitUploadSizeMiddleware, max_upload_size=1024*1024*1024)  
+
+# Security middleware - Trusted hosts (optional, uncomment for production)
+# app.add_middleware(
+#     TrustedHostMiddleware, 
+#     allowed_hosts=["localhost", "127.0.0.1", "yourdomain.com"]
+# )
+
 app.mount("/videos", StaticFiles(directory=OUTPUT_DIR), name="videos")
 
 # Graceful shutdown handler
