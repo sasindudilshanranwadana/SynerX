@@ -284,11 +284,12 @@
         document.getElementById("uploadBtn").disabled = true;
         showResult("Starting video upload and processing...", "info");
 
-        try {
-          const response = await fetch(`${API_BASE_URL}/upload-video/`, {
-            method: "POST",
-            body: formData,
-          });
+                 try {
+           const response = await fetch(`${API_BASE_URL}/upload-video/`, {
+             method: "POST",
+             body: formData,
+             mode: 'cors',
+           });
 
           if (!response.ok) {
             throw new Error(`HTTP error! status: ${response.status}`);
