@@ -55,13 +55,7 @@ Create a `.env` file in the `backend` directory:
 # Supabase Configuration
 SUPABASE_URL=https://your-project.supabase.co
 SUPABASE_KEY=your-supabase-anon-key
-
-# Database Configuration (Optional)
-DATABASE_URL=postgresql://postgres:[YOUR-PASSWORD]@db.your-project.supabase.co:5432/postgres
-
-# Application Configuration
-DEBUG=True
-ENVIRONMENT=development
+GCS_BUCKET_NAME=your-supabase-storage-name
 ```
 
 ### 5. Model Setup
@@ -73,6 +67,8 @@ backend/models/best.pt
 ```
 
 ### 6. Supabase Database Setup
+
+Before ru the SQL commands, u can do the step 9 and step 10 wrote in `supabase_tables.sql` first and make sure you correct the name of bucket name
 
 Run the SQL commands in `supabase_tables.sql` in your Supabase SQL editor to create the required tables and storage bucket.
 
@@ -91,7 +87,7 @@ npm start
 npm test
 
 # Run video processor
-npm run process
+npm run processor
 
 # Install dependencies
 npm run install-deps
