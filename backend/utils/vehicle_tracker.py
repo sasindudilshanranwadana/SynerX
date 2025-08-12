@@ -41,7 +41,19 @@ class VehicleTracker:
         if len(detections) <= 1:
             return detections
         
+        # Safety check for required attributes
+        if not hasattr(detections, 'xyxy') or not hasattr(detections, 'class_id') or not hasattr(detections, 'confidence'):
+            print("[WARNING] Detections object missing required attributes")
+            return detections
+        
         boxes, classes, confidences = detections.xyxy, detections.class_id, detections.confidence
+        
+        # Safety check for array lengths
+        if not (len(boxes) == len(classes) == len(confidences)):
+            print(f"[WARNING] Array length mismatch in merge_overlapping_detections:")
+            print(f"  boxes: {len(boxes)}, classes: {len(classes)}, confidences: {len(confidences)}")
+            return detections
+        
         merged_indices, used_indices = [], set()
         
         for i in range(len(boxes)):
@@ -80,6 +92,12 @@ class VehicleTracker:
                 merged_classes.append(classes[group[best_idx]])
                 merged_confidences.append(group_confidences[best_idx])
         
+        # Safety check before creating new Detections object
+        if not (len(merged_boxes) == len(merged_classes) == len(merged_confidences)):
+            print(f"[WARNING] Merged arrays length mismatch:")
+            print(f"  merged_boxes: {len(merged_boxes)}, merged_classes: {len(merged_classes)}, merged_confidences: {len(merged_confidences)}")
+            return detections
+        
         return sv.Detections(
             xyxy=np.array(merged_boxes),
             class_id=np.array(merged_classes),
@@ -88,7 +106,22 @@ class VehicleTracker:
     
     def update_class_consistency(self, detections):
         """Update vehicle class consistency"""
+        # Safety check for required attributes
+        if not hasattr(detections, 'tracker_id') or not hasattr(detections, 'class_id'):
+            print("[WARNING] Detections object missing tracker_id or class_id for class consistency update")
+            return
+        
+        # Safety check for array lengths
+        if len(detections.tracker_id) != len(detections.class_id):
+            print(f"[WARNING] Array length mismatch in update_class_consistency:")
+            print(f"  tracker_id: {len(detections.tracker_id)}, class_id: {len(detections.class_id)}")
+            return
+        
         for i, track_id in enumerate(detections.tracker_id):
+            if i >= len(detections.class_id):
+                print(f"[WARNING] Index {i} out of bounds for class_id array (length: {len(detections.class_id)})")
+                continue
+                
             current_class = detections.class_id[i]
             self.class_history[track_id].append(current_class)
             

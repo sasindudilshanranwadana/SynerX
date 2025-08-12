@@ -36,3 +36,6 @@ tracker_id,vehicle_type,status,compliance,reaction_time,date
 35,car,moving,0,,2025-06-28 16:37:54
 36,car,stationary,1,1.49,2025-06-28 16:38:06
 37,car,moving,0,,2025-08-11 10:14:15
+38,car,moving,0,,2025-08-12 10:28:49
+39,car,stationary,1,2.41,2025-08-12 10:29:07
+40,car,moving,0,,2025-08-12 10:34:36

@@ -255,32 +255,108 @@ def main(video_path=Config.VIDEO_PATH, output_video_path=Config.OUTPUT_VIDEO_PAT
                         result = model(frame, verbose=False)[0]
                     else:
                         raise e
+                
                 detections = sv.Detections.from_ultralytics(result)
-                detections = detections[detections.confidence > Config.DETECTION_CONFIDENCE]
-                detections = detections[polygon_zone.trigger(detections)].with_nms(threshold=Config.NMS_THRESHOLD)
                 
-                detections = vehicle_tracker.merge_overlapping_detections(detections)
-                detections = tracker.update_with_detections(detections)
+                # Add safety checks for boolean indexing
+                if len(detections) == 0:
+                    print(f"[DEBUG] No detections found in frame {frame_idx}")
+                    continue
                 
-                # Heat map accumulation
-                heat_map.accumulate(detections)
+                # Filter by confidence with safety check
+                confidence_mask = detections.confidence > Config.DETECTION_CONFIDENCE
+                if len(confidence_mask) != len(detections):
+                    print(f"[WARNING] Confidence mask size mismatch: {len(confidence_mask)} vs {len(detections)}")
+                    continue
+                
+                detections = detections[confidence_mask]
+                
+                if len(detections) == 0:
+                    print(f"[DEBUG] No detections after confidence filtering in frame {frame_idx}")
+                    continue
+                
+                # Filter by polygon zone with safety check
+                try:
+                    zone_mask = polygon_zone.trigger(detections)
+                    if len(zone_mask) != len(detections):
+                        print(f"[WARNING] Zone mask size mismatch: {len(zone_mask)} vs {len(detections)}")
+                        continue
+                    
+                    detections = detections[zone_mask].with_nms(threshold=Config.NMS_THRESHOLD)
+                except Exception as e:
+                    print(f"[WARNING] Error in polygon zone filtering: {e}")
+                    continue
+                
+                if len(detections) == 0:
+                    print(f"[DEBUG] No detections after zone filtering in frame {frame_idx}")
+                    continue
+                
+                # Merge overlapping detections with safety check
+                try:
+                    detections = vehicle_tracker.merge_overlapping_detections(detections)
+                    if len(detections) == 0:
+                        print(f"[DEBUG] No detections after merging in frame {frame_idx}")
+                        continue
+                except Exception as e:
+                    print(f"[WARNING] Error in merge_overlapping_detections: {e}")
+                    continue
+                
+                # Update tracker with safety check
+                try:
+                    detections = tracker.update_with_detections(detections)
+                    if len(detections) == 0:
+                        print(f"[DEBUG] No detections after tracker update in frame {frame_idx}")
+                        continue
+                except Exception as e:
+                    print(f"[WARNING] Error in tracker update: {e}")
+                    continue
+                
+                # Heat map accumulation with safety check
+                try:
+                    heat_map.accumulate(detections)
+                except Exception as e:
+                    print(f"[WARNING] Error in heat map accumulation: {e}")
+                    # Continue processing even if heat map fails
                 
                 # Apply tracker ID offset for global uniqueness
                 detections.tracker_id = [tid + tracker_id_offset for tid in detections.tracker_id]
                 
-                # Get anchor points
-                anchor_pts = detections.get_anchors_coordinates(anchor=sv.Position.BOTTOM_CENTER)
-                anchor_pts = anchor_pts + np.array([0, Config.ANCHOR_Y_OFFSET])
+                # Get anchor points with safety check
+                try:
+                    anchor_pts = detections.get_anchors_coordinates(anchor=sv.Position.BOTTOM_CENTER)
+                    if len(anchor_pts) != len(detections):
+                        print(f"[WARNING] Anchor points size mismatch: {len(anchor_pts)} vs {len(detections)}")
+                        continue
+                    anchor_pts = anchor_pts + np.array([0, Config.ANCHOR_Y_OFFSET])
+                except Exception as e:
+                    print(f"[WARNING] Error calculating anchor points: {e}")
+                    continue
                 
                 # Update class consistency
                 vehicle_tracker.update_class_consistency(detections)
                 
-                # Transform points for distance calculation
-                transformed_pts = transformer.transform(anchor_pts).astype(float)
+                # Transform points for distance calculation with safety check
+                try:
+                    transformed_pts = transformer.transform(anchor_pts).astype(float)
+                    if len(transformed_pts) != len(anchor_pts):
+                        print(f"[WARNING] Transformed points size mismatch: {len(transformed_pts)} vs {len(anchor_pts)}")
+                        continue
+                except Exception as e:
+                    print(f"[WARNING] Error transforming points: {e}")
+                    continue
                 
                 # Process each detection
                 top_labels, bottom_labels = [], []
                 csv_update_needed = False
+                
+                # Safety check for zip operation
+                if not (len(detections.tracker_id) == len(anchor_pts) == len(transformed_pts) == len(detections.class_id)):
+                    print(f"[WARNING] Array length mismatch in detection processing:")
+                    print(f"  tracker_id: {len(detections.tracker_id)}")
+                    print(f"  anchor_pts: {len(anchor_pts)}")
+                    print(f"  transformed_pts: {len(transformed_pts)}")
+                    print(f"  class_id: {len(detections.class_id)}")
+                    continue
                 
                 for track_id, orig_pt, trans_pt, class_id in zip(
                     detections.tracker_id, anchor_pts, transformed_pts, detections.class_id
