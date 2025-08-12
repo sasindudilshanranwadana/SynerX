@@ -27,9 +27,11 @@ shutdown_lock = threading.Lock()
 
 def get_device():
     """Get the best available device (CUDA GPU or CPU)"""
-    if torch.cuda.is_available():
-        return "cuda"
+    # Force CPU-only to avoid CUDA boolean indexing issues
     return "cpu"
+    # if torch.cuda.is_available():
+    #     return "cuda"
+    # return "cpu"
 
 def check_shutdown():
     """Check if shutdown has been requested"""
@@ -256,7 +258,37 @@ def main(video_path=Config.VIDEO_PATH, output_video_path=Config.OUTPUT_VIDEO_PAT
                     else:
                         raise e
                 
-                detections = sv.Detections.from_ultralytics(result)
+                # Create detections (CPU-only mode)
+                try:
+                    detections = sv.Detections.from_ultralytics(result)
+                except Exception as e:
+                    print(f"[ERROR] Error creating Detections from ultralytics result: {e}")
+                    print(f"[DEBUG] Result type: {type(result)}")
+                    continue
+                
+                # Add detailed debugging for CPU environments
+                print(f"[DEBUG] Frame {frame_idx}: Initial detections shape: {len(detections)}")
+                if len(detections) > 0:
+                    print(f"[DEBUG] Frame {frame_idx}: Detection attributes:")
+                    print(f"  - xyxy shape: {detections.xyxy.shape if hasattr(detections, 'xyxy') else 'N/A'}")
+                    print(f"  - class_id shape: {detections.class_id.shape if hasattr(detections, 'class_id') else 'N/A'}")
+                    print(f"  - confidence shape: {detections.confidence.shape if hasattr(detections, 'confidence') else 'N/A'}")
+                    print(f"  - tracker_id: {len(detections.tracker_id) if hasattr(detections, 'tracker_id') else 'N/A'}")
+                
+                # Ensure all detection arrays are numpy arrays (workaround for boolean indexing issues)
+                if len(detections) > 0:
+                    try:
+                        if hasattr(detections, 'xyxy') and not isinstance(detections.xyxy, np.ndarray):
+                            detections.xyxy = np.array(detections.xyxy)
+                        if hasattr(detections, 'class_id') and not isinstance(detections.class_id, np.ndarray):
+                            detections.class_id = np.array(detections.class_id)
+                        if hasattr(detections, 'confidence') and not isinstance(detections.confidence, np.ndarray):
+                            detections.confidence = np.array(detections.confidence)
+                        if hasattr(detections, 'tracker_id') and not isinstance(detections.tracker_id, np.ndarray):
+                            detections.tracker_id = np.array(detections.tracker_id)
+                        print(f"[DEBUG] Frame {frame_idx}: All detection arrays converted to numpy arrays")
+                    except Exception as e:
+                        print(f"[WARNING] Error converting detection arrays to numpy: {e}")
                 
                 # Add safety checks for boolean indexing
                 if len(detections) == 0:
@@ -617,11 +649,6 @@ def main(video_path=Config.VIDEO_PATH, output_video_path=Config.OUTPUT_VIDEO_PAT
         avg_fps = frame_idx / total_time if total_time > 0 else 0
         
         print(f"[INFO] Total Time: {total_time:.2f}s, Frames: {frame_idx}, Avg FPS: {avg_fps:.2f}")
-        
-        # Clean up GPU memory if using CUDA
-        if device == "cuda":
-            torch.cuda.empty_cache()
-            print("[INFO] GPU memory cleared")
         
         cv2.destroyAllWindows()
         
