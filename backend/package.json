@@ -1,0 +1,20 @@
+{
+  "name": "synerx-backend",
+  "version": "1.0.0",
+  "description": "SynerX Vehicle Tracking & Compliance System Backend",
+  "scripts": {
+    "dev": "python dev_server.py",
+    "start": "uvicorn main:app --host 0.0.0.0 --port 8000",
+    "test": "python -m pytest tests/",
+    "processor": "python core/video_processor.py",
+    "install-deps": "pip install -r requirements.txt",
+    "test-upload": "python tests/test_upload_video.py",
+    "test-upload-simple": "python tests/test_upload_video_simple.py",
+    "test-db": "python tests/test_upload_video_simple.py --test-db",
+    "test-tracker-id": "python tests/test_tracker_id_continuation.py",
+    "test-improved-tracker-id": "python tests/test_improved_tracker_id.py"
+  },
+  "keywords": ["fastapi", "yolo", "vehicle-tracking", "computer-vision"],
+  "author": "SynerX Team",
+  "license": "MIT"
+} 

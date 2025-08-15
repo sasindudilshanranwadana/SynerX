@@ -1,5 +1,22 @@
 # SynerX
 
+
+Vehicle tracking and compliance monitoring system.
+
+## Quick Start
+
+Navigate to the backend folder for setup instructions and documentation:
+
+```bash
+cd backend
+```
+
+See `backend/README.md` for complete installation and usage guide.
+
+## Project Structure
+
+- `backend/` - Main application (FastAPI + video processing)
+
 Road-User Behaviour Analysis Using AI &amp; Computer Vision (Project 49)
 
 Run the following in either a code cell before the main code in Google Colab, or in your terminal:
