@@ -12,7 +12,7 @@ class DataManager:
         """Initialize CSV files with headers if they don't exist - kept for backward compatibility"""
         os.makedirs(os.path.dirname(Config.OUTPUT_CSV_PATH), exist_ok=True)
         
-        tracking_fields = ["tracker_id", "vehicle_type", "status", "compliance", "reaction_time", "date"]
+        tracking_fields = ["tracker_id", "vehicle_type", "status", "compliance", "reaction_time", "weather_condition", "temperature", "humidity", "visibility", "precipitation_type", "wind_speed", "date"]
         count_fields = ["vehicle_type", "count", "date"]
         
         for path, fields in [(Config.OUTPUT_CSV_PATH, tracking_fields), (Config.COUNT_CSV_PATH, count_fields)]:
@@ -111,6 +111,12 @@ class DataManager:
                                 "status": row.get('status', 'moving'),
                                 "compliance": int(row.get('compliance', 0)),
                                 "reaction_time": float(row.get('reaction_time')) if row.get('reaction_time') else None,
+                                "weather_condition": row.get('weather_condition'),
+                                "temperature": float(row.get('temperature')) if row.get('temperature') else None,
+                                "humidity": int(row.get('humidity')) if row.get('humidity') else None,
+                                "visibility": float(row.get('visibility')) if row.get('visibility') else None,
+                                "precipitation_type": row.get('precipitation_type'),
+                                "wind_speed": float(row.get('wind_speed')) if row.get('wind_speed') else None,
                                 "date": row.get('date', '')
                             }
                             print(f"[DEBUG] Loaded from CSV: track_id={row['tracker_id']}, type={row.get('vehicle_type')}, status={row.get('status')}")
@@ -174,7 +180,7 @@ class DataManager:
             if mode == "local":
                 # Local mode: Save to CSV only - rewrite entire file with current data
                 with open(Config.OUTPUT_CSV_PATH, 'w', newline='') as f:
-                    writer = csv.DictWriter(f, fieldnames=["tracker_id", "vehicle_type", "status", "compliance", "reaction_time", "date"])
+                    writer = csv.DictWriter(f, fieldnames=["tracker_id", "vehicle_type", "status", "compliance", "reaction_time", "weather_condition", "temperature", "humidity", "visibility", "precipitation_type", "wind_speed", "date"])
                     writer.writeheader()
                     for tid, data in history_dict.items():
                         data_with_date = data.copy()

@@ -40,3 +40,5 @@ tracker_id,vehicle_type,status,compliance,reaction_time,weather_condition,temper
 39,car,stationary,1,2.41,,,,,,,2025-08-12 10:29:07
 40,car,moving,0,,,,,,,,2025-08-12 10:34:36
 41,car,moving,0,,cloudy,14.77,58,10.0,none,7.62,2025-08-15 12:46:56
+42,car,moving,0,,cloudy,14.77,58,10.0,none,7.62,2025-08-15 12:53:48
+43,car,moving,0,1.63,cloudy,14.77,58,10.0,none,7.62,2025-08-15 12:53:58

@@ -4,6 +4,7 @@ from datetime import datetime
 from collections import Counter
 from config.config import Config
 from utils.annotation_manager import AnnotationManager
+from utils.weather_manager import weather_manager
 
 class VehicleProcessor:
     """Handles vehicle detection processing and tracking logic"""
@@ -31,6 +32,10 @@ class VehicleProcessor:
             self.data_manager.initialize_csv_files()  # Still initialize CSV for backup
             self.stop_zone_history_dict = {}
             print("[INFO] API mode: Using database for data storage")
+        
+        # Initialize weather cache
+        self._weather_cache = None
+        self._weather_cache_time = None
     
     def load_existing_counts(self):
         """Load existing vehicle counts based on mode"""
@@ -230,12 +235,21 @@ class VehicleProcessor:
     def _update_tracking_history(self, track_id, vehicle_type, current_status, compliance, csv_update_needed):
         """Update tracking history for vehicles in stop zone"""
         if track_id in self.vehicle_tracker.entry_times:
+            # Get weather data for the current location (cached)
+            weather_data = self._get_current_weather_data()
+            
             current_record = {
                 "tracker_id": track_id,
                 "vehicle_type": vehicle_type,
                 "status": current_status,
                 "compliance": compliance,
                 "reaction_time": self.vehicle_tracker.reaction_times.get(track_id),
+                "weather_condition": weather_data.get('weather_condition'),
+                "temperature": weather_data.get('temperature'),
+                "humidity": weather_data.get('humidity'),
+                "visibility": weather_data.get('visibility'),
+                "precipitation_type": weather_data.get('precipitation_type'),
+                "wind_speed": weather_data.get('wind_speed'),
                 "date": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
             }
             
@@ -319,6 +333,42 @@ class VehicleProcessor:
             "tracking_data": session_tracking_data,
             "vehicle_counts": session_vehicle_counts_formatted
         }
+    
+    def _get_current_weather_data(self):
+        """Get current weather data for the location (cached)"""
+        # Get location coordinates from config
+        lat = getattr(Config, 'LOCATION_LAT', -37.740585)  # Melbourne coordinates
+        lon = getattr(Config, 'LOCATION_LON', 144.731637)  # Melbourne coordinates
+        
+        # Check if we have cached weather data that's still fresh (less than 5 minutes old)
+        current_time = datetime.now()
+        if (hasattr(self, '_weather_cache') and self._weather_cache is not None and 
+            hasattr(self, '_weather_cache_time') and self._weather_cache_time is not None):
+            time_diff = (current_time - self._weather_cache_time).total_seconds()
+            if time_diff < 300:  # 5 minutes cache
+                return self._weather_cache
+        
+        # Fetch fresh weather data
+        print(f"[INFO] Fetching fresh weather data for location: {lat}, {lon}")
+        try:
+            weather_data = weather_manager.get_weather_for_analysis(lat, lon)
+            
+            # Cache the weather data
+            self._weather_cache = weather_data
+            self._weather_cache_time = current_time
+            
+            return weather_data
+        except Exception as e:
+            print(f"[WARNING] Failed to fetch weather data: {e}")
+            # Return default weather data if API fails
+            return {
+                'weather_condition': 'unknown',
+                'temperature': 20.0,
+                'humidity': 50,
+                'visibility': 10.0,
+                'precipitation_type': 'none',
+                'wind_speed': 5.0
+            }
     
     def _get_local_session_data(self, current_date):
         """Get session data for local mode"""
