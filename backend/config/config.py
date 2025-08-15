@@ -53,4 +53,8 @@ class Config:
     DISPLAY_FRAME_SKIP = 1  # Skip every N frames for better performance (1 = no skip, 2 = skip every other frame)
     DISPLAY_WAIT_KEY_DELAY = 1  # Delay in milliseconds for cv2.waitKey() (1 = responsive, 0 = fastest)
     
-
+    # Location Coordinates for Weather Data
+    # Camera location coordinates for weather data collection
+    LOCATION_LAT = -37.740585  # Latitude (Melbourne, Australia)
+    LOCATION_LON = 144.731637  # Longitude (Melbourne, Australia)
+    

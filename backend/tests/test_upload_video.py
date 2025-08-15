@@ -15,7 +15,8 @@ from datetime import datetime
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from config.config import Config
-from core.video_processor import main, set_shutdown_flag, reset_shutdown_flag, check_shutdown
+from core.video_processor import main
+from utils.shutdown_manager import shutdown_manager
 from clients.supabase_client import supabase_manager
 
 def test_upload_video_simulation(video_path: str, output_dir: str = "test_output"):
@@ -37,7 +38,7 @@ def test_upload_video_simulation(video_path: str, output_dir: str = "test_output
     output_path.mkdir(exist_ok=True)
     
     # Reset shutdown flag for this test
-    reset_shutdown_flag()
+    shutdown_manager.reset_shutdown_flag()
     
     # Step 1: Validate input file
     if not os.path.exists(video_path):

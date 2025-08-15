@@ -5,7 +5,8 @@ import shutil
 from pathlib import Path
 import os, tempfile, uuid
 from config.config import Config
-from core.video_processor import main, set_shutdown_flag, reset_shutdown_flag, check_shutdown
+from core.video_processor import main
+from utils.shutdown_manager import shutdown_manager
 
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
@@ -91,7 +92,7 @@ app.mount("/videos", StaticFiles(directory=OUTPUT_DIR), name="videos")
 # Graceful shutdown handler
 def signal_handler(signum, frame):
     print("\n🛑 Shutdown signal received. Gracefully stopping server...")
-    set_shutdown_flag()
+    shutdown_manager.set_shutdown_flag()
     sys.exit(0)
 
 # Register signal handlers for graceful shutdown
@@ -123,7 +124,7 @@ async def upload_video(
     file: UploadFile = File(...)
 ):
     # Reset shutdown flag for this request
-    reset_shutdown_flag()
+    shutdown_manager.reset_shutdown_flag()
     
     # Set processing start time
     set_processing_start_time()
@@ -284,7 +285,7 @@ async def shutdown_processing():
     """Stop any ongoing video processing"""
     try:
         processing_time = get_processing_time()
-        set_shutdown_flag()
+        shutdown_manager.set_shutdown_flag()
         print(f"[API] Shutdown requested via HTTP endpoint after {processing_time:.2f} seconds of processing")
         return {
             "status": "shutdown_requested", 
@@ -303,7 +304,7 @@ async def root():
 async def get_processing_status():
     """Check if processing is currently active"""
     try:
-        is_shutdown_requested = check_shutdown()
+        is_shutdown_requested = shutdown_manager.check_shutdown()
         processing_time = get_processing_time()
         return {
             "processing_active": not is_shutdown_requested,

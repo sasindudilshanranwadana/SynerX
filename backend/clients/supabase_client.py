@@ -41,8 +41,17 @@ class SupabaseManager:
                 "status": to_py(tracking_data.get("status")),
                 "compliance": to_py(tracking_data.get("compliance", 0)),
                 "reaction_time": to_py(tracking_data.get("reaction_time")),
+                "weather_condition": to_py(tracking_data.get("weather_condition")),
+                "temperature": to_py(tracking_data.get("temperature")),
+                "humidity": to_py(tracking_data.get("humidity")),
+                "visibility": to_py(tracking_data.get("visibility")),
+                "precipitation_type": to_py(tracking_data.get("precipitation_type")),
+                "wind_speed": to_py(tracking_data.get("wind_speed")),
                 "date": to_py(tracking_data.get("date", datetime.now().isoformat()))
             }
+            
+            # Debug: Log weather data being sent to database
+            print(f"[DEBUG] Saving to DB - Weather data for tracker {tracker_id}: condition={data_to_upsert.get('weather_condition')}, temp={data_to_upsert.get('temperature')}, humidity={data_to_upsert.get('humidity')}")
             
             try:
                 result = self.client.table("tracking_results") \

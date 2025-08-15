@@ -15,4 +15,5 @@ python-dotenv
 torch
 torchvision
 torchaudio
-psutil 
+psutil
+requests 
