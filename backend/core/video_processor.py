@@ -217,8 +217,23 @@ class VideoProcessor:
         
         # Process detections
         detections = sv.Detections.from_ultralytics(result)
-        detections = detections[detections.confidence > Config.DETECTION_CONFIDENCE]
-        detections = detections[self.polygon_zone.trigger(detections)].with_nms(threshold=Config.NMS_THRESHOLD)
+        
+        # Version-compatible boolean indexing for confidence filtering
+        confidence_mask = detections.confidence > Config.DETECTION_CONFIDENCE
+        if len(confidence_mask) > 0:
+            detections = detections[confidence_mask]
+        
+        # Version-compatible boolean indexing for polygon zone filtering
+        if len(detections) > 0:
+            zone_mask = self.polygon_zone.trigger(detections)
+            if len(zone_mask) > 0:
+                detections = detections[zone_mask].with_nms(threshold=Config.NMS_THRESHOLD)
+            else:
+                # Create empty detections if no detections in zone
+                detections = sv.Detections.empty()
+        else:
+            # Create empty detections if no detections after confidence filtering
+            detections = sv.Detections.empty()
         
         detections = self.vehicle_tracker.merge_overlapping_detections(detections)
         detections = self.tracker.update_with_detections(detections)
