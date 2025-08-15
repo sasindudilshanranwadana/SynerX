@@ -115,7 +115,7 @@ class VehicleProcessor:
             
             # Process stop zone logic
             if AnnotationManager.point_inside_polygon(orig_pt, Config.STOP_ZONE_POLYGON):
-                csv_update_needed = self._process_stop_zone_vehicle(
+                current_status, compliance, csv_update_needed = self._process_stop_zone_vehicle(
                     track_id, vehicle_type, trans_pt, current_status, compliance
                 )
             else:
@@ -139,10 +139,11 @@ class VehicleProcessor:
             top_labels.append(f"{vehicle_type} {current_status}" if current_status != "moving" else vehicle_type)
             bottom_labels.append(f"#{track_id}")
             
-            # Update history dictionary
-            csv_update_needed = self._update_tracking_history(
-                track_id, vehicle_type, current_status, compliance, csv_update_needed
-            )
+            # Update history dictionary for vehicles in stop zone
+            if AnnotationManager.point_inside_polygon(orig_pt, Config.STOP_ZONE_POLYGON):
+                csv_update_needed = self._update_tracking_history(
+                    track_id, vehicle_type, current_status, compliance, csv_update_needed
+                )
         
         return top_labels, bottom_labels, csv_update_needed
     
@@ -175,7 +176,7 @@ class VehicleProcessor:
                     self.vehicle_tracker.reaction_times[track_id] = reaction_time
                     print(f"[DEBUG] Vehicle {track_id} ({vehicle_type}) became stationary after {reaction_time}s")
         
-        return csv_update_needed
+        return current_status, compliance, csv_update_needed
     
     def _count_new_vehicle(self, track_id, vehicle_type):
         """Count a new vehicle entering the stop zone"""
@@ -234,44 +235,43 @@ class VehicleProcessor:
     
     def _update_tracking_history(self, track_id, vehicle_type, current_status, compliance, csv_update_needed):
         """Update tracking history for vehicles in stop zone"""
-        if track_id in self.vehicle_tracker.entry_times:
-            existing_record = self.stop_zone_history_dict.get(str(track_id))
-            should_update = False
-            
-            if existing_record is None:
-                should_update = True
-                print(f"[DEBUG] New vehicle in stop zone: track_id={track_id}, type={vehicle_type}")
-            elif (existing_record.get('status') != current_status or 
-                  existing_record.get('compliance') != compliance or
-                  existing_record.get('reaction_time') != self.vehicle_tracker.reaction_times.get(track_id)):
-                should_update = True
-                print(f"[DEBUG] Status changed for vehicle: track_id={track_id}, status={existing_record.get('status')} -> {current_status}")
-            
-            if should_update:
-                # Only fetch weather data when we actually need to update/save the record
-                print(f"[INFO] Fetching weather data for vehicle {track_id} ({vehicle_type}) - saving to database")
-                weather_data = self._get_current_weather_data()
-                
-                current_record = {
-                    "tracker_id": track_id,
-                    "vehicle_type": vehicle_type,
-                    "status": current_status,
-                    "compliance": compliance,
-                    "reaction_time": self.vehicle_tracker.reaction_times.get(track_id),
-                    "weather_condition": weather_data.get('weather_condition'),
-                    "temperature": weather_data.get('temperature'),
-                    "humidity": weather_data.get('humidity'),
-                    "visibility": weather_data.get('visibility'),
-                    "precipitation_type": weather_data.get('precipitation_type'),
-                    "wind_speed": weather_data.get('wind_speed'),
-                    "date": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-                }
-                
-                self.stop_zone_history_dict[str(track_id)] = current_record
-                self.changed_records[str(track_id)] = current_record
-                csv_update_needed = True
-                print(f"[DEBUG] Added/updated vehicle {track_id} in changed records. Changed records: {len(self.changed_records)}")
+        existing_record = self.stop_zone_history_dict.get(str(track_id))
+        should_update = False
         
+        if existing_record is None:
+            should_update = True
+            print(f"[DEBUG] New vehicle in stop zone: track_id={track_id}, type={vehicle_type}")
+        elif (existing_record.get('status') != current_status or 
+              existing_record.get('compliance') != compliance or
+              existing_record.get('reaction_time') != self.vehicle_tracker.reaction_times.get(track_id)):
+            should_update = True
+            print(f"[DEBUG] Status changed for vehicle: track_id={track_id}, status={existing_record.get('status')} -> {current_status}, compliance={existing_record.get('compliance')} -> {compliance}")
+        
+        if should_update:
+            # Only fetch weather data when we actually need to update/save the record
+            print(f"[INFO] Fetching weather data for vehicle {track_id} ({vehicle_type}) - saving to database")
+            weather_data = self._get_current_weather_data()
+            
+            current_record = {
+                "tracker_id": track_id,
+                "vehicle_type": vehicle_type,
+                "status": current_status,
+                "compliance": compliance,
+                "reaction_time": self.vehicle_tracker.reaction_times.get(track_id),
+                "weather_condition": weather_data.get('weather_condition'),
+                "temperature": weather_data.get('temperature'),
+                "humidity": weather_data.get('humidity'),
+                "visibility": weather_data.get('visibility'),
+                "precipitation_type": weather_data.get('precipitation_type'),
+                "wind_speed": weather_data.get('wind_speed'),
+                "date": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            }
+            
+            self.stop_zone_history_dict[str(track_id)] = current_record
+            self.changed_records[str(track_id)] = current_record
+            csv_update_needed = True
+            print(f"[DEBUG] Added/updated vehicle {track_id} in changed records. Changed records: {len(self.changed_records)}")
+    
         return csv_update_needed
     
     def save_tracking_data(self, frame_idx):

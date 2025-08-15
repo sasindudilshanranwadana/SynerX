@@ -73,19 +73,13 @@ app = FastAPI()
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # Allows all origins
-    allow_credentials=False,  # Must be False when using wildcard origins
+    allow_origins=["*"],  
+    allow_credentials=False,  
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
 app.add_middleware(LimitUploadSizeMiddleware, max_upload_size=1024*1024*1024)  
-
-# Security middleware - Trusted hosts (optional, uncomment for production)
-# app.add_middleware(
-#     TrustedHostMiddleware, 
-#     allowed_hosts=["localhost", "127.0.0.1", "yourdomain.com"]
-# )
 
 app.mount("/videos", StaticFiles(directory=OUTPUT_DIR), name="videos")
 
@@ -294,6 +288,282 @@ async def shutdown_processing():
         }
     except Exception as e:
         return {"status": "error", "error": str(e)}
+
+@app.get("/correlation-analysis/")
+async def get_correlation_analysis():
+    """Get weather-driver behavior correlation analysis"""
+    try:
+        from utils.correlation_analysis import run_correlation_analysis
+        
+        # Get tracking data from database
+        tracking_data = supabase_manager.get_tracking_data(limit=1000)
+        
+        if not tracking_data:
+            return {
+                "status": "no_data",
+                "message": "No tracking data available for analysis",
+                "analysis": {}
+            }
+        
+        print(f"[CORRELATION] Analyzing {len(tracking_data)} tracking records for weather correlations")
+        
+        # Run correlation analysis
+        analysis_results = run_correlation_analysis(tracking_data)
+        
+        return {
+            "status": "success",
+            "data_points": len(tracking_data),
+            "analysis": analysis_results
+        }
+        
+    except Exception as e:
+        print(f"[ERROR] Correlation analysis failed: {e}")
+        return {
+            "status": "error",
+            "error": str(e),
+            "analysis": {}
+        }
+
+@app.get("/weather-impact/")
+async def get_weather_impact_analysis():
+    """Get detailed weather impact analysis on driver behavior"""
+    try:
+        from utils.weather_manager import weather_manager
+        
+        # Get tracking data from database
+        tracking_data = supabase_manager.get_tracking_data(limit=1000)
+        
+        if not tracking_data:
+            return {
+                "status": "no_data",
+                "message": "No tracking data available for weather impact analysis",
+                "weather_impact": {}
+            }
+        
+        print(f"[WEATHER] Analyzing weather impact on {len(tracking_data)} tracking records")
+        
+        # Run weather impact analysis
+        weather_impact = weather_manager.analyze_weather_impact(tracking_data)
+        
+        return {
+            "status": "success",
+            "data_points": len(tracking_data),
+            "weather_impact": weather_impact
+        }
+        
+    except Exception as e:
+        print(f"[ERROR] Weather impact analysis failed: {e}")
+        return {
+            "status": "error",
+            "error": str(e),
+            "weather_impact": {}
+        }
+
+@app.get("/complete-analysis/")
+async def get_complete_analysis():
+    """Get complete weather-driver behavior analysis including correlations and impact"""
+    try:
+        from utils.correlation_analysis import run_correlation_analysis
+        from utils.weather_manager import weather_manager
+        
+        # Get tracking data from database
+        tracking_data = supabase_manager.get_tracking_data(limit=1000)
+        
+        if not tracking_data:
+            return {
+                "status": "no_data",
+                "message": "No tracking data available for analysis",
+                "complete_analysis": {}
+            }
+        
+        print(f"[ANALYSIS] Running complete analysis on {len(tracking_data)} tracking records")
+        
+        # Run both analyses
+        correlation_results = run_correlation_analysis(tracking_data)
+        weather_impact = weather_manager.analyze_weather_impact(tracking_data)
+        
+        # Combine results
+        complete_analysis = {
+            "correlation_analysis": correlation_results,
+            "weather_impact_analysis": weather_impact,
+            "summary": {
+                "total_vehicles": len(tracking_data),
+                "weather_conditions_found": len(set(r.get('weather_condition') for r in tracking_data if r.get('weather_condition'))),
+                "compliance_rate": sum(1 for r in tracking_data if r.get('compliance') == 1) / len(tracking_data) * 100 if tracking_data else 0
+            }
+        }
+        
+        return {
+            "status": "success",
+            "data_points": len(tracking_data),
+            "complete_analysis": complete_analysis
+        }
+        
+    except Exception as e:
+        print(f"[ERROR] Complete analysis failed: {e}")
+        return {
+            "status": "error",
+            "error": str(e),
+            "complete_analysis": {}
+        }
+
+@app.get("/tracking-data/")
+async def get_tracking_data(limit: int = 100):
+    """Get tracking results data from database"""
+    try:
+        # Get tracking data
+        tracking_data = supabase_manager.get_tracking_data(limit=limit)
+        
+        return {
+            "status": "success",
+            "table": "tracking_results",
+            "count": len(tracking_data),
+            "limit": limit,
+            "data": tracking_data
+        }
+        
+    except Exception as e:
+        print(f"[ERROR] Failed to fetch tracking data: {e}")
+        return {
+            "status": "error",
+            "error": str(e),
+            "data": []
+        }
+
+@app.get("/vehicle-counts/")
+async def get_vehicle_counts(limit: int = 100):
+    """Get vehicle counts data from database"""
+    try:
+        # Get vehicle counts
+        vehicle_counts = supabase_manager.get_vehicle_counts(limit=limit)
+        
+        return {
+            "status": "success",
+            "table": "vehicle_counts",
+            "count": len(vehicle_counts),
+            "limit": limit,
+            "data": vehicle_counts
+        }
+        
+    except Exception as e:
+        print(f"[ERROR] Failed to fetch vehicle counts: {e}")
+        return {
+            "status": "error",
+            "error": str(e),
+            "data": []
+        }
+
+@app.get("/tracking-data/filter/")
+async def get_filtered_tracking_data(
+    limit: int = 100,
+    date_from: str = None,
+    date_to: str = None,
+    compliance: int = None,
+    vehicle_type: str = None,
+    weather_condition: str = None
+):
+    """Get filtered tracking results data from database"""
+    try:
+        # Get all tracking data first
+        tracking_data = supabase_manager.get_tracking_data(limit=1000)
+        
+        # Apply filters
+        filtered_data = tracking_data
+        
+        # Filter by date range
+        if date_from:
+            filtered_data = [item for item in filtered_data if item.get('date', '').split(' ')[0] >= date_from]
+        
+        if date_to:
+            filtered_data = [item for item in filtered_data if item.get('date', '').split(' ')[0] <= date_to]
+        
+        # Filter by compliance
+        if compliance is not None:
+            filtered_data = [item for item in filtered_data if item.get('compliance') == compliance]
+        
+        # Filter by vehicle type
+        if vehicle_type:
+            filtered_data = [item for item in filtered_data if item.get('vehicle_type') == vehicle_type]
+        
+        # Filter by weather condition
+        if weather_condition:
+            filtered_data = [item for item in filtered_data if item.get('weather_condition') == weather_condition]
+        
+        # Apply limit
+        filtered_data = filtered_data[:limit]
+        
+        return {
+            "status": "success",
+            "table": "tracking_results",
+            "count": len(filtered_data),
+            "limit": limit,
+            "filters_applied": {
+                "date_from": date_from,
+                "date_to": date_to,
+                "compliance": compliance,
+                "vehicle_type": vehicle_type,
+                "weather_condition": weather_condition
+            },
+            "data": filtered_data
+        }
+        
+    except Exception as e:
+        print(f"[ERROR] Failed to fetch filtered tracking data: {e}")
+        return {
+            "status": "error",
+            "error": str(e),
+            "data": []
+        }
+
+@app.get("/vehicle-counts/filter/")
+async def get_filtered_vehicle_counts(
+    limit: int = 100,
+    date_from: str = None,
+    date_to: str = None,
+    vehicle_type: str = None
+):
+    """Get filtered vehicle counts data from database"""
+    try:
+        # Get all vehicle counts first
+        vehicle_counts = supabase_manager.get_vehicle_counts(limit=1000)
+        
+        # Apply filters
+        filtered_data = vehicle_counts
+        
+        # Filter by date range
+        if date_from:
+            filtered_data = [item for item in filtered_data if item.get('date', '').split(' ')[0] >= date_from]
+        
+        if date_to:
+            filtered_data = [item for item in filtered_data if item.get('date', '').split(' ')[0] <= date_to]
+        
+        # Filter by vehicle type
+        if vehicle_type:
+            filtered_data = [item for item in filtered_data if item.get('vehicle_type') == vehicle_type]
+        
+        # Apply limit
+        filtered_data = filtered_data[:limit]
+        
+        return {
+            "status": "success",
+            "table": "vehicle_counts",
+            "count": len(filtered_data),
+            "limit": limit,
+            "filters_applied": {
+                "date_from": date_from,
+                "date_to": date_to,
+                "vehicle_type": vehicle_type
+            },
+            "data": filtered_data
+        }
+        
+    except Exception as e:
+        print(f"[ERROR] Failed to fetch filtered vehicle counts: {e}")
+        return {
+            "status": "error",
+            "error": str(e),
+            "data": []
+        }
 
 @app.get("/")
 async def root():
