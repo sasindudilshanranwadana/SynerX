@@ -50,8 +50,8 @@ class SupabaseManager:
                 "date": to_py(tracking_data.get("date", datetime.now().isoformat()))
             }
             
-            # Debug: Log weather data being sent to database
-            print(f"[DEBUG] Saving to DB - Weather data for tracker {tracker_id}: condition={data_to_upsert.get('weather_condition')}, temp={data_to_upsert.get('temperature')}, humidity={data_to_upsert.get('humidity')}")
+            # Log weather data being sent to database
+            print(f"[INFO] Saving to DB - Vehicle {tracker_id}: {data_to_upsert.get('vehicle_type')} | Weather: {data_to_upsert.get('weather_condition')}, {data_to_upsert.get('temperature')}°C, {data_to_upsert.get('humidity')}% humidity")
             
             try:
                 result = self.client.table("tracking_results") \

@@ -235,24 +235,6 @@ class VehicleProcessor:
     def _update_tracking_history(self, track_id, vehicle_type, current_status, compliance, csv_update_needed):
         """Update tracking history for vehicles in stop zone"""
         if track_id in self.vehicle_tracker.entry_times:
-            # Get weather data for the current location (cached)
-            weather_data = self._get_current_weather_data()
-            
-            current_record = {
-                "tracker_id": track_id,
-                "vehicle_type": vehicle_type,
-                "status": current_status,
-                "compliance": compliance,
-                "reaction_time": self.vehicle_tracker.reaction_times.get(track_id),
-                "weather_condition": weather_data.get('weather_condition'),
-                "temperature": weather_data.get('temperature'),
-                "humidity": weather_data.get('humidity'),
-                "visibility": weather_data.get('visibility'),
-                "precipitation_type": weather_data.get('precipitation_type'),
-                "wind_speed": weather_data.get('wind_speed'),
-                "date": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-            }
-            
             existing_record = self.stop_zone_history_dict.get(str(track_id))
             should_update = False
             
@@ -266,6 +248,25 @@ class VehicleProcessor:
                 print(f"[DEBUG] Status changed for vehicle: track_id={track_id}, status={existing_record.get('status')} -> {current_status}")
             
             if should_update:
+                # Only fetch weather data when we actually need to update/save the record
+                print(f"[INFO] Fetching weather data for vehicle {track_id} ({vehicle_type}) - saving to database")
+                weather_data = self._get_current_weather_data()
+                
+                current_record = {
+                    "tracker_id": track_id,
+                    "vehicle_type": vehicle_type,
+                    "status": current_status,
+                    "compliance": compliance,
+                    "reaction_time": self.vehicle_tracker.reaction_times.get(track_id),
+                    "weather_condition": weather_data.get('weather_condition'),
+                    "temperature": weather_data.get('temperature'),
+                    "humidity": weather_data.get('humidity'),
+                    "visibility": weather_data.get('visibility'),
+                    "precipitation_type": weather_data.get('precipitation_type'),
+                    "wind_speed": weather_data.get('wind_speed'),
+                    "date": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                }
+                
                 self.stop_zone_history_dict[str(track_id)] = current_record
                 self.changed_records[str(track_id)] = current_record
                 csv_update_needed = True
@@ -335,7 +336,7 @@ class VehicleProcessor:
         }
     
     def _get_current_weather_data(self):
-        """Get current weather data for the location (cached)"""
+        """Get current weather data for the location (cached per vehicle)"""
         # Get location coordinates from config
         lat = getattr(Config, 'LOCATION_LAT', -37.740585)  # Melbourne coordinates
         lon = getattr(Config, 'LOCATION_LON', 144.731637)  # Melbourne coordinates
@@ -352,6 +353,7 @@ class VehicleProcessor:
         print(f"[INFO] Fetching fresh weather data for location: {lat}, {lon}")
         try:
             weather_data = weather_manager.get_weather_for_analysis(lat, lon)
+            print(f"[INFO] Weather data: {weather_data.get('weather_condition')}, {weather_data.get('temperature')}°C, {weather_data.get('humidity')}% humidity")
             
             # Cache the weather data
             self._weather_cache = weather_data
