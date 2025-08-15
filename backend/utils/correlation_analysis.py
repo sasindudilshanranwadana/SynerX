@@ -43,7 +43,29 @@ def run_correlation_analysis(tracking_data: List[Dict]) -> Dict:
     # Generate recommendations
     analysis_results['recommendations'] = _generate_correlation_recommendations(analysis_results)
     
+    # Ensure all data is JSON-serializable
+    analysis_results = _make_json_serializable(analysis_results)
+    
     return analysis_results
+
+def _make_json_serializable(obj):
+    """Convert objects to JSON-serializable format"""
+    if isinstance(obj, dict):
+        return {str(k): _make_json_serializable(v) for k, v in obj.items()}
+    elif isinstance(obj, list):
+        return [_make_json_serializable(item) for item in obj]
+    elif hasattr(obj, 'item'):  # numpy/pandas scalars
+        value = obj.item()
+        # Handle NaN, inf, -inf values
+        if pd.isna(value) or value == float('inf') or value == float('-inf'):
+            return None
+        return value
+    elif hasattr(obj, '__dict__'):  # objects with __dict__
+        return str(obj)
+    elif pd.isna(obj) or obj == float('inf') or obj == float('-inf'):  # Handle NaN, inf, -inf
+        return None
+    else:
+        return obj
 
 def _analyze_basic_correlations(df: pd.DataFrame) -> Dict:
     """Analyze basic correlations in tracking data"""
@@ -62,14 +84,21 @@ def _analyze_basic_correlations(df: pd.DataFrame) -> Dict:
     
     # Reaction time analysis
     if 'reaction_time' in df.columns:
-        reaction_stats = {
-            'mean': df['reaction_time'].mean(),
-            'median': df['reaction_time'].median(),
-            'std': df['reaction_time'].std(),
-            'min': df['reaction_time'].min(),
-            'max': df['reaction_time'].max()
-        }
-        correlations['reaction_time_stats'] = {k: round(v, 3) if v is not None else None for k, v in reaction_stats.items()}
+        # Filter out NaN values for reaction time
+        reaction_times = df['reaction_time'].dropna()
+        if len(reaction_times) > 0:
+            reaction_stats = {
+                'mean': reaction_times.mean(),
+                'median': reaction_times.median(),
+                'std': reaction_times.std(),
+                'min': reaction_times.min(),
+                'max': reaction_times.max()
+            }
+            correlations['reaction_time_stats'] = {k: round(v, 3) if v is not None else None for k, v in reaction_stats.items()}
+        else:
+            correlations['reaction_time_stats'] = {
+                'mean': None, 'median': None, 'std': None, 'min': None, 'max': None
+            }
     
     return correlations
 
@@ -84,13 +113,27 @@ def _analyze_weather_correlations(df: pd.DataFrame) -> Dict:
     
     # Temperature vs compliance
     if 'temperature' in df.columns and 'compliance' in df.columns:
-        temp_compliance = df.groupby(pd.cut(df['temperature'], bins=5))['compliance'].mean().round(3)
-        weather_analysis['temperature_compliance'] = temp_compliance.to_dict()
+        # Filter out NaN values
+        temp_data = df[['temperature', 'compliance']].dropna()
+        if len(temp_data) > 0:
+            temp_bins = pd.cut(temp_data['temperature'], bins=5)
+            temp_compliance = temp_data.groupby(temp_bins)['compliance'].mean().round(3)
+            # Convert interval objects to strings and handle NaN values
+            weather_analysis['temperature_compliance'] = {str(k): float(v) if not pd.isna(v) else None for k, v in temp_compliance.items()}
+        else:
+            weather_analysis['temperature_compliance'] = {}
     
     # Visibility vs compliance
     if 'visibility' in df.columns and 'compliance' in df.columns:
-        vis_compliance = df.groupby(pd.cut(df['visibility'], bins=5))['compliance'].mean().round(3)
-        weather_analysis['visibility_compliance'] = vis_compliance.to_dict()
+        # Filter out NaN values
+        vis_data = df[['visibility', 'compliance']].dropna()
+        if len(vis_data) > 0:
+            vis_bins = pd.cut(vis_data['visibility'], bins=5)
+            vis_compliance = vis_data.groupby(vis_bins)['compliance'].mean().round(3)
+            # Convert interval objects to strings and handle NaN values
+            weather_analysis['visibility_compliance'] = {str(k): float(v) if not pd.isna(v) else None for k, v in vis_compliance.items()}
+        else:
+            weather_analysis['visibility_compliance'] = {}
     
     # Weather vs reaction time
     if 'weather_condition' in df.columns and 'reaction_time' in df.columns:
@@ -112,7 +155,8 @@ def _analyze_behavioral_patterns(df: pd.DataFrame) -> Dict:
     if 'date' in df.columns and 'compliance' in df.columns:
         df['date_only'] = pd.to_datetime(df['date']).dt.date
         daily_compliance = df.groupby('date_only')['compliance'].agg(['mean', 'count']).round(3)
-        behavioral_insights['daily_compliance_trend'] = daily_compliance.to_dict('index')
+        # Convert date objects to strings for JSON serialization
+        behavioral_insights['daily_compliance_trend'] = {str(k): v for k, v in daily_compliance.to_dict('index').items()}
     
     # Vehicle type distribution
     if 'vehicle_type' in df.columns:
