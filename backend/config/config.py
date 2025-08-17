@@ -1,5 +1,6 @@
 import numpy as np
 import os
+import cv2
 
 class Config:
     """Configuration class to centralize all settings"""
@@ -57,4 +58,13 @@ class Config:
     # Camera location coordinates for weather data collection
     LOCATION_LAT = -37.740585  # Latitude (Melbourne, Australia)
     LOCATION_LON = 144.731637  # Longitude (Melbourne, Australia)
+    
+    # WebSocket Streaming Configuration
+    # Performance settings for real-time video streaming
+    STREAMING_FRAME_SKIP = 1  # Send every frame for maximum responsiveness (Range: 1-10, Recommended: 1-3)
+    STREAMING_JPEG_QUALITY = 85  # JPEG quality for frame encoding (Range: 50-95, Recommended: 70-85 for balance)
+    STREAMING_MAX_FRAME_SIZE = (800, 600)  # Maximum frame dimensions for streaming (width, height)
+    STREAMING_QUEUE_SIZE = 2  # Frame buffer queue size (Range: 1-10, Recommended: 2-5 for low latency)
+    STREAMING_WORKERS = 2  # Number of encoding worker threads (Range: 1-4, Recommended: 2-3)
+    STREAMING_INTERPOLATION = cv2.INTER_NEAREST  # OpenCV interpolation method for resizing (INTER_NEAREST = fastest)
     

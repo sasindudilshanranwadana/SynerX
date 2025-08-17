@@ -9,6 +9,7 @@ import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
 import queue
+from config.config import Config
 
 class VideoStreamer:
     """High-performance video streaming with WebSocket support"""
@@ -20,13 +21,13 @@ class VideoStreamer:
         self.frame_lock = threading.Lock()
         self.connection_lock = threading.Lock()
         self.streaming_thread = None
-        self.frame_queue = queue.Queue(maxsize=2)  # Very small buffer for minimal latency
-        self.executor = ThreadPoolExecutor(max_workers=2)  # Reduced workers
+        self.frame_queue = queue.Queue(maxsize=Config.STREAMING_QUEUE_SIZE)
+        self.executor = ThreadPoolExecutor(max_workers=Config.STREAMING_WORKERS)
         
-        # Performance settings - maximum speed
-        self.frame_skip = 1  # Send every frame for maximum responsiveness
-        self.jpeg_quality = 60  # Lower quality for maximum speed
-        self.max_frame_size = (640, 480)  # Smaller frames for maximum speed
+        # Performance settings from config
+        self.frame_skip = Config.STREAMING_FRAME_SKIP
+        self.jpeg_quality = Config.STREAMING_JPEG_QUALITY
+        self.max_frame_size = Config.STREAMING_MAX_FRAME_SIZE
         
     async def connect(self, websocket: WebSocket, client_id: str):
         """Connect a new client to the video stream"""
@@ -65,7 +66,7 @@ class VideoStreamer:
             scale = min(max_width / width, max_height / height)
             new_width = int(width * scale)
             new_height = int(height * scale)
-            frame = cv2.resize(frame, (new_width, new_height), interpolation=cv2.INTER_NEAREST)  # Fastest interpolation
+            frame = cv2.resize(frame, (new_width, new_height), interpolation=Config.STREAMING_INTERPOLATION)
             
         return frame
             

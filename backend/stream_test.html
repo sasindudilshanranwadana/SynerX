@@ -592,10 +592,11 @@
       // Initialize on page load
       window.onload = function () {
         initCanvas();
-        log(
-          '🚀 System initialized. Click "Connect to Stream" to start.',
-          "info"
-        );
+        log("🚀 System initialized. Auto-connecting to stream...", "info");
+        // Auto-connect to stream
+        setTimeout(() => {
+          connectToStream();
+        }, 1000); // Small delay to ensure everything is ready
       };
 
       // Handle window resize
