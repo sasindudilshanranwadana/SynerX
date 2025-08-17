@@ -1,12 +1,15 @@
-from fastapi import FastAPI, UploadFile, File, HTTPException
+from fastapi import FastAPI, UploadFile, File, HTTPException, WebSocket, WebSocketDisconnect
 from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 import shutil
+import json
+import time
 from pathlib import Path
 import os, tempfile, uuid
 from config.config import Config
 from core.video_processor import main
 from utils.shutdown_manager import shutdown_manager
+from utils.video_streamer import video_streamer
 
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
@@ -583,3 +586,50 @@ async def get_processing_status():
         }
     except Exception as e:
         return {"status": "error", "error": str(e)}
+
+
+
+@app.websocket("/ws/video-stream/{client_id}")
+async def websocket_video_stream(websocket: WebSocket, client_id: str):
+    """WebSocket endpoint for real-time video streaming"""
+    try:
+        await video_streamer.connect(websocket, client_id)
+        
+        # Keep connection alive and handle messages
+        while True:
+            try:
+                # Wait for any message from client (ping/pong)
+                data = await websocket.receive_text()
+                message = {"type": "pong", "timestamp": time.time()}
+                await websocket.send_text(json.dumps(message))
+            except WebSocketDisconnect:
+                break
+            except Exception as e:
+                print(f"[WS] Error handling client {client_id}: {e}")
+                break
+                
+    except WebSocketDisconnect:
+        print(f"[WS] Client {client_id} disconnected")
+    except Exception as e:
+        print(f"[WS] Error with client {client_id}: {e}")
+    finally:
+        await video_streamer.disconnect(client_id)
+
+@app.get("/stream-status/")
+async def get_stream_status():
+    """Get current streaming status"""
+    try:
+        connection_count = video_streamer.get_connection_count()
+        return {
+            "streaming_active": video_streamer.streaming_active,
+            "active_connections": connection_count,
+            "status": "active" if video_streamer.streaming_active else "inactive"
+        }
+    except Exception as e:
+        return {"status": "error", "error": str(e)}
+
+
+
+if __name__ == "__main__":
+    import uvicorn
+    uvicorn.run(app, host="0.0.0.0", port=8000)
