@@ -42,6 +42,7 @@ class VideoProcessor:
         self.vehicle_tracker = None
         self.data_manager = None
         self.model = None
+        self.plate_model = None
         self.tracker = None
         self.polygon_zone = None
         self.stop_zone = None
@@ -131,19 +132,29 @@ class VideoProcessor:
         print(f"[INFO] Loaded {len(self.vehicle_tracker.stationary_vehicles)} previously stationary vehicles")
         print(f"[INFO] Current vehicle counts: {dict(self.vehicle_processor.vehicle_type_counter)}")
     
-    # --- NEW FUNCTION --- For blurring license plates directly on the frame
-    def blur_license_plates_from_detections(frame, detections):
-        """Blurs license plates on the frame based on detection results."""
-        # Isolate only the license plate detections
-        plate_detections = detections[detections.class_id == Config.LICENSE_PLATE_CLASS_ID]
+    def blur_license_plates(self, frame):
+        """
+        Finds and blurs license plates using a dedicated YOLO model.
+        This is the accurate method for high-angle footage.
+        """
+        # Run the dedicated plate model on the frame
+        plate_results = self.plate_model(frame, verbose=False)[0]
+        plate_detections = sv.Detections.from_ultralytics(plate_results)
 
+        # Loop through the detected plates and blur them
         for box in plate_detections.xyxy:
             x1, y1, x2, y2 = map(int, box)
+            
+            # The array slicing is now correctly in (y, x) order.
             roi = frame[y1:y2, x1:x2]
+
             if roi.size > 0:
                 blurred_roi = cv2.GaussianBlur(roi, (23, 23), 30)
+                # The assignment back to the frame is also correct now.
                 frame[y1:y2, x1:x2] = blurred_roi
+                
         return frame
+
 
     def process_video(self):
         """Main video processing loop"""
@@ -181,6 +192,8 @@ class VideoProcessor:
         """Process a single frame"""
         # Detection and tracking
         detections = self._perform_detection_and_tracking(frame)
+
+        blurred_frame = self.find_and_blur_plates_deep_learning(frame.copy())
         
         # Apply tracker ID offset for global uniqueness
         detections.tracker_id = [tid + self.vehicle_processor.tracker_id_offset for tid in detections.tracker_id]
@@ -205,7 +218,7 @@ class VideoProcessor:
             self.vehicle_processor.save_tracking_data(self.frame_idx)
         
         # Annotate frame
-        annotated = self.annotation_manager.annotate_frame(frame, detections, top_labels, bottom_labels)
+        annotated = self.annotation_manager.annotate_frame(blurred_frame, detections, top_labels, bottom_labels)
         
         # Draw additional elements
         self.annotation_manager.draw_anchor_points(annotated, anchor_pts)
