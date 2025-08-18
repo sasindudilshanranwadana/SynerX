@@ -1,19 +1,29 @@
 import cv2
 import time
 from config.config import Config
+from utils.video_streamer import video_streamer
 
 class DisplayManager:
-    """Manages video display and keyboard input handling"""
+    """Manages video display and streaming to web clients"""
     
     def __init__(self):
         self.fps_start_time = time.time()
         self.fps_prev_time = self.fps_start_time
-    
-    def handle_display(self, frame, frame_idx):
-        """Handle frame display and keyboard input"""
-        if not Config.ENABLE_DISPLAY:
-            return True
+        self.streaming_active = False
         
+    def handle_display(self, frame, frame_idx):
+        """Handle frame display and streaming"""
+        # Update video streamer with current frame
+        video_streamer.update_frame(frame)
+        
+        # Handle local display if enabled
+        if Config.ENABLE_DISPLAY:
+            return self._handle_local_display(frame, frame_idx)
+        
+        return True
+    
+    def _handle_local_display(self, frame, frame_idx):
+        """Handle local display and keyboard input"""
         # Resize frame for display if too large
         display_frame = frame.copy()
         height, width = display_frame.shape[:2]
@@ -40,7 +50,6 @@ class DisplayManager:
             cv2.waitKey(0)
         elif key == ord('s'):
             print("[INFO] 's' pressed. Saving current frame...")
-            # Note: frame saving would need to be handled by the calling code
             print("[INFO] Frame save requested (not implemented in display manager)")
         elif key == ord('h'):
             print("[INFO] 'h' pressed. Displaying help...")
@@ -57,6 +66,21 @@ class DisplayManager:
             self.fps_prev_time = now
             print(f"[INFO] FPS: {fps:.2f}")
     
+    def start_streaming(self):
+        """Start video streaming to web clients"""
+        if not self.streaming_active:
+            video_streamer.start_streaming()
+            self.streaming_active = True
+            print("[INFO] Video streaming started for web clients")
+            
+    def stop_streaming(self):
+        """Stop video streaming to web clients"""
+        if self.streaming_active:
+            video_streamer.stop_streaming()
+            self.streaming_active = False
+            print("[INFO] Video streaming stopped for web clients")
+            
     def cleanup(self):
-        """Clean up display windows"""
+        """Clean up display resources"""
         cv2.destroyAllWindows()
+        self.stop_streaming()

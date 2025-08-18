@@ -91,6 +91,9 @@ class VideoProcessor:
         # Setup frame generator
         self.frame_gen = sv.get_video_frames_generator(source_path=self.video_path)
         
+        # Start video streaming for web clients
+        self.display_manager.start_streaming()
+        
         print(f"[INFO] Frame skip: {self.frame_skip} (for better responsiveness in local mode)")
     
     def _load_first_frame(self):
@@ -281,6 +284,7 @@ class VideoProcessor:
         
         # Cleanup
         self.device_manager.clear_gpu_memory()
+        self.display_manager.stop_streaming()
         self.display_manager.cleanup()
         
         if shutdown_manager.check_shutdown():
