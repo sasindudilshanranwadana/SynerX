@@ -13,6 +13,7 @@ class Config:
     OUTPUT_CSV_PATH = os.path.join(BACKEND_ROOT, 'data', 'tracking_results.csv')  # CSV file for tracking results
     COUNT_CSV_PATH = os.path.join(BACKEND_ROOT, 'data', 'vehicle_count.csv')  # CSV file for vehicle counts
     MODEL_PATH = os.path.join(BACKEND_ROOT, 'models', 'yolo12s.pt')  # YOLO model weights file path
+    LICENSE_PLATE_MODEL_PATH = os.path.join(BACKEND_ROOT, 'models', 'best.pt')  # License plate detection model path
     
     # Detection Zones
     SOURCE_POLYGON = np.array([(422, 10), (594, 16), (801, 665), (535, 649)])  # Detection area polygon coordinates
