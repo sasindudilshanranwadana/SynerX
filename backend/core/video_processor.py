@@ -128,6 +128,20 @@ class VideoProcessor:
         print(f"[INFO] Loaded {len(self.vehicle_tracker.stationary_vehicles)} previously stationary vehicles")
         print(f"[INFO] Current vehicle counts: {dict(self.vehicle_processor.vehicle_type_counter)}")
     
+    # --- NEW FUNCTION --- For blurring license plates directly on the frame
+    def blur_license_plates_from_detections(frame, detections):
+        """Blurs license plates on the frame based on detection results."""
+        # Isolate only the license plate detections
+        plate_detections = detections[detections.class_id == Config.LICENSE_PLATE_CLASS_ID]
+
+        for box in plate_detections.xyxy:
+            x1, y1, x2, y2 = map(int, box)
+            roi = frame[y1:y2, x1:x2]
+            if roi.size > 0:
+                blurred_roi = cv2.GaussianBlur(roi, (23, 23), 30)
+                frame[y1:y2, x1:x2] = blurred_roi
+        return frame
+
     def process_video(self):
         """Main video processing loop"""
         try:
