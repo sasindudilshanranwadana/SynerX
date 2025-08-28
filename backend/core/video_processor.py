@@ -116,8 +116,12 @@ class VideoProcessor:
         self.model.to(device)
         self.model.fuse()
         self.tracker = sv.ByteTrack(frame_rate=self.video_info.fps)
+
+        self.plate_model = YOLO(Config.LICENSE_PLATE_MODEL_PATH)
+        self.plate_model.to(device)
+        self.plate_model.fuse()
         
-        print(f"[INFO] Model loaded on {device.upper()}")
+        print(f"[INFO] Models loaded on {device.upper()}")
     
     def _setup_zones_and_transformer(self):
         """Setup detection zones and view transformer"""
@@ -150,7 +154,6 @@ class VideoProcessor:
 
             if roi.size > 0:
                 blurred_roi = cv2.GaussianBlur(roi, (23, 23), 30)
-                # The assignment back to the frame is also correct now.
                 frame[y1:y2, x1:x2] = blurred_roi
                 
         return frame
@@ -193,7 +196,7 @@ class VideoProcessor:
         # Detection and tracking
         detections = self._perform_detection_and_tracking(frame)
 
-        blurred_frame = self.find_and_blur_plates_deep_learning(frame.copy())
+        blurred_frame = self.blur_license_plates(frame.copy())
         
         # Apply tracker ID offset for global uniqueness
         detections.tracker_id = [tid + self.vehicle_processor.tracker_id_offset for tid in detections.tracker_id]
