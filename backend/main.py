@@ -35,6 +35,15 @@ api_shutdown_lock = threading.Lock()
 processing_start_time = None
 processing_lock = threading.Lock()
 
+# Background job tracking
+background_jobs = {}
+job_lock = threading.Lock()
+
+# Queue for background jobs
+job_queue = []
+queue_lock = threading.Lock()
+queue_processor_active = False
+
 class LimitUploadSizeMiddleware(BaseHTTPMiddleware):
     def __init__(self, app, max_upload_size: int):
         super().__init__(app)
@@ -94,6 +103,127 @@ def check_api_shutdown():
     with api_shutdown_lock:
         return api_shutdown_requested
 
+def start_queue_processor():
+    """Start the job queue processor if not already running"""
+    global queue_processor_active
+    
+    with queue_lock:
+        if not queue_processor_active:
+            queue_processor_active = True
+            queue_processor_thread = threading.Thread(target=process_job_queue, daemon=True)
+            queue_processor_thread.start()
+            print("[QUEUE] 🚀 Job queue processor started")
+
+def process_job_queue():
+    """Process jobs in the queue sequentially"""
+    global queue_processor_active
+    
+    print("[QUEUE] 🔄 Queue processor started - waiting for jobs...")
+    
+    while queue_processor_active:
+        try:
+            # Get next job from queue
+            job_data = None
+            with queue_lock:
+                if job_queue:
+                    job_data = job_queue.pop(0)
+                    print(f"[QUEUE] 📋 Processing job: {job_data['job_id']}")
+            
+            if job_data:
+                # Process the job
+                process_single_job(job_data)
+            else:
+                # No jobs in queue, sleep for a bit
+                time.sleep(1)
+                
+        except Exception as e:
+            print(f"[QUEUE] ❌ Error in queue processor: {e}")
+            time.sleep(5)  # Wait before retrying
+    
+    print("[QUEUE] 🛑 Queue processor stopped")
+
+def process_single_job(job_data):
+    """Process a single video job"""
+    job_id = job_data['job_id']
+    raw_path = job_data['raw_path']
+    analytic_path = job_data['analytic_path']
+    suffix = job_data['suffix']
+    start_time = job_data['start_time']
+    
+    try:
+        with job_lock:
+            background_jobs[job_id]["status"] = "processing"
+            background_jobs[job_id]["message"] = "Running video analytics..."
+            background_jobs[job_id]["progress"] = 10
+        
+        # Run video processing
+        session_data = main(
+            str(raw_path),          # input video (original)
+            str(analytic_path),     # processed output
+            "api"                   # API mode - save to database only
+        )
+        
+        with job_lock:
+            background_jobs[job_id]["message"] = "Processing completed, uploading to storage..."
+            background_jobs[job_id]["progress"] = 80
+        
+        # Upload processed video to Supabase storage
+        processed_video_url = None
+        try:
+            processed_filename = f"processed_{job_id}{suffix}"
+            processed_video_url = supabase_manager.upload_video_to_storage(
+                str(analytic_path), 
+                file_name=processed_filename
+            )
+        except Exception as e:
+            print(f"[WARNING] Failed to upload processed video: {e}")
+        
+        # Calculate statistics
+        processing_time = time.time() - start_time
+        tracking_data = session_data.get("tracking_data", []) if session_data else []
+        vehicle_counts = session_data.get("vehicle_counts", []) if session_data else []
+        total_vehicles = len(tracking_data)
+        compliance_count = sum(1 for item in tracking_data if isinstance(item, dict) and item.get('compliance') == 1)
+        compliance_rate = (compliance_count / total_vehicles * 100) if total_vehicles > 0 else 0
+        
+        # Update job with results
+        with job_lock:
+            background_jobs[job_id]["status"] = "completed"
+            background_jobs[job_id]["progress"] = 100
+            background_jobs[job_id]["message"] = "Processing completed successfully!"
+            background_jobs[job_id]["result"] = {
+                "status": "done",
+                "processed_video_url": processed_video_url,
+                "tracking_data": tracking_data,
+                "vehicle_counts": vehicle_counts,
+                "processing_stats": {
+                    "total_vehicles": total_vehicles,
+                    "compliance_rate": compliance_rate,
+                    "processing_time": processing_time,
+                    "total_processing_time": processing_time
+                }
+            }
+        
+        print(f"[QUEUE] ✅ Job {job_id} completed successfully")
+        
+    except Exception as e:
+        processing_time = time.time() - start_time
+        print(f"[QUEUE] ❌ Job {job_id} failed: {e}")
+        
+        with job_lock:
+            background_jobs[job_id]["status"] = "failed"
+            background_jobs[job_id]["message"] = f"Processing failed: {str(e)}"
+            background_jobs[job_id]["error"] = str(e)
+    
+    finally:
+        # Clean up temporary files
+        try:
+            os.unlink(raw_path)
+            if os.path.exists(analytic_path):
+                os.unlink(analytic_path)
+        except Exception as e:
+            print(f"[WARNING] Failed to clean up files for job {job_id}: {e}")
+
 def set_processing_start_time():
     """Set the processing start time"""
     global processing_start_time
@@ -112,137 +242,182 @@ def get_processing_time():
 async def upload_video(
     file: UploadFile = File(...)
 ):
-    # Reset shutdown flag for this request
-    shutdown_manager.reset_shutdown_flag()
-    
-    # Set processing start time
-    set_processing_start_time()
-    
-    start_time = time.time()
-    print("[UPLOAD] Step 1: File received")
-    
-    # 1. save raw upload locally (temporary)
-    suffix = Path(file.filename).suffix or ".mp4"
-    with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp_in:
-        shutil.copyfileobj(file.file, tmp_in)
-        raw_path = Path(tmp_in.name)
-    print(f"[UPLOAD] Step 2: File saved to {raw_path}")
-
-    # 2. run analytics using main.py
-    analytic_path = OUTPUT_DIR / f"{uuid.uuid4().hex}_out{suffix}"
-    print(f"[UPLOAD] Step 3: Running analytics to {analytic_path}")
-    
-    session_data = None
     try:
-        session_data = await run_in_threadpool(
-            main,                   # your analytics
-            str(raw_path),          # input video (original)
-            str(analytic_path),     # processed output
-            "api"                   # API mode - save to database only
-        )
-        print(f"[UPLOAD] Step 4: Analytics done: {analytic_path}")
-    except KeyboardInterrupt:
-        processing_time = get_processing_time()
-        print(f"[UPLOAD] Processing interrupted by user (Ctrl+C) after {processing_time:.2f} seconds")
-        # Clean up temporary files
-        try:
-            os.unlink(raw_path)
-            if os.path.exists(analytic_path):
-                os.unlink(analytic_path)
-        except Exception as e:
-            print(f"[WARNING] Failed to clean up files after interrupt: {e}")
-        raise HTTPException(status_code=499, detail=f"Processing interrupted by user after {processing_time:.2f} seconds")
-    except Exception as e:
-        processing_time = get_processing_time()
-        print(f"[ERROR] Processing failed after {processing_time:.2f} seconds: {e}")
-        # Clean up temporary files
-        try:
-            os.unlink(raw_path)
-            if os.path.exists(analytic_path):
-                os.unlink(analytic_path)
-        except Exception as cleanup_error:
-            print(f"[WARNING] Failed to clean up files after error: {cleanup_error}")
-        raise HTTPException(status_code=500, detail=f"Processing failed after {processing_time:.2f} seconds: {str(e)}")
+        # Reset shutdown flag for this request
+        shutdown_manager.reset_shutdown_flag()
+        
+        # Set processing start time
+        set_processing_start_time()
+        
+        start_time = time.time()
+        print("[UPLOAD] Step 1: File received")
+        
+        # 1. save raw upload locally (temporary)
+        suffix = Path(file.filename).suffix or ".mp4"
+        with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp_in:
+            shutil.copyfileobj(file.file, tmp_in)
+            raw_path = Path(tmp_in.name)
+        print(f"[UPLOAD] Step 2: File saved to {raw_path}")
 
-    # 3. Upload ONLY the processed video to Supabase storage
-    processed_video_url = None
-    try:
-        processed_filename = f"processed_{uuid.uuid4().hex}{suffix}"
-        print("[UPLOAD] Step 5: Uploading processed video to Supabase...")
-        processed_video_url = supabase_manager.upload_video_to_storage(
-            str(analytic_path), 
-            file_name=processed_filename
-        )
-        print(f"[UPLOAD] Step 6: Processed video uploaded: {processed_video_url}")
-    except Exception as e:
-        print(f"[WARNING] Failed to upload processed video to Supabase: {e}")
-
-    # 4. Use session data from video processing
-    tracking_data = []
-    vehicle_counts = []
-    print("[UPLOAD] Step 7: Using session data from video processing...")
-    
-    if session_data:
-        tracking_data = session_data.get("tracking_data", [])
-        vehicle_counts = session_data.get("vehicle_counts", [])
-        print(f"[UPLOAD] Step 8: Got {len(tracking_data)} session tracking records and {len(vehicle_counts)} session vehicle counts.")
-    else:
-        print("[UPLOAD] Step 8: No session data available, using fallback...")
-        # Fallback to getting all data from database
-        try:
-            tracking_data = supabase_manager.get_tracking_data(limit=1000)
-            vehicle_counts = supabase_manager.get_vehicle_counts(limit=1000)
-            print(f"[UPLOAD] Step 8: Fallback - Got {len(tracking_data)} tracking records and {len(vehicle_counts)} vehicle counts.")
-        except Exception as e:
-            print(f"[WARNING] Failed to retrieve data from Supabase: {e}")
-            # Fallback to CSV files
-            if os.path.exists(OUTPUT_CSV_PATH):
-                with open(OUTPUT_CSV_PATH) as f:
-                    tracking_data = f.read()
-            if os.path.exists(COUNT_CSV_PATH):
-                with open(COUNT_CSV_PATH) as f:
-                    vehicle_counts = f.read()
-
-    # 5. Calculate processing statistics
-    processing_time = time.time() - start_time
-    total_processing_time = get_processing_time()
-    
-    # Use session data for statistics
-    if session_data:
-        session_tracking_data = session_data.get("tracking_data", [])
-        session_vehicle_counts = session_data.get("vehicle_counts", [])
-        total_vehicles = len(session_tracking_data)
-        compliance_count = sum(1 for item in session_tracking_data if isinstance(item, dict) and item.get('compliance') == 1)
-        compliance_rate = (compliance_count / total_vehicles * 100) if total_vehicles > 0 else 0
-        print(f"[UPLOAD] Step 9: Session processing stats calculated. Time: {processing_time:.2f}s, Total Time: {total_processing_time:.2f}s, Vehicles: {total_vehicles}, Compliance: {compliance_rate:.2f}%")
-    else:
-        # Fallback to all data
-        total_vehicles = len(tracking_data) if isinstance(tracking_data, list) else 0
-        compliance_count = sum(1 for item in tracking_data if isinstance(item, dict) and item.get('compliance') == 1)
-        compliance_rate = (compliance_count / total_vehicles * 100) if total_vehicles > 0 else 0
-        print(f"[UPLOAD] Step 9: Processing stats calculated. Time: {processing_time:.2f}s, Total Time: {total_processing_time:.2f}s, Vehicles: {total_vehicles}, Compliance: {compliance_rate:.2f}%")
-
-    # 6. Clean up temporary files
-    try:
-        os.unlink(raw_path)
-        os.unlink(analytic_path)
-        print("[UPLOAD] Step 10: Temporary files cleaned up.")
-    except Exception as e:
-        print(f"[WARNING] Failed to clean up temporary files: {e}")
-
-    print("[UPLOAD] Step 11: Returning response.")
-    return {
-        "status": "done",
-        "processed_video_url": processed_video_url,
-        "tracking_data": tracking_data,
-        "vehicle_counts": vehicle_counts,
-        "processing_stats": {
-            "total_vehicles": total_vehicles,
-            "compliance_rate": compliance_rate,
-            "processing_time": processing_time,
-            "total_processing_time": total_processing_time
+        # 2. Create job ID and add to queue
+        job_id = str(uuid.uuid4())
+        analytic_path = OUTPUT_DIR / f"{job_id}_out{suffix}"
+        
+        # Initialize job status
+        with job_lock:
+            background_jobs[job_id] = {
+                "status": "queued",
+                "start_time": time.time(),
+                "file_name": file.filename,
+                "progress": 0,
+                "message": "Video added to processing queue...",
+                "result": None,
+                "error": None
+            }
+        
+        # Add job to queue
+        job_data = {
+            "job_id": job_id,
+            "raw_path": raw_path,
+            "analytic_path": analytic_path,
+            "suffix": suffix,
+            "start_time": time.time()
         }
-    }
+        
+        with queue_lock:
+            job_queue.append(job_data)
+            queue_position = len(job_queue)
+        
+        # Start queue processor if not already running
+        try:
+            start_queue_processor()
+            print(f"[UPLOAD] Step 3: Job {job_id} added to queue (position: {queue_position})")
+        except Exception as e:
+            print(f"[UPLOAD] Warning: Failed to start queue processor: {e}")
+            # Continue anyway, the job is still added to queue
+        
+        # Return immediately with job ID and queue position
+        return {
+            "status": "queued",
+            "job_id": job_id,
+            "queue_position": queue_position,
+            "message": f"Video added to processing queue (position: {queue_position})",
+            "file_name": file.filename
+        }
+    except Exception as e:
+        print(f"[UPLOAD] Error: {e}")
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"Upload failed: {str(e)}")
+
+@app.get("/job-status/{job_id}")
+async def get_job_status(job_id: str):
+    """Get the status of a background video processing job"""
+    try:
+        with job_lock:
+            if job_id not in background_jobs:
+                raise HTTPException(status_code=404, detail="Job not found")
+            
+            job = background_jobs[job_id]
+            return {
+                "job_id": job_id,
+                "status": job["status"],
+                "progress": job["progress"],
+                "message": job["message"],
+                "file_name": job["file_name"],
+                "start_time": job["start_time"],
+                "elapsed_time": time.time() - job["start_time"],
+                "result": job["result"],
+                "error": job["error"]
+            }
+    except HTTPException:
+        raise
+    except Exception as e:
+        return {"status": "error", "error": str(e)}
+
+@app.get("/jobs/")
+async def list_jobs():
+    """List all background jobs"""
+    try:
+        with job_lock:
+            jobs = []
+            for job_id, job in background_jobs.items():
+                jobs.append({
+                    "job_id": job_id,
+                    "status": job["status"],
+                    "progress": job["progress"],
+                    "file_name": job["file_name"],
+                    "start_time": job["start_time"],
+                    "elapsed_time": time.time() - job["start_time"]
+                })
+            return {"jobs": jobs}
+    except Exception as e:
+        return {"status": "error", "error": str(e)}
+
+@app.post("/restart-queue/")
+async def restart_queue_processor():
+    """Restart the queue processor"""
+    try:
+        global queue_processor_active, queue_processor_thread
+        
+        # Stop current processor if running
+        with queue_lock:
+            if queue_processor_active:
+                queue_processor_active = False
+                print("[QUEUE] 🛑 Stopping current queue processor")
+                time.sleep(1)  # Give it time to stop
+        
+        # Start new processor
+        start_queue_processor()
+        
+        return {
+            "status": "success",
+            "message": "Queue processor restarted",
+            "queue_processor_running": queue_processor_active,
+            "queue_length": len(job_queue)
+        }
+    except Exception as e:
+        return {"status": "error", "error": str(e)}
+
+@app.get("/queue-status/")
+async def get_queue_status():
+    """Get current queue status and information"""
+    try:
+        with queue_lock:
+            queue_length = len(job_queue)
+            queue_processor_running = queue_processor_active
+        
+        with job_lock:
+            # Count jobs by status
+            status_counts = {}
+            for job in background_jobs.values():
+                status = job["status"]
+                status_counts[status] = status_counts.get(status, 0) + 1
+            
+            # Get queue details
+            queue_details = []
+            for i, job_data in enumerate(job_queue):
+                job_id = job_data['job_id']
+                if job_id in background_jobs:
+                    job_info = background_jobs[job_id]
+                    queue_details.append({
+                        "position": i + 1,
+                        "job_id": job_id,
+                        "file_name": job_info["file_name"],
+                        "status": job_info["status"],
+                        "progress": job_info["progress"]
+                    })
+        
+        return {
+            "status": "success",
+            "queue_processor_running": queue_processor_running,
+            "queue_length": queue_length,
+            "total_jobs": len(background_jobs),
+            "status_counts": status_counts,
+            "queue_details": queue_details
+        }
+    except Exception as e:
+        return {"status": "error", "error": str(e)}
 
 @app.post("/shutdown/")
 async def shutdown_processing():
