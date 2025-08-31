@@ -99,7 +99,6 @@ class VehicleProcessor:
     def process_detections(self, detections, anchor_pts, transformed_pts):
         """Process vehicle detections and update tracking data"""
         top_labels, bottom_labels = [], []
-        csv_update_needed = False
         
         for track_id, orig_pt, trans_pt, class_id in zip(
             detections.tracker_id, anchor_pts, transformed_pts, detections.class_id
@@ -115,7 +114,7 @@ class VehicleProcessor:
             
             # Process stop zone logic
             if AnnotationManager.point_inside_polygon(orig_pt, Config.STOP_ZONE_POLYGON):
-                current_status, compliance, csv_update_needed = self._process_stop_zone_vehicle(
+                current_status, compliance = self._process_stop_zone_vehicle(
                     track_id, vehicle_type, trans_pt, current_status, compliance
                 )
             else:
@@ -129,8 +128,8 @@ class VehicleProcessor:
                 compliance = 1
             
             # Update status and labels
-            csv_update_needed = self._update_vehicle_status(
-                track_id, vehicle_type, previous_status, current_status, csv_update_needed
+            self._update_vehicle_status(
+                track_id, vehicle_type, previous_status, current_status
             )
             
             self.vehicle_tracker.status_cache[track_id] = current_status
@@ -141,15 +140,14 @@ class VehicleProcessor:
             
             # Update history dictionary for vehicles in stop zone
             if AnnotationManager.point_inside_polygon(orig_pt, Config.STOP_ZONE_POLYGON):
-                csv_update_needed = self._update_tracking_history(
-                    track_id, vehicle_type, current_status, compliance, csv_update_needed
+                self._update_tracking_history(
+                    track_id, vehicle_type, current_status, compliance
                 )
         
-        return top_labels, bottom_labels, csv_update_needed
+        return top_labels, bottom_labels
     
     def _process_stop_zone_vehicle(self, track_id, vehicle_type, trans_pt, current_status, compliance):
         """Process vehicle in stop zone"""
-        csv_update_needed = False
         
         # Count vehicle if first time in zone
         if track_id not in self.counted_ids:
@@ -164,7 +162,7 @@ class VehicleProcessor:
             record_key = (track_id, "entered")
             if record_key not in self.vehicle_tracker.written_records:
                 self.vehicle_tracker.written_records.add(record_key)
-                csv_update_needed = True
+                # csv_update_needed = True # Removed
         
         # Check if stationary
         if len(self.vehicle_tracker.position_history[track_id]) >= Config.FRAME_BUFFER:
@@ -176,7 +174,7 @@ class VehicleProcessor:
                     self.vehicle_tracker.reaction_times[track_id] = reaction_time
                     print(f"[DEBUG] Vehicle {track_id} ({vehicle_type}) became stationary after {reaction_time}s")
         
-        return current_status, compliance, csv_update_needed
+        return current_status, compliance
     
     def _count_new_vehicle(self, track_id, vehicle_type):
         """Count a new vehicle entering the stop zone"""
@@ -217,7 +215,7 @@ class VehicleProcessor:
         
         return avg_velocity < Config.VELOCITY_THRESHOLD
     
-    def _update_vehicle_status(self, track_id, vehicle_type, previous_status, current_status, csv_update_needed):
+    def _update_vehicle_status(self, track_id, vehicle_type, previous_status, current_status):
         """Update vehicle status and handle status changes"""
         if previous_status != current_status and previous_status != "":
             print(f"[DEBUG] Vehicle {track_id} ({vehicle_type}) status changed: {previous_status} -> {current_status}")
@@ -225,15 +223,14 @@ class VehicleProcessor:
                 record_key = (track_id, current_status)
                 if record_key not in self.vehicle_tracker.written_records:
                     self.vehicle_tracker.written_records.add(record_key)
-                    csv_update_needed = True
                     
                     if current_status == "stationary":
                         self.vehicle_tracker.stationary_vehicles.add(track_id)
                         print(f"[DEBUG] Vehicle {track_id} added to stationary vehicles list")
         
-        return csv_update_needed
+        return
     
-    def _update_tracking_history(self, track_id, vehicle_type, current_status, compliance, csv_update_needed):
+    def _update_tracking_history(self, track_id, vehicle_type, current_status, compliance):
         """Update tracking history for vehicles in stop zone"""
         existing_record = self.stop_zone_history_dict.get(str(track_id))
         should_update = False
@@ -269,25 +266,53 @@ class VehicleProcessor:
             
             self.stop_zone_history_dict[str(track_id)] = current_record
             self.changed_records[str(track_id)] = current_record
-            csv_update_needed = True
             print(f"[DEBUG] Added/updated vehicle {track_id} in changed records. Changed records: {len(self.changed_records)}")
     
-        return csv_update_needed
+        return
     
-    def save_tracking_data(self, frame_idx):
-        """Save tracking data based on mode"""
+    def save_all_data_at_end(self):
+        """Save all collected data in one batch at the end of processing"""
         if self.mode == "local":
-            if self.data_manager.update_tracking_file(self.stop_zone_history_dict, self.mode):
-                print(f"[INFO] Tracking data saved to CSV at frame {frame_idx}")
-        else:
-            from clients.supabase_client import supabase_manager
-            for track_id_str, data in self.changed_records.items():
-                print(f"[DEBUG] Saving new/changed to DB: track_id={data.get('tracker_id')}, type={data.get('vehicle_type')}, status={data.get('status')}")
-                supabase_manager.save_tracking_data(data)
-            
+            # Local mode: Save all collected data to CSV in one batch
             if self.changed_records:
-                print(f"[INFO] Saved {len(self.changed_records)} new/changed records to database")
+                print(f"[INFO] Saving {len(self.changed_records)} records to CSV in final batch...")
+                
+                # Update the stop_zone_history_dict with all collected records
+                for track_id_str, data in self.changed_records.items():
+                    self.stop_zone_history_dict[track_id_str] = data
+                
+                # Save all data to CSV in one operation
+                if self.data_manager.update_tracking_file(self.stop_zone_history_dict, self.mode):
+                    print(f"[INFO] Successfully saved {len(self.changed_records)} records to CSV in final batch")
+                else:
+                    print(f"[ERROR] Failed to save {len(self.changed_records)} records to CSV")
+                
+                # Clear the collected records
                 self.changed_records.clear()
+            else:
+                print("[INFO] No records to save at end of processing")
+        else:
+            # API mode: Save all collected data in one batch
+            if self.changed_records:
+                from clients.supabase_client import supabase_manager
+                print(f"[INFO] Saving {len(self.changed_records)} records in final batch...")
+                
+                # Convert to list for batch save
+                all_records = []
+                for track_id_str, data in self.changed_records.items():
+                    all_records.append(data)
+                
+                # Save all records in one batch operation
+                success = supabase_manager.save_tracking_data_batch(all_records)
+                if success:
+                    print(f"[INFO] Successfully saved {len(all_records)} records in final batch")
+                else:
+                    print(f"[ERROR] Failed to save {len(all_records)} records in final batch")
+                
+                # Clear the collected records
+                self.changed_records.clear()
+            else:
+                print("[INFO] No records to save at end of processing")
     
     def get_session_data(self):
         """Get session data for return"""
@@ -336,26 +361,26 @@ class VehicleProcessor:
         }
     
     def _get_current_weather_data(self):
-        """Get current weather data for the location (cached per vehicle)"""
+        """Get current weather data for the location (cached per session)"""
         # Get location coordinates from config
         lat = getattr(Config, 'LOCATION_LAT', -37.740585)  # Melbourne coordinates
         lon = getattr(Config, 'LOCATION_LON', 144.731637)  # Melbourne coordinates
         
-        # Check if we have cached weather data that's still fresh (less than 5 minutes old)
+        # Check if we have cached weather data that's still fresh (less than 15 minutes old)
         current_time = datetime.now()
         if (hasattr(self, '_weather_cache') and self._weather_cache is not None and 
             hasattr(self, '_weather_cache_time') and self._weather_cache_time is not None):
             time_diff = (current_time - self._weather_cache_time).total_seconds()
-            if time_diff < 300:  # 5 minutes cache
+            if time_diff < 900:  # 15 minutes cache (increased from 5 minutes)
                 return self._weather_cache
         
-        # Fetch fresh weather data
+        # Fetch fresh weather data only once per session
         print(f"[INFO] Fetching fresh weather data for location: {lat}, {lon}")
         try:
             weather_data = weather_manager.get_weather_for_analysis(lat, lon)
             print(f"[INFO] Weather data: {weather_data.get('weather_condition')}, {weather_data.get('temperature')}°C, {weather_data.get('humidity')}% humidity")
             
-            # Cache the weather data
+            # Cache the weather data for the entire session
             self._weather_cache = weather_data
             self._weather_cache_time = current_time
             

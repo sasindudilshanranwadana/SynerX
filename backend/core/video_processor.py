@@ -42,7 +42,7 @@ class VideoProcessor:
         self.vehicle_tracker = None
         self.data_manager = None
         self.model = None
-        self.plate_model = None
+        # self.plate_model = None  # TEMPORARILY DISABLED
         self.tracker = None
         self.polygon_zone = None
         self.stop_zone = None
@@ -96,6 +96,7 @@ class VideoProcessor:
         self.display_manager.start_streaming()
         
         print(f"[INFO] Frame skip: {self.frame_skip} (for better responsiveness in local mode)")
+        print(f"[INFO] Processing frame skip: {Config.PROCESSING_FRAME_SKIP} (for better performance)")
     
     def _load_first_frame(self):
         """Load the first frame for heat map overlay"""
@@ -117,9 +118,10 @@ class VideoProcessor:
         self.model.fuse()
         self.tracker = sv.ByteTrack(frame_rate=self.video_info.fps)
 
-        self.plate_model = YOLO(Config.LICENSE_PLATE_MODEL_PATH)
-        self.plate_model.to(device)
-        self.plate_model.fuse()
+        # TEMPORARILY DISABLED - License plate model for performance
+        # self.plate_model = YOLO(Config.LICENSE_PLATE_MODEL_PATH)
+        # self.plate_model.to(device)
+        # self.plate_model.fuse()
         
         print(f"[INFO] Models loaded on {device.upper()}")
     
@@ -140,22 +142,9 @@ class VideoProcessor:
         """
         Finds and blurs license plates using a dedicated YOLO model.
         This is the accurate method for high-angle footage.
+        TEMPORARILY DISABLED FOR PERFORMANCE
         """
-        # Run the dedicated plate model on the frame
-        plate_results = self.plate_model(frame, verbose=False)[0]
-        plate_detections = sv.Detections.from_ultralytics(plate_results)
-
-        # Loop through the detected plates and blur them
-        for box in plate_detections.xyxy:
-            x1, y1, x2, y2 = map(int, box)
-            
-            # The array slicing is now correctly in (y, x) order.
-            roi = frame[y1:y2, x1:x2]
-
-            if roi.size > 0:
-                blurred_roi = cv2.GaussianBlur(roi, (23, 23), 30)
-                frame[y1:y2, x1:x2] = blurred_roi
-                
+        # TEMPORARILY DISABLED - Return frame as-is for better performance
         return frame
 
 
@@ -171,8 +160,12 @@ class VideoProcessor:
                     
                     self.frame_idx += 1
                     
-                    # Skip frames for better performance in local mode
+                    # Skip frames for better performance
                     if self.frame_idx % self.frame_skip != 0:
+                        continue
+                    
+                    # Additional frame skipping for processing performance
+                    if self.frame_idx % Config.PROCESSING_FRAME_SKIP != 0:
                         continue
                     
                     # Process frame
@@ -196,7 +189,8 @@ class VideoProcessor:
         # Detection and tracking
         detections = self._perform_detection_and_tracking(frame)
 
-        blurred_frame = self.blur_license_plates(frame.copy())
+        # License plate blurring is temporarily disabled for performance
+        processed_frame = frame.copy()
         
         # Apply tracker ID offset for global uniqueness
         detections.tracker_id = [tid + self.vehicle_processor.tracker_id_offset for tid in detections.tracker_id]
@@ -212,16 +206,15 @@ class VideoProcessor:
         transformed_pts = self.transformer.transform(anchor_pts).astype(float)
         
         # Process detections
-        top_labels, bottom_labels, csv_update_needed = self.vehicle_processor.process_detections(
+        top_labels, bottom_labels = self.vehicle_processor.process_detections(
             detections, anchor_pts, transformed_pts
         )
         
-        # Save tracking data if needed
-        if csv_update_needed:
-            self.vehicle_processor.save_tracking_data(self.frame_idx)
+        # Data is now collected during processing and saved at the end
+        # No need to save during processing for better performance
         
         # Annotate frame
-        annotated = self.annotation_manager.annotate_frame(blurred_frame, detections, top_labels, bottom_labels)
+        annotated = self.annotation_manager.annotate_frame(processed_frame, detections, top_labels, bottom_labels)
         
         # Draw additional elements
         self.annotation_manager.draw_anchor_points(annotated, anchor_pts)
@@ -280,17 +273,8 @@ class VideoProcessor:
         """Finalize processing and cleanup"""
         print(f"[INFO] Finalizing processing at frame {self.frame_idx}...")
         
-        # Save final tracking data
-        if self.mode == "local":
-            self.data_manager.update_tracking_file(self.vehicle_processor.stop_zone_history_dict, self.mode)
-            print("[INFO] Local mode: Final tracking data saved to CSV files")
-        else:
-            if self.vehicle_processor.changed_records:
-                print(f"[INFO] Saving {len(self.vehicle_processor.changed_records)} remaining changed records to database...")
-                from clients.supabase_client import supabase_manager
-                for track_id_str, data in self.vehicle_processor.changed_records.items():
-                    supabase_manager.save_tracking_data(data)
-            print("[INFO] API mode: Final tracking data saved to database")
+        # Save final tracking data using batch save for both modes
+        self.vehicle_processor.save_all_data_at_end()
         
         # Save heat maps
         self.heat_map.save_heat_maps(self.first_frame)

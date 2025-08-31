@@ -73,6 +73,57 @@ class SupabaseManager:
             print(f"❌ Error processing vehicle data: {e}")
             return False
     
+    def save_tracking_data_batch(self, tracking_data_list: List[Dict[str, Any]]) -> bool:
+        """Save multiple tracking records in one batch operation for better performance"""
+        def to_py(val):
+            if isinstance(val, np.generic):
+                return val.item()
+            return val
+        
+        try:
+            if not tracking_data_list:
+                print("[INFO] No records to save in batch")
+                return True
+            
+            # Convert all records to proper format
+            data_to_upsert = []
+            for tracking_data in tracking_data_list:
+                tracker_id = to_py(tracking_data.get("tracker_id"))
+                
+                data_to_upsert.append({
+                    "tracker_id": tracker_id,
+                    "vehicle_type": to_py(tracking_data.get("vehicle_type")),
+                    "status": to_py(tracking_data.get("status")),
+                    "compliance": to_py(tracking_data.get("compliance", 0)),
+                    "reaction_time": to_py(tracking_data.get("reaction_time")),
+                    "weather_condition": to_py(tracking_data.get("weather_condition")),
+                    "temperature": to_py(tracking_data.get("temperature")),
+                    "humidity": to_py(tracking_data.get("humidity")),
+                    "visibility": to_py(tracking_data.get("visibility")),
+                    "precipitation_type": to_py(tracking_data.get("precipitation_type")),
+                    "wind_speed": to_py(tracking_data.get("wind_speed")),
+                    "date": to_py(tracking_data.get("date", datetime.now().isoformat()))
+                })
+            
+            # Log batch operation
+            print(f"[INFO] Batch saving {len(data_to_upsert)} records to database...")
+            
+            # ONE database call for ALL records
+            result = self.client.table("tracking_results") \
+                .upsert(data_to_upsert, on_conflict="tracker_id") \
+                .execute()
+            
+            if result.data and len(result.data) > 0:
+                print(f"✅ Successfully saved {len(data_to_upsert)} records in batch")
+                return True
+            else:
+                print(f"❌ Batch save failed - no data returned")
+                return False
+                
+        except Exception as e:
+            print(f"❌ Batch save failed: {e}")
+            return False
+    
     def save_vehicle_count(self, vehicle_type: str, count: int, date: str = None) -> bool:
         """Upsert vehicle count: set to current total if exists, insert if not. Matches CSV logic exactly."""
         try:

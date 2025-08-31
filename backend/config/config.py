@@ -32,6 +32,7 @@ class Config:
     # Video Settings
     TARGET_FPS = 25  # Target frames per second for output video (Range: 15-60, Recommended: 25-30 for real-time processing)
     FPS_UPDATE_INTERVAL = 30  # Interval (in frames) to update FPS display (Range: 10-100, Recommended: 30-60 frames)
+    PROCESSING_FRAME_SKIP = 1  # Skip every N frames during processing (1 = process all frames, 2 = skip every other frame)
     
     # Visual Settings
     ANNOTATION_THICKNESS = 1  # Thickness of bounding box lines (Range: 1-5, Recommended: 2-3 for visibility)
