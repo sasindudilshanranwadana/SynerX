@@ -151,6 +151,9 @@ def process_single_job(job_data):
     start_time = job_data['start_time']
     
     try:
+        # Reset shutdown flag before starting processing
+        shutdown_manager.reset_shutdown_flag()
+        
         with job_lock:
             background_jobs[job_id]["status"] = "processing"
             background_jobs[job_id]["message"] = "Running video analytics..."
@@ -336,21 +339,82 @@ async def get_job_status(job_id: str):
         return {"status": "error", "error": str(e)}
 
 @app.get("/jobs/")
-async def list_jobs():
-    """List all background jobs"""
+async def list_all_jobs():
+    """Get comprehensive status of all background jobs"""
     try:
         with job_lock:
-            jobs = []
+            # Get all jobs with detailed information
+            all_jobs = []
             for job_id, job in background_jobs.items():
-                jobs.append({
+                elapsed_time = time.time() - job["start_time"]
+                
+                job_info = {
                     "job_id": job_id,
                     "status": job["status"],
                     "progress": job["progress"],
                     "file_name": job["file_name"],
                     "start_time": job["start_time"],
-                    "elapsed_time": time.time() - job["start_time"]
-                })
-            return {"jobs": jobs}
+                    "elapsed_time": elapsed_time,
+                    "message": job["message"],
+                    "error": job["error"]
+                }
+                
+                # Add result info if available
+                if job["result"]:
+                    job_info["result"] = job["result"]
+                
+                all_jobs.append(job_info)
+            
+            # Organize jobs by status
+            jobs_by_status = {
+                "processing": [],
+                "queued": [],
+                "completed": [],
+                "failed": [],
+                "cancelled": []
+            }
+            
+            for job in all_jobs:
+                status = job["status"]
+                if status in jobs_by_status:
+                    jobs_by_status[status].append(job)
+            
+            # Get queue information
+            with queue_lock:
+                queue_length = len(job_queue)
+                queue_processor_running = queue_processor_active
+                
+                # Get queue order
+                queue_order = []
+                for i, job_data in enumerate(job_queue):
+                    job_id = job_data['job_id']
+                    if job_id in background_jobs:
+                        job_info = background_jobs[job_id]
+                        queue_order.append({
+                            "position": i + 1,
+                            "job_id": job_id,
+                            "file_name": job_info["file_name"],
+                            "status": job_info["status"]
+                        })
+            
+            # Count jobs by status
+            status_counts = {}
+            for job in all_jobs:
+                status = job["status"]
+                status_counts[status] = status_counts.get(status, 0) + 1
+            
+            return {
+                "status": "success",
+                "summary": {
+                    "total_jobs": len(all_jobs),
+                    "status_counts": status_counts,
+                    "queue_length": queue_length,
+                    "queue_processor_running": queue_processor_running
+                },
+                "jobs_by_status": jobs_by_status,
+                "queue_order": queue_order,
+                "all_jobs": all_jobs  # Complete list for backward compatibility
+            }
     except Exception as e:
         return {"status": "error", "error": str(e)}
 
@@ -421,16 +485,58 @@ async def get_queue_status():
 
 @app.post("/shutdown/")
 async def shutdown_processing():
-    """Stop any ongoing video processing"""
+    """Stop the current processing or queued job"""
     try:
-        processing_time = get_processing_time()
-        shutdown_manager.set_shutdown_flag()
-        print(f"[API] Shutdown requested via HTTP endpoint after {processing_time:.2f} seconds of processing")
-        return {
-            "status": "shutdown_requested", 
-            "message": "Processing will stop gracefully",
-            "processing_time": processing_time
-        }
+        # Find the currently processing or queued job
+        active_job = None
+        job_status = None
+        with job_lock:
+            # First look for processing job
+            for job_id, job_info in background_jobs.items():
+                if job_info["status"] == "processing":
+                    active_job = job_id
+                    job_status = "processing"
+                    break
+            
+            # If no processing job, look for queued job
+            if not active_job:
+                for job_id, job_info in background_jobs.items():
+                    if job_info["status"] == "queued":
+                        active_job = job_id
+                        job_status = "queued"
+                        break
+        
+        if active_job:
+            # Mark the job as cancelled
+            with job_lock:
+                background_jobs[active_job]["status"] = "cancelled"
+                background_jobs[active_job]["message"] = "Job cancelled by user"
+                background_jobs[active_job]["error"] = "Cancelled by user request"
+            
+            # If it was a queued job, remove it from the queue
+            if job_status == "queued":
+                with queue_lock:
+                    job_queue[:] = [job for job in job_queue if job["job_id"] != active_job]
+            
+            # Set shutdown flag to actually stop the processing
+            if job_status == "processing":
+                shutdown_manager.set_shutdown_flag()
+                print(f"[SHUTDOWN] Set shutdown flag to stop processing job: {active_job}")
+            
+            print(f"[SHUTDOWN] Cancelled {job_status} job: {active_job}")
+            
+            return {
+                "status": "cancelled", 
+                "message": f"{job_status.capitalize()} job {active_job} has been cancelled",
+                "cancelled_job": active_job,
+                "job_status": job_status
+            }
+        else:
+            # No active job found
+            return {
+                "status": "no_job", 
+                "message": "No processing or queued job found to cancel"
+            }
     except Exception as e:
         return {"status": "error", "error": str(e)}
 

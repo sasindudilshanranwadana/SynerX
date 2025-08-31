@@ -296,7 +296,7 @@
             <div class="control-group">
               <h3>🎬 Video Controls</h3>
               <button id="shutdownBtn" class="btn danger" onclick="shutdown()">
-                Shutdown Processing
+                Cancel Current Job
               </button>
             </div>
 
@@ -591,13 +591,17 @@
                 "info"
               );
 
-              // Store job ID globally
-              currentJobId = result.job_id;
+              // Store job ID in recent jobs (but don't set as current if it's queued)
               if (!recentJobIds.includes(result.job_id)) {
                 recentJobIds.unshift(result.job_id);
                 if (recentJobIds.length > 5) {
                   recentJobIds.pop(); // Keep only last 5 jobs
                 }
+              }
+
+              // Only set as current job if it's processing, not if it's queued
+              if (result.status === "processing") {
+                currentJobId = result.job_id;
               }
 
               // Display job ID prominently
@@ -616,14 +620,16 @@
                 "info"
               );
 
-              // Store job ID globally
-              currentJobId = result.job_id;
+              // Store job ID in recent jobs and set as current (since it's processing)
               if (!recentJobIds.includes(result.job_id)) {
                 recentJobIds.unshift(result.job_id);
                 if (recentJobIds.length > 5) {
                   recentJobIds.pop(); // Keep only last 5 jobs
                 }
               }
+
+              // Set as current job since it's processing
+              currentJobId = result.job_id;
 
               // Display job ID prominently
               const jobIdDisplay = document.getElementById("currentJobId");
@@ -725,7 +731,7 @@
       // List all background jobs
       async function listJobs() {
         try {
-          log("📋 Fetching all background jobs...", "info");
+          log("📋 Fetching all jobs...", "info");
           const response = await fetch("http://localhost:8000/jobs/");
 
           if (!response.ok) {
@@ -733,31 +739,96 @@
             return;
           }
 
-          const result = await response.json();
+          const data = await response.json();
 
-          if (result.jobs && result.jobs.length > 0) {
-            log(`📋 Found ${result.jobs.length} background job(s):`, "info");
-            result.jobs.forEach((job, index) => {
-              const status =
-                job.status === "processing"
-                  ? "🔄"
-                  : job.status === "completed"
-                  ? "✅"
-                  : job.status === "failed"
-                  ? "❌"
-                  : "❓";
-              const elapsed = job.elapsed_time
-                ? `(${job.elapsed_time.toFixed(1)}s)`
-                : "";
-              log(
-                `${status} Job ${index + 1}: ${job.file_name} - ${
-                  job.status
-                } ${elapsed}`,
-                "info"
+          if (data.status === "success") {
+            const summary = data.summary;
+            log(`📊 System Summary:`, "info");
+            log(`   Total Jobs: ${summary.total_jobs}`, "info");
+            log(`   Queue Length: ${summary.queue_length}`, "info");
+            log(
+              `   Queue Processor: ${
+                summary.queue_processor_running ? "🟢 Running" : "🔴 Stopped"
+              }`,
+              "info"
+            );
+
+            // Show status breakdown
+            if (summary.status_counts) {
+              log("📈 Status Breakdown:", "info");
+              Object.entries(summary.status_counts).forEach(
+                ([status, count]) => {
+                  const icon =
+                    status === "completed"
+                      ? "✅"
+                      : status === "processing"
+                      ? "🔄"
+                      : status === "queued"
+                      ? "⏳"
+                      : status === "failed"
+                      ? "❌"
+                      : "🚫";
+                  log(`   ${icon} ${status}: ${count}`, "info");
+                }
               );
-            });
+            }
+
+            // Show jobs by status
+            if (data.jobs_by_status) {
+              Object.entries(data.jobs_by_status).forEach(([status, jobs]) => {
+                if (jobs.length > 0) {
+                  const icon =
+                    status === "completed"
+                      ? "✅"
+                      : status === "processing"
+                      ? "🔄"
+                      : status === "queued"
+                      ? "⏳"
+                      : status === "failed"
+                      ? "❌"
+                      : "🚫";
+                  log(
+                    `\n${icon} ${status.toUpperCase()} Jobs (${jobs.length}):`,
+                    "info"
+                  );
+                  jobs.forEach((job, index) => {
+                    const elapsed = job.elapsed_time
+                      ? `${job.elapsed_time.toFixed(1)}s`
+                      : "N/A";
+                    const progress = job.progress ? `${job.progress}%` : "N/A";
+                    log(
+                      `   ${index + 1}. ${
+                        job.file_name
+                      } - ${progress} - ${elapsed}`,
+                      status === "completed"
+                        ? "success"
+                        : status === "failed"
+                        ? "error"
+                        : "info"
+                    );
+                    if (job.message) {
+                      log(`      💬 ${job.message}`, "info");
+                    }
+                  });
+                }
+              });
+            }
+
+            // Show queue order if any
+            if (data.queue_order && data.queue_order.length > 0) {
+              log("\n⏳ Queue Order:", "info");
+              data.queue_order.forEach((item) => {
+                log(
+                  `   ${item.position}. ${item.file_name} (${item.job_id.slice(
+                    0,
+                    8
+                  )}...)`,
+                  "info"
+                );
+              });
+            }
           } else {
-            log("📋 No background jobs found", "info");
+            log("📋 No jobs found", "info");
           }
         } catch (error) {
           log(`❌ Error listing jobs: ${error.message}`, "error");
@@ -787,11 +858,17 @@
             if (response.ok) {
               const result = await response.json();
               if (result.jobs && result.jobs.length > 0) {
-                // Find the first processing or queued job
-                const activeJob = result.jobs.find(
-                  (job) =>
-                    job.status === "processing" || job.status === "queued"
+                // Prioritize processing jobs over queued jobs
+                let activeJob = result.jobs.find(
+                  (job) => job.status === "processing"
                 );
+
+                // If no processing job, look for queued job
+                if (!activeJob) {
+                  activeJob = result.jobs.find(
+                    (job) => job.status === "queued"
+                  );
+                }
 
                 if (activeJob) {
                   jobId = activeJob.job_id;
@@ -959,11 +1036,17 @@
                   recentJobIds.splice(5); // Keep only last 5
                 }
 
-                // Set current job if there's an active one
-                const activeJob = result.jobs.find(
-                  (job) =>
-                    job.status === "processing" || job.status === "queued"
+                // Set current job if there's an active one (prioritize processing)
+                let activeJob = result.jobs.find(
+                  (job) => job.status === "processing"
                 );
+
+                // If no processing job, look for queued job
+                if (!activeJob) {
+                  activeJob = result.jobs.find(
+                    (job) => job.status === "queued"
+                  );
+                }
                 if (activeJob) {
                   currentJobId = activeJob.job_id;
                   log(`🆔 Set current job: ${activeJob.job_id}`, "info");
@@ -1215,24 +1298,44 @@
       // Shutdown processing
       async function shutdown() {
         try {
-          log("🛑 Requesting shutdown...", "info");
+          log("🛑 Cancelling current job...", "info");
           const response = await fetch("http://localhost:8000/shutdown/", {
             method: "POST",
           });
 
           const result = await response.json();
 
-          if (result.status === "shutdown_requested") {
-            log("✅ Shutdown requested successfully", "success");
+          if (result.status === "cancelled") {
+            const jobType = result.job_status || "processing";
             log(
-              `⏱️ Processing time: ${result.processing_time.toFixed(2)}s`,
+              `✅ ${
+                jobType.charAt(0).toUpperCase() + jobType.slice(1)
+              } job cancelled successfully`,
+              "success"
+            );
+            log(`🆔 Cancelled job: ${result.cancelled_job}`, "info");
+            log(
+              "💡 The job has been stopped. You can upload a new video or check other jobs.",
+              "info"
+            );
+
+            // Clear the current job display if it was the cancelled one
+            if (currentJobId === result.cancelled_job) {
+              currentJobId = null;
+              const jobIdDisplay = document.getElementById("currentJobId");
+              jobIdDisplay.style.display = "none";
+            }
+          } else if (result.status === "no_job") {
+            log("ℹ️ No active job found to cancel", "info");
+            log(
+              "💡 All jobs are either completed, failed, or not started.",
               "info"
             );
           } else {
-            log(`❌ Shutdown failed: ${result.error}`, "error");
+            log(`❌ Cancellation failed: ${result.error}`, "error");
           }
         } catch (error) {
-          log(`❌ Shutdown request failed: ${error.message}`, "error");
+          log(`❌ Cancellation request failed: ${error.message}`, "error");
         }
       }
 
