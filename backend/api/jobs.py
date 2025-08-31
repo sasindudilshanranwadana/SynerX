@@ -270,6 +270,104 @@ def init_job_router(background_jobs, job_lock, job_queue, queue_lock, queue_proc
         except Exception as e:
             return {"status": "error", "error": str(e)}
 
+    @router.post("/shutdown/{job_id}")
+    async def shutdown_specific_job(job_id: str):
+        """
+        Stop a specific job by ID
+        
+        Cancels a specific job by its ID. If the job is currently processing, it will be 
+        stopped gracefully. If the job is queued, it will be removed from the queue.
+        If the job is already completed, failed, or cancelled, it will return an error.
+        
+        Args:
+            job_id: The unique identifier of the job to cancel
+        
+        Returns:
+            dict: Status of the cancellation operation
+        """
+        try:
+            # Check if job exists
+            with job_lock:
+                if job_id not in background_jobs:
+                    return {
+                        "status": "not_found",
+                        "message": f"Job {job_id} not found"
+                    }
+                
+                job_info = background_jobs[job_id]
+                job_status = job_info["status"]
+                
+                # Check if job can be cancelled
+                if job_status in ["completed", "failed", "cancelled"]:
+                    return {
+                        "status": "cannot_cancel",
+                        "message": f"Job {job_id} is already {job_status} and cannot be cancelled",
+                        "job_status": job_status
+                    }
+                
+                # Mark the job as cancelled
+                background_jobs[job_id]["status"] = "cancelled"
+                background_jobs[job_id]["message"] = "Job cancelled by user"
+                background_jobs[job_id]["error"] = "Cancelled by user request"
+                
+                # If it was a queued job, remove it from the queue
+                if job_status == "queued":
+                    with queue_lock:
+                        job_queue[:] = [job for job in job_queue if job["job_id"] != job_id]
+                
+                # Set shutdown flag to actually stop the processing
+                if job_status == "processing":
+                    shutdown_manager.set_shutdown_flag()
+                    print(f"[SHUTDOWN] Set shutdown flag to stop processing job: {job_id}")
+                
+                # Clean up files for cancelled job
+                try:
+                    file_name = job_info.get("file_name", "")
+                    temp_filename = job_info.get("temp_filename", "")
+                    
+                    # Clean up temp upload file
+                    if temp_filename:
+                        from pathlib import Path
+                        temp_uploads_dir = Path("temp/uploads")
+                        temp_processing_dir = Path("temp/processing")
+                        
+                        # Remove upload file using the actual temp filename
+                        upload_file = temp_uploads_dir / temp_filename
+                        if upload_file.exists():
+                            upload_file.unlink()
+                            print(f"[SHUTDOWN] Cleaned up upload file: {upload_file}")
+                        else:
+                            print(f"[SHUTDOWN] Upload file not found: {upload_file}")
+                        
+                        # Remove processing file (if it exists) - use job_id for this one
+                        processing_file = temp_processing_dir / f"{job_id}{Path(file_name).suffix}"
+                        if processing_file.exists():
+                            processing_file.unlink()
+                            print(f"[SHUTDOWN] Cleaned up processing file: {processing_file}")
+                        
+                        # Remove output file (if it exists)
+                        output_file = Path("processed") / f"{job_id}_out{Path(file_name).suffix}"
+                        if output_file.exists():
+                            output_file.unlink()
+                            print(f"[SHUTDOWN] Cleaned up output file: {output_file}")
+                    else:
+                        print(f"[WARNING] No temp_filename found for job {job_id}")
+                            
+                except Exception as e:
+                    print(f"[WARNING] Failed to clean up files for cancelled job {job_id}: {e}")
+                
+                print(f"[SHUTDOWN] Cancelled {job_status} job: {job_id}")
+                
+                return {
+                    "status": "cancelled", 
+                    "message": f"{job_status.capitalize()} job {job_id} has been cancelled",
+                    "cancelled_job": job_id,
+                    "job_status": job_status
+                }
+                
+        except Exception as e:
+            return {"status": "error", "error": str(e)}
+
     @router.post("/restart-queue")
     async def restart_queue_processor():
         """

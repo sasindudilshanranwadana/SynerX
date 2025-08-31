@@ -298,6 +298,13 @@
               <button id="shutdownBtn" class="btn danger" onclick="shutdown()">
                 Cancel Current Job
               </button>
+              <button
+                id="shutdownSpecificBtn"
+                class="btn danger"
+                onclick="shutdownSpecificJob()"
+              >
+                Cancel Specific Job
+              </button>
             </div>
 
             <div class="control-group">
@@ -1377,7 +1384,7 @@
       async function shutdown() {
         try {
           log("🛑 Cancelling current job...", "info");
-          const response = await fetch("http://localhost:8000/shutdown/", {
+          const response = await fetch("http://localhost:8000/jobs/shutdown", {
             method: "POST",
           });
 
@@ -1409,6 +1416,58 @@
               "💡 All jobs are either completed, failed, or not started.",
               "info"
             );
+          } else {
+            log(`❌ Cancellation failed: ${result.error}`, "error");
+          }
+        } catch (error) {
+          log(`❌ Cancellation request failed: ${error.message}`, "error");
+        }
+      }
+
+      // Shutdown specific job by ID
+      async function shutdownSpecificJob() {
+        try {
+          // Prompt user for job ID
+          const jobId = prompt("Enter the Job ID to cancel:");
+          if (!jobId) {
+            log("❌ No job ID provided. Cancellation cancelled.", "warning");
+            return;
+          }
+
+          log(`🛑 Cancelling specific job: ${jobId}...`, "info");
+          const response = await fetch(
+            `http://localhost:8000/jobs/shutdown/${jobId}`,
+            {
+              method: "POST",
+            }
+          );
+
+          const result = await response.json();
+
+          if (result.status === "cancelled") {
+            const jobType = result.job_status || "processing";
+            log(
+              `✅ ${
+                jobType.charAt(0).toUpperCase() + jobType.slice(1)
+              } job ${jobId} cancelled successfully`,
+              "success"
+            );
+            log(`🆔 Cancelled job: ${result.cancelled_job}`, "info");
+            log(
+              "💡 The job has been stopped. You can upload a new video or check other jobs.",
+              "info"
+            );
+
+            // Clear the current job display if it was the cancelled one
+            if (currentJobId === result.cancelled_job) {
+              currentJobId = null;
+              const jobIdDisplay = document.getElementById("currentJobId");
+              jobIdDisplay.style.display = "none";
+            }
+          } else if (result.status === "not_found") {
+            log(`❌ Job ${jobId} not found`, "error");
+          } else if (result.status === "cannot_cancel") {
+            log(`❌ Cannot cancel job ${jobId}: ${result.message}`, "error");
           } else {
             log(`❌ Cancellation failed: ${result.error}`, "error");
           }
