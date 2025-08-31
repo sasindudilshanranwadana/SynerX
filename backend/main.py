@@ -255,8 +255,14 @@ def cleanup_temp_files():
                     reason = "old file"
                 else:
                     # Check if file is orphaned (no corresponding active job)
-                    file_stem = temp_file.stem  # filename without extension
-                    if file_stem not in active_job_ids:
+                    file_is_orphaned = True
+                    for job_id, job_info in background_jobs.items():
+                        temp_filename = job_info.get("temp_filename", "")
+                        if temp_filename == temp_file.name:
+                            file_is_orphaned = False
+                            break
+                    
+                    if file_is_orphaned:
                         should_clean = True
                         reason = "orphaned file"
                 

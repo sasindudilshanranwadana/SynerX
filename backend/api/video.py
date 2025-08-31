@@ -56,6 +56,7 @@ def init_video_router(background_jobs, job_lock, job_queue, queue_lock, start_qu
                     "status": "queued",
                     "start_time": time.time(),
                     "file_name": file.filename,
+                    "temp_filename": temp_filename,  # Store the actual temp filename
                     "progress": 0,
                     "message": "Video added to processing queue...",
                     "result": None,

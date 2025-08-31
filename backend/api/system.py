@@ -58,8 +58,15 @@ def init_system_router(cleanup_temp_files_func, job_lock, background_jobs):
             temp_uploads_dir = Path("temp/uploads")
             for temp_file in temp_uploads_dir.glob("*"):
                 if temp_file.is_file():
-                    file_stem = temp_file.stem
-                    if file_stem not in active_job_ids:
+                    # Check if this temp file belongs to any active job
+                    file_is_orphaned = True
+                    for job_id, job_info in background_jobs.items():
+                        temp_filename = job_info.get("temp_filename", "")
+                        if temp_filename == temp_file.name:
+                            file_is_orphaned = False
+                            break
+                    
+                    if file_is_orphaned:
                         temp_file.unlink()
                         cleaned_count += 1
                         print(f"[CLEANUP] Removed orphaned upload file: {temp_file}")

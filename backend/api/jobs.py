@@ -220,20 +220,23 @@ def init_job_router(background_jobs, job_lock, job_queue, queue_lock, queue_proc
                 try:
                     job_info = background_jobs[active_job]
                     file_name = job_info.get("file_name", "")
+                    temp_filename = job_info.get("temp_filename", "")
                     
                     # Clean up temp upload file
-                    if file_name:
+                    if temp_filename:
                         from pathlib import Path
                         temp_uploads_dir = Path("temp/uploads")
                         temp_processing_dir = Path("temp/processing")
                         
-                        # Remove upload file
-                        upload_file = temp_uploads_dir / f"{active_job}{Path(file_name).suffix}"
+                        # Remove upload file using the actual temp filename
+                        upload_file = temp_uploads_dir / temp_filename
                         if upload_file.exists():
                             upload_file.unlink()
                             print(f"[SHUTDOWN] Cleaned up upload file: {upload_file}")
+                        else:
+                            print(f"[SHUTDOWN] Upload file not found: {upload_file}")
                         
-                        # Remove processing file (if it exists)
+                        # Remove processing file (if it exists) - use job_id for this one
                         processing_file = temp_processing_dir / f"{active_job}{Path(file_name).suffix}"
                         if processing_file.exists():
                             processing_file.unlink()
@@ -244,6 +247,8 @@ def init_job_router(background_jobs, job_lock, job_queue, queue_lock, queue_proc
                         if output_file.exists():
                             output_file.unlink()
                             print(f"[SHUTDOWN] Cleaned up output file: {output_file}")
+                    else:
+                        print(f"[WARNING] No temp_filename found for job {active_job}")
                             
                 except Exception as e:
                     print(f"[WARNING] Failed to clean up files for cancelled job {active_job}: {e}")
