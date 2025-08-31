@@ -339,6 +339,13 @@
               >
                 Cleanup Temp Files
               </button>
+              <button
+                id="cleanupOrphanedBtn"
+                class="btn danger"
+                onclick="cleanupOrphanedFiles()"
+              >
+                Cleanup Orphaned Files
+              </button>
             </div>
 
             <div class="control-group">
@@ -1007,7 +1014,7 @@
         try {
           log("🧹 Cleaning up temporary files...", "info");
           const response = await fetch(
-            "http://localhost:8000/cleanup-temp-files/",
+            "http://localhost:8000/system/cleanup-temp-files",
             {
               method: "POST",
             }
@@ -1028,6 +1035,41 @@
           }
         } catch (error) {
           log(`❌ Error cleaning up temp files: ${error.message}`, "error");
+        }
+      }
+
+      // Cleanup orphaned files
+      async function cleanupOrphanedFiles() {
+        try {
+          log("🗑️ Cleaning up orphaned files...", "info");
+          const response = await fetch(
+            "http://localhost:8000/system/cleanup-orphaned-files",
+            {
+              method: "POST",
+            }
+          );
+
+          if (!response.ok) {
+            log(
+              `❌ Failed to cleanup orphaned files: ${response.status}`,
+              "error"
+            );
+            return;
+          }
+
+          const result = await response.json();
+
+          if (result.status === "success") {
+            log("✅ Orphaned files cleaned up successfully", "success");
+            log(`🗑️ Cleaned up ${result.cleaned_count} orphaned files`, "info");
+          } else {
+            log(
+              `❌ Failed to cleanup orphaned files: ${result.error}`,
+              "error"
+            );
+          }
+        } catch (error) {
+          log(`❌ Error cleaning up orphaned files: ${error.message}`, "error");
         }
       }
 

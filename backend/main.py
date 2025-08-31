@@ -232,31 +232,73 @@ def get_processing_time():
         return time.time() - processing_start_time
 
 def cleanup_temp_files():
-    """Clean up old temporary files"""
+    """Clean up old temporary files and orphaned files"""
     try:
-        # Clean up temp uploads older than 1 hour
         current_time = time.time()
         cleaned_count = 0
         
+        # Get active job IDs (processing, queued, or recently completed/failed)
+        active_job_ids = set()
+        with job_lock:
+            for job_id in background_jobs.keys():
+                active_job_ids.add(job_id)
+        
+        # Clean up temp uploads older than 1 hour OR orphaned files
         for temp_file in TEMP_UPLOADS_DIR.glob("*"):
             if temp_file.is_file():
                 file_age = current_time - temp_file.stat().st_mtime
+                should_clean = False
+                
+                # Check if file is old enough
                 if file_age > 3600:  # 1 hour
+                    should_clean = True
+                    reason = "old file"
+                else:
+                    # Check if file is orphaned (no corresponding active job)
+                    file_stem = temp_file.stem  # filename without extension
+                    if file_stem not in active_job_ids:
+                        should_clean = True
+                        reason = "orphaned file"
+                
+                if should_clean:
                     temp_file.unlink()
                     cleaned_count += 1
-                    print(f"[CLEANUP] Removed old temp file: {temp_file}")
+                    print(f"[CLEANUP] Removed {reason}: {temp_file}")
         
-        # Clean up temp processing files older than 30 minutes
+        # Clean up temp processing files older than 30 minutes OR orphaned files
         for temp_file in TEMP_PROCESSING_DIR.glob("*"):
             if temp_file.is_file():
                 file_age = current_time - temp_file.stat().st_mtime
+                should_clean = False
+                
+                # Check if file is old enough
                 if file_age > 1800:  # 30 minutes
+                    should_clean = True
+                    reason = "old file"
+                else:
+                    # Check if file is orphaned (no corresponding active job)
+                    file_stem = temp_file.stem  # filename without extension
+                    if file_stem not in active_job_ids:
+                        should_clean = True
+                        reason = "orphaned file"
+                
+                if should_clean:
                     temp_file.unlink()
                     cleaned_count += 1
-                    print(f"[CLEANUP] Removed old processing file: {temp_file}")
+                    print(f"[CLEANUP] Removed {reason}: {temp_file}")
+        
+        # Clean up orphaned output files in processed directory
+        for output_file in OUTPUT_DIR.glob("*"):
+            if output_file.is_file():
+                # Check if file is orphaned (no corresponding active job)
+                file_stem = output_file.stem.replace("_out", "")  # Remove _out suffix
+                if file_stem not in active_job_ids:
+                    output_file.unlink()
+                    cleaned_count += 1
+                    print(f"[CLEANUP] Removed orphaned output file: {output_file}")
         
         if cleaned_count > 0:
-            print(f"[CLEANUP] Cleaned up {cleaned_count} old temporary files")
+            print(f"[CLEANUP] Cleaned up {cleaned_count} temporary/orphaned files")
         
         return cleaned_count
     except Exception as e:
@@ -276,7 +318,7 @@ video_router = init_video_router(
 
 data_router = init_data_router()
 analysis_router = init_analysis_router()
-system_router = init_system_router(cleanup_temp_files)
+system_router = init_system_router(cleanup_temp_files, job_lock, background_jobs)
 status_router = init_status_router(shutdown_manager, get_processing_time)
 
 # Include routers

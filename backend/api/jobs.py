@@ -216,6 +216,38 @@ def init_job_router(background_jobs, job_lock, job_queue, queue_lock, queue_proc
                     shutdown_manager.set_shutdown_flag()
                     print(f"[SHUTDOWN] Set shutdown flag to stop processing job: {active_job}")
                 
+                # Clean up files for cancelled job
+                try:
+                    job_info = background_jobs[active_job]
+                    file_name = job_info.get("file_name", "")
+                    
+                    # Clean up temp upload file
+                    if file_name:
+                        from pathlib import Path
+                        temp_uploads_dir = Path("temp/uploads")
+                        temp_processing_dir = Path("temp/processing")
+                        
+                        # Remove upload file
+                        upload_file = temp_uploads_dir / f"{active_job}{Path(file_name).suffix}"
+                        if upload_file.exists():
+                            upload_file.unlink()
+                            print(f"[SHUTDOWN] Cleaned up upload file: {upload_file}")
+                        
+                        # Remove processing file (if it exists)
+                        processing_file = temp_processing_dir / f"{active_job}{Path(file_name).suffix}"
+                        if processing_file.exists():
+                            processing_file.unlink()
+                            print(f"[SHUTDOWN] Cleaned up processing file: {processing_file}")
+                        
+                        # Remove output file (if it exists)
+                        output_file = Path("processed") / f"{active_job}_out{Path(file_name).suffix}"
+                        if output_file.exists():
+                            output_file.unlink()
+                            print(f"[SHUTDOWN] Cleaned up output file: {output_file}")
+                            
+                except Exception as e:
+                    print(f"[WARNING] Failed to clean up files for cancelled job {active_job}: {e}")
+                
                 print(f"[SHUTDOWN] Cancelled {job_status} job: {active_job}")
                 
                 return {

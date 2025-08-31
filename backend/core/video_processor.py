@@ -273,26 +273,39 @@ class VideoProcessor:
         """Finalize processing and cleanup"""
         print(f"[INFO] Finalizing processing at frame {self.frame_idx}...")
         
-        # Save final tracking data using batch save for both modes
-        self.vehicle_processor.save_all_data_at_end()
+        # Check if there's any data to save (regardless of cancellation)
+        has_tracking_data = len(self.vehicle_processor.changed_records) > 0
+        has_vehicle_counts = len(self.vehicle_processor.vehicle_type_counter) > 0
+        has_any_data = has_tracking_data or has_vehicle_counts
         
-        # Save heat maps
-        self.heat_map.save_heat_maps(self.first_frame)
+        if has_any_data:
+            # There's data to save, save it regardless of cancellation
+            print(f"[INFO] Found data to save: {len(self.vehicle_processor.changed_records)} tracking records, {len(self.vehicle_processor.vehicle_type_counter)} vehicle counts")
+            self.vehicle_processor.save_all_data_at_end()
+            
+            # Save heat maps
+            self.heat_map.save_heat_maps(self.first_frame)
+            
+            # Print final statistics
+            self._print_final_statistics()
+            
+            if shutdown_manager.check_shutdown():
+                print("[INFO] Processing was cancelled but saved partial data.")
+            else:
+                print("[INFO] Tracking and counting completed successfully.")
+        else:
+            # No data to save
+            if shutdown_manager.check_shutdown():
+                print("[INFO] Processing was cancelled. No data to save.")
+            else:
+                print("[INFO] Processing completed but no data was collected.")
         
-        # Print final statistics
-        self._print_final_statistics()
-        
-        # Cleanup
+        # Cleanup (always do this regardless of cancellation)
         self.device_manager.clear_gpu_memory()
         # Stop streaming only if it's active (when clients were connected)
         if self.display_manager.streaming_active:
             self.display_manager.stop_streaming()
         self.display_manager.cleanup()
-        
-        if shutdown_manager.check_shutdown():
-            print("[INFO] Processing stopped by user request.")
-        else:
-            print("[INFO] Tracking and counting completed successfully.")
     
     def _print_final_statistics(self):
         """Print final processing statistics"""
