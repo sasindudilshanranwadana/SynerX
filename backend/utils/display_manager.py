@@ -67,14 +67,14 @@ class DisplayManager:
             print(f"[INFO] FPS: {fps:.2f}")
     
     def start_streaming(self):
-        """Start video streaming to web clients"""
+        """Start video streaming to web clients - only when clients connect"""
         if not self.streaming_active:
             video_streamer.start_streaming()
             self.streaming_active = True
             print("[INFO] Video streaming started for web clients")
             
     def stop_streaming(self):
-        """Stop video streaming to web clients"""
+        """Stop video streaming to web clients - when no clients are connected"""
         if self.streaming_active:
             video_streamer.stop_streaming()
             self.streaming_active = False
