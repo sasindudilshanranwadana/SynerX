@@ -185,7 +185,35 @@ Upload and process a video file.
 
 #### `POST /shutdown/`
 
-Stop ongoing video processing.
+Stop ongoing video processing gracefully.
+
+**Usage:**
+
+**PowerShell (Windows):**
+
+```powershell
+# Method 1: Using Invoke-WebRequest
+Invoke-WebRequest -Uri "http://localhost:8000/shutdown/" -Method POST
+
+# Method 2: Using Invoke-RestMethod (returns JSON)
+Invoke-RestMethod -Uri "http://localhost:8000/shutdown/" -Method POST
+```
+
+**Command Prompt (Windows):**
+
+```cmd
+# Using curl (if available)
+curl -X POST http://localhost:8000/shutdown/
+
+# Using PowerShell
+powershell -Command "Invoke-RestMethod -Uri 'http://localhost:8000/shutdown/' -Method POST"
+```
+
+**Linux/Mac:**
+
+```bash
+curl -X POST http://localhost:8000/shutdown/
+```
 
 **Response:**
 

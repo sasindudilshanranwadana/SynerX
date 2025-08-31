@@ -235,23 +235,7 @@ class SupabaseManager:
             print(f"[ERROR] Failed to upload video: {e}")
             return None
     
-    def test_vehicle_counts_table(self):
-        """Test function to check vehicle_counts table access and current data"""
-        try:
-            print("[DEBUG] Testing vehicle_counts table access...")
-            
-            # Try to read all data
-            result = self.client.table("vehicle_counts").select("*").execute()
-            print(f"[DEBUG] Current vehicle_counts data: {result.data}")
-            
-            # Try to count rows
-            count_result = self.client.table("vehicle_counts").select("*", count="exact").execute()
-            print(f"[DEBUG] Total rows in vehicle_counts: {count_result.count}")
-            
-            return True
-        except Exception as e:
-            print(f"[ERROR] Failed to test vehicle_counts table: {e}")
-            return False
+
 
 # Create global instance
 supabase_manager = SupabaseManager() 
