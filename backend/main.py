@@ -86,15 +86,37 @@ app.add_middleware(LimitUploadSizeMiddleware, max_upload_size=1024*1024*1024)
 
 app.mount("/videos", StaticFiles(directory=OUTPUT_DIR), name="videos")
 
-# Graceful shutdown handler
-def signal_handler(signum, frame):
-    print("\n🛑 Shutdown signal received. Gracefully stopping server...")
-    shutdown_manager.set_shutdown_flag()
-    sys.exit(0)
+# Enhanced graceful shutdown handler - now handled by shutdown_manager
+shutdown_manager.setup_signal_handlers()
 
-# Register signal handlers for graceful shutdown
-signal.signal(signal.SIGINT, signal_handler)
-signal.signal(signal.SIGTERM, signal_handler)
+# Add cleanup handlers for graceful shutdown
+def cleanup_video_streamer():
+    """Cleanup video streamer on shutdown"""
+    try:
+        if hasattr(video_streamer, 'stop_streaming'):
+            video_streamer.stop_streaming()
+        print("✅ Video streamer cleaned up")
+    except Exception as e:
+        print(f"⚠️ Video streamer cleanup failed: {e}")
+
+def cleanup_temp_files():
+    """Cleanup temporary files on shutdown"""
+    try:
+        # Clean up any temporary files in processed directory
+        import glob
+        temp_files = glob.glob(str(OUTPUT_DIR / "*.tmp"))
+        for temp_file in temp_files:
+            try:
+                os.unlink(temp_file)
+                print(f"✅ Cleaned up temp file: {temp_file}")
+            except:
+                pass
+    except Exception as e:
+        print(f"⚠️ Temp file cleanup failed: {e}")
+
+# Register cleanup handlers
+shutdown_manager.add_cleanup_handler(cleanup_video_streamer)
+shutdown_manager.add_cleanup_handler(cleanup_temp_files)
 
 def check_api_shutdown():
     """Check if API shutdown has been requested"""
@@ -279,14 +301,37 @@ async def test_database():
 
 @app.post("/shutdown/")
 async def shutdown_processing():
-    """Stop any ongoing video processing"""
+    """Stop any ongoing video processing gracefully"""
     try:
         processing_time = get_processing_time()
         shutdown_manager.set_shutdown_flag()
-        print(f"[API] Shutdown requested via HTTP endpoint after {processing_time:.2f} seconds of processing")
+        print(f"[API] Graceful shutdown requested via HTTP endpoint after {processing_time:.2f} seconds of processing")
         return {
             "status": "shutdown_requested", 
             "message": "Processing will stop gracefully",
+            "processing_time": processing_time
+        }
+    except Exception as e:
+        return {"status": "error", "error": str(e)}
+
+@app.post("/force-shutdown/")
+async def force_shutdown():
+    """Force shutdown - kill all processes immediately"""
+    try:
+        processing_time = get_processing_time()
+        print(f"[API] Force shutdown requested via HTTP endpoint after {processing_time:.2f} seconds of processing")
+        
+        # Run force shutdown in a separate thread to avoid blocking
+        import threading
+        def force_shutdown_async():
+            time.sleep(0.5)  # Small delay to allow response to be sent
+            shutdown_manager.force_shutdown()
+        
+        threading.Thread(target=force_shutdown_async, daemon=True).start()
+        
+        return {
+            "status": "force_shutdown_requested", 
+            "message": "All processes will be forcefully terminated",
             "processing_time": processing_time
         }
     except Exception as e:

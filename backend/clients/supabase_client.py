@@ -124,6 +124,41 @@ class SupabaseManager:
             print(f"❌ Batch save failed: {e}")
             return False
     
+    def save_vehicle_count_batch(self, vehicle_counts: List[Dict[str, Any]]) -> bool:
+        """Save multiple vehicle counts in one batch operation for better performance"""
+        try:
+            if not vehicle_counts:
+                print("[INFO] No vehicle counts to save in batch")
+                return True
+            
+            # Convert all records to proper format
+            data_to_upsert = []
+            for count_data in vehicle_counts:
+                data_to_upsert.append({
+                    "vehicle_type": count_data.get("vehicle_type"),
+                    "count": count_data.get("count"),
+                    "date": count_data.get("date", datetime.now().strftime("%Y-%m-%d"))
+                })
+            
+            # Log batch operation
+            print(f"[INFO] Batch saving {len(data_to_upsert)} vehicle counts to database...")
+            
+            # ONE database call for ALL vehicle counts
+            result = self.client.table("vehicle_counts") \
+                .upsert(data_to_upsert, on_conflict="vehicle_type,date") \
+                .execute()
+            
+            if result.data and len(result.data) > 0:
+                print(f"✅ Successfully saved {len(data_to_upsert)} vehicle counts in batch")
+                return True
+            else:
+                print(f"❌ Batch save failed - no data returned")
+                return False
+                
+        except Exception as e:
+            print(f"❌ Batch save failed: {e}")
+            return False
+
     def save_vehicle_count(self, vehicle_type: str, count: int, date: str = None) -> bool:
         """Upsert vehicle count: set to current total if exists, insert if not. Matches CSV logic exactly."""
         try:

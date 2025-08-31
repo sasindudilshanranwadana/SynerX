@@ -190,16 +190,26 @@ class DataManager:
                 print(f"✅ {len(history_dict)} tracking records saved to CSV")
                 return True
             else:
-                # API mode: Save to database only
-                for tid, data in history_dict.items():
-                    data_with_date = data.copy()
-                    data_with_date.setdefault("date", current_time)
+                # API mode: Save to database in batch for better performance
+                if history_dict:
+                    # Convert to list for batch save
+                    all_records = []
+                    for tid, data in history_dict.items():
+                        data_with_date = data.copy()
+                        data_with_date.setdefault("date", current_time)
+                        all_records.append(data_with_date)
                     
-                    if supabase_manager.save_tracking_data(data_with_date):
-                        success_count += 1
-                
-                print(f"✅ {success_count} tracking records saved to database")
-                return success_count > 0
+                    # Save all records in one batch operation
+                    success = supabase_manager.save_tracking_data_batch(all_records)
+                    if success:
+                        print(f"✅ {len(all_records)} tracking records saved to database in batch")
+                        return True
+                    else:
+                        print(f"❌ Failed to save {len(all_records)} tracking records to database")
+                        return False
+                else:
+                    print("[INFO] No tracking records to save")
+                    return True
                 
         except Exception as e:
             print(f"[ERROR] Failed to update tracking file: {e}")
@@ -267,15 +277,29 @@ class DataManager:
                 print(f"✅ {len(updated_counts)} vehicle counts updated for {current_date}")
                 return True
             else:
-                # API mode: Save to database only
-                for vehicle_type, count in vehicle_counter.items():
-                    if supabase_manager.save_vehicle_count(vehicle_type, count, current_date):
-                        success_count += 1
+                # API mode: Save to database in batch for better performance
+                if vehicle_counter:
+                    # Convert to list for batch save
+                    current_date = datetime.now().strftime("%Y-%m-%d")
+                    vehicle_count_records = []
+                    for vehicle_type, count in vehicle_counter.items():
+                        vehicle_count_records.append({
+                            "vehicle_type": vehicle_type,
+                            "count": count,
+                            "date": current_date
+                        })
+                    
+                    # Save all vehicle counts in one batch operation
+                    success = supabase_manager.save_vehicle_count_batch(vehicle_count_records)
+                    if success:
+                        print(f"✅ {len(vehicle_count_records)} vehicle counts saved to database in batch")
+                        return True
                     else:
-                        print(f"❌ Failed to save {vehicle_type} count to database")
-                
-                print(f"✅ {success_count}/{len(vehicle_counter)} vehicle counts saved to database")
-                return True
+                        print(f"❌ Failed to save {len(vehicle_count_records)} vehicle counts to database")
+                        return False
+                else:
+                    print("[INFO] No vehicle counts to save")
+                    return True
                 
         except Exception as e:
             print(f"❌ Failed to update count data: {e}")

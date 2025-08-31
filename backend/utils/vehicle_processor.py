@@ -193,15 +193,9 @@ class VehicleProcessor:
         self._update_vehicle_counts_realtime(vehicle_type)
     
     def _update_vehicle_counts_realtime(self, vehicle_type):
-        """Update vehicle counts in real-time based on mode"""
-        if self.mode == "local":
-            self.data_manager.update_count_file(self.vehicle_type_counter, self.mode)
-            print(f"[INFO] Vehicle counts updated in real-time: {dict(self.vehicle_type_counter)}")
-        else:
-            from clients.supabase_client import supabase_manager
-            current_date = datetime.now().strftime("%Y-%m-%d")
-            supabase_manager.save_vehicle_count(vehicle_type, self.vehicle_type_counter[vehicle_type], current_date)
-            print(f"[INFO] Vehicle count updated in database: {vehicle_type} = {self.vehicle_type_counter[vehicle_type]}")
+        """Update vehicle counts in real-time - only update local counters, save at end"""
+        # Only update local counters, don't save to database/CSV in real-time
+        print(f"[INFO] Vehicle count updated locally: {vehicle_type} = {self.vehicle_type_counter[vehicle_type]}")
     
     def _is_vehicle_stationary(self, track_id):
         """Check if vehicle is stationary based on velocity"""
@@ -291,6 +285,14 @@ class VehicleProcessor:
                 self.changed_records.clear()
             else:
                 print("[INFO] No records to save at end of processing")
+            
+            # Save vehicle counts to CSV in one batch
+            if self.vehicle_type_counter:
+                print(f"[INFO] Saving {len(self.vehicle_type_counter)} vehicle counts to CSV in final batch...")
+                if self.data_manager.update_count_file(self.vehicle_type_counter, self.mode):
+                    print(f"[INFO] Successfully saved {len(self.vehicle_type_counter)} vehicle counts to CSV")
+                else:
+                    print(f"[ERROR] Failed to save vehicle counts to CSV")
         else:
             # API mode: Save all collected data in one batch
             if self.changed_records:
@@ -313,6 +315,28 @@ class VehicleProcessor:
                 self.changed_records.clear()
             else:
                 print("[INFO] No records to save at end of processing")
+            
+            # Save vehicle counts to database in one batch
+            if self.vehicle_type_counter:
+                from clients.supabase_client import supabase_manager
+                print(f"[INFO] Saving {len(self.vehicle_type_counter)} vehicle counts to database in final batch...")
+                
+                # Convert vehicle counts to list for batch save
+                current_date = datetime.now().strftime("%Y-%m-%d")
+                vehicle_count_records = []
+                for vehicle_type, count in self.vehicle_type_counter.items():
+                    vehicle_count_records.append({
+                        "vehicle_type": vehicle_type,
+                        "count": count,
+                        "date": current_date
+                    })
+                
+                # Save all vehicle counts in one batch operation
+                success = supabase_manager.save_vehicle_count_batch(vehicle_count_records)
+                if success:
+                    print(f"[INFO] Successfully saved {len(vehicle_count_records)} vehicle counts to database in final batch")
+                else:
+                    print(f"[ERROR] Failed to save {len(vehicle_count_records)} vehicle counts to database")
     
     def get_session_data(self):
         """Get session data for return"""
