@@ -332,6 +332,13 @@
               >
                 Clear Completed Jobs
               </button>
+              <button
+                id="cleanupTempBtn"
+                class="btn warning"
+                onclick="cleanupTempFiles()"
+              >
+                Cleanup Temp Files
+              </button>
             </div>
 
             <div class="control-group">
@@ -992,6 +999,35 @@
           }
         } catch (error) {
           log(`❌ Error restarting queue: ${error.message}`, "error");
+        }
+      }
+
+      // Cleanup temporary files
+      async function cleanupTempFiles() {
+        try {
+          log("🧹 Cleaning up temporary files...", "info");
+          const response = await fetch(
+            "http://localhost:8000/cleanup-temp-files/",
+            {
+              method: "POST",
+            }
+          );
+
+          if (!response.ok) {
+            log(`❌ Failed to cleanup temp files: ${response.status}`, "error");
+            return;
+          }
+
+          const result = await response.json();
+
+          if (result.status === "success") {
+            log("✅ Temporary files cleaned up successfully", "success");
+            log(`🗑️ Cleaned up ${result.cleaned_count} old files`, "info");
+          } else {
+            log(`❌ Failed to cleanup temp files: ${result.error}`, "error");
+          }
+        } catch (error) {
+          log(`❌ Error cleaning up temp files: ${error.message}`, "error");
         }
       }
 
