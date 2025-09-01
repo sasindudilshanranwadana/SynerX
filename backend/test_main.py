@@ -3,6 +3,7 @@ from fastapi.testclient import TestClient
 import os
 import time
 import shutil
+import uuid
 
 # Set an environment variable to indicate we are testing
 os.environ["TESTING"] = "True"
@@ -19,13 +20,12 @@ def video_path():
     Pytest fixture to provide the path to the test video.
     It ensures the video file exists before tests run.
     """
-    # Use a relative path to the assets folder
     path = os.path.join("testAssets", "videoplayback.mp4")
     if not os.path.exists(path):
-        pytest.fail(f"Test video not found at path: {path}. Make sure 'videoplayback.mp4' is in the 'assets' folder.")
+        pytest.fail(f"Test video not found at path: {path}. Make sure 'videoplayback.mp4' is in the 'testAssets' folder.")
     return path
 
-# --- Tests ---
+# --- Existing Tests (Unchanged) ---
 
 def test_read_root():
     """
@@ -47,14 +47,12 @@ def test_upload_and_process_video(video_path: str):
     assert response.status_code == 200
     response_json = response.json()
     assert "job_id" in response_json
-    
-    # FIX: Update the expected message to what your API actually returns
     assert "Video added to processing queue" in response_json["message"]
 
     job_id = response_json["job_id"]
 
     # 2. Poll the job status endpoint until the job is completed
-    timeout = 180  # 3 minutes timeout for processing
+    timeout = 180
     start_time = time.time()
     final_status = None
 
@@ -69,7 +67,6 @@ def test_upload_and_process_video(video_path: str):
         elif status_data["status"] == "failed":
             pytest.fail(f"Job failed with message: {status_data.get('message', 'No message')}")
         
-        # Wait before polling again
         time.sleep(2)
     
     # 3. Assert the final result
@@ -108,7 +105,57 @@ def test_get_stream_status():
     assert "status" in status_json
     assert isinstance(status_json["active_connections"], int)
 
+def test_get_job_status_not_found():
+    """
+    Tests that requesting a non-existent job ID returns a 404 error.
+    """
+    non_existent_job_id = str(uuid.uuid4())
+    response = client.get(f"/jobs/status/{non_existent_job_id}")
+    assert response.status_code == 404
+    assert response.json() == {"detail": "Job not found"}
 
+def test_system_cleanup_temp_files():
+    """
+    Tests the endpoint for cleaning up temporary files.
+    """
+    response = client.post("/system/cleanup-temp-files")
+    assert response.status_code == 200
+    response_json = response.json()
+    assert "message" in response_json
+    assert "cleaned_count" in response_json
+    assert isinstance(response_json["cleaned_count"], int)
+
+def test_websocket_connection():
+    """
+    Tests a basic WebSocket connection and disconnection.
+    """
+    with client.websocket_connect("/ws/video-stream/test_client_id") as websocket:
+        pass
+
+# --- Corrected Test ---
+def test_get_data_tracking():
+    """
+    Tests the GET /data/tracking endpoint.
+    """
+    response = client.get("/data/tracking") 
+    assert response.status_code == 200
+    
+    response_json = response.json()
+    
+    # FIX: Check that the response is a dictionary with the correct structure.
+    assert isinstance(response_json, dict)
+    assert "status" in response_json
+    assert response_json["status"] == "success"
+    assert "data" in response_json
+    assert isinstance(response_json["data"], list)
+
+def test_get_analysis_correlation():
+    """
+    Tests the GET /analysis/correlation endpoint.
+    """
+    response = client.get("/analysis/correlation")
+    assert response.status_code == 200
+    assert isinstance(response.json(), dict)
 
 # --- Teardown ---
 def teardown_module(module):
@@ -121,5 +168,4 @@ def teardown_module(module):
         shutil.rmtree(OUTPUT_DIR)
         print(f"Removed test output directory: {OUTPUT_DIR}")
     
-    # Re-create the directory so the app doesn't crash on next run
     os.makedirs(OUTPUT_DIR)
