@@ -245,6 +245,11 @@ Check processing status.
 
 Test database connectivity and current data.
 
+#### `pytest test_main.py`
+
+Test API endpoints.
+
+
 ## ⚙️ Configuration
 
 Edit `config/config.py` to customize:
