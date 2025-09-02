@@ -8,6 +8,7 @@ import numpy as np
 import shutil
 import subprocess
 from pathlib import Path
+import threading
 
 # Load environment variables from .env file
 load_dotenv()
@@ -383,6 +384,68 @@ class SupabaseManager:
         except Exception as e:
             print(f"[ERROR] Failed to upload video: {e}")
             return None
+
+    def _run_ffmpeg_compress(self, input_path: str, output_path: str, height: int = 720, crf: int = 26, preset: str = "faster") -> bool:
+        """Compress a video using ffmpeg. Returns True on success."""
+        try:
+            # Ensure output directory exists
+            Path(output_path).parent.mkdir(parents=True, exist_ok=True)
+            cmd = [
+                "ffmpeg",
+                "-y",
+                "-i", input_path,
+                "-vf", f"scale=-2:{height}",
+                "-c:v", "libx264",
+                "-preset", preset,
+                "-crf", str(crf),
+                "-c:a", "aac",
+                "-b:a", "128k",
+                output_path,
+            ]
+            subprocess.run(cmd, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+            return True
+        except FileNotFoundError:
+            print("[ERROR] ffmpeg not found on PATH. Please install ffmpeg and ensure it's available.")
+            return False
+        except subprocess.CalledProcessError as e:
+            print(f"[ERROR] ffmpeg compression failed: {e}")
+            return False
+
+    def compress_and_upload_in_background(self, video_id: int, local_input_path: str, output_height: int = 720, crf: int = 26) -> None:
+        """Start a background thread to compress the local video and upload to Supabase Storage.
+
+        On success, updates the video's processed_url and status.
+        """
+        def _worker():
+            try:
+                input_path = Path(local_input_path)
+                if not input_path.exists():
+                    print(f"[ERROR] Input video not found for compression: {local_input_path}")
+                    return
+
+                temp_dir = Path("backend") / "processed"
+                temp_dir.mkdir(parents=True, exist_ok=True)
+                output_name = f"{input_path.stem}_compressed.mp4"
+                output_path = temp_dir / output_name
+
+                print(f"[COMPRESS] Starting compression for video {video_id} -> {output_path}")
+                ok = self._run_ffmpeg_compress(str(input_path), str(output_path), height=output_height, crf=crf)
+                if not ok:
+                    self.update_video_status_preserve_timing(video_id, status="compression_failed")
+                    return
+
+                public_url = self.upload_video_to_storage(str(output_path), file_name=output_name)
+                if not public_url:
+                    self.update_video_status_preserve_timing(video_id, status="upload_failed")
+                    return
+
+                self.update_video_status_preserve_timing(video_id, status="compressed", processed_url=public_url)
+                print(f"[COMPRESS] Completed for video {video_id}. URL: {public_url}")
+            except Exception as e:
+                print(f"[ERROR] Unexpected error in compression worker: {e}")
+
+        thread = threading.Thread(target=_worker, daemon=True)
+        thread.start()
     
 
 
