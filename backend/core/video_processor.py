@@ -23,12 +23,13 @@ from utils.display_manager import DisplayManager
 from utils.vehicle_processor import VehicleProcessor
 
 class VideoProcessor:
-    """Main video processing class that orchestrates all components"""
+    """Main video processing class that orchestrates all components with video-based schema"""
     
-    def __init__(self, video_path=Config.VIDEO_PATH, output_video_path=Config.OUTPUT_VIDEO_PATH, mode="local"):
+    def __init__(self, video_path=Config.VIDEO_PATH, output_video_path=Config.OUTPUT_VIDEO_PATH, mode="api", video_id: int = None):
         self.video_path = video_path
         self.output_video_path = output_video_path
-        self.mode = mode
+        self.mode = mode  # Kept for compatibility but always uses database
+        self.video_id = video_id  # New: video ID for linking data to database
         
         # Initialize managers
         self.device_manager = DeviceManager()
@@ -53,15 +54,12 @@ class VideoProcessor:
         self.frame_idx = 0
         self.start_time = time.time()
         self.frame_gen = None
-        self.frame_skip = Config.DISPLAY_FRAME_SKIP if mode == "local" else 1
+        self.frame_skip = 1  # Always process all frames for API mode
     
     def initialize(self):
-        """Initialize all components for video processing"""
-        print(f"[INFO] Running in {self.mode.upper()} mode")
-        if self.mode == "local":
-            print("[INFO] Local mode: Saving to CSV files only")
-        elif self.mode == "api":
-            print("[INFO] API mode: Saving to database only")
+        """Initialize all components for video processing with video-based schema"""
+        print(f"[INFO] Running in database mode with video_id: {self.video_id}")
+        print("[INFO] Database mode: Saving to database only with video linking")
         
         # Setup device
         device = self.device_manager.get_device()
@@ -80,8 +78,8 @@ class VideoProcessor:
         # Setup zones and transformer
         self._setup_zones_and_transformer()
         
-        # Initialize vehicle processor
-        self.vehicle_processor = VehicleProcessor(self.vehicle_tracker, self.data_manager, self.mode)
+        # Initialize vehicle processor with video_id
+        self.vehicle_processor = VehicleProcessor(self.vehicle_tracker, self.data_manager, self.mode, self.video_id)
         self.vehicle_processor.initialize_data()
         self.vehicle_processor.load_existing_counts()
         self.vehicle_processor.setup_tracker_offset()
@@ -95,7 +93,7 @@ class VideoProcessor:
         # Video streaming will start automatically when first WebSocket client connects
         # No need to start it here for better performance
         
-        print(f"[INFO] Frame skip: {self.frame_skip} (for better responsiveness in local mode)")
+        print(f"[INFO] Frame skip: {self.frame_skip} (for optimal responsiveness)")
         print(f"[INFO] Processing frame skip: {Config.PROCESSING_FRAME_SKIP} (for better performance)")
     
     def _load_first_frame(self):
@@ -133,10 +131,10 @@ class VideoProcessor:
     
     def _print_initialization_info(self):
         """Print initialization information"""
-        print(f"[INFO] Loaded {len(self.vehicle_processor.stop_zone_history_dict)} existing tracking records")
-        print(f"[INFO] Loaded {len(self.vehicle_processor.counted_ids)} previously counted vehicles")
-        print(f"[INFO] Loaded {len(self.vehicle_tracker.stationary_vehicles)} previously stationary vehicles")
-        print(f"[INFO] Current vehicle counts: {dict(self.vehicle_processor.vehicle_type_counter)}")
+        print(f"[INFO] Loaded {len(self.vehicle_processor.stop_zone_history_dict)} existing tracking records for video {self.video_id}")
+        print(f"[INFO] Loaded {len(self.vehicle_processor.counted_ids)} previously counted vehicles for video {self.video_id}")
+        print(f"[INFO] Loaded {len(self.vehicle_tracker.stationary_vehicles)} previously stationary vehicles for video {self.video_id}")
+        print(f"[INFO] Current vehicle counts for video {self.video_id}: {dict(self.vehicle_processor.vehicle_type_counter)}")
     
     def blur_license_plates(self, frame):
         """
@@ -270,8 +268,8 @@ class VideoProcessor:
         return detections
     
     def _finalize_processing(self):
-        """Finalize processing and cleanup"""
-        print(f"[INFO] Finalizing processing at frame {self.frame_idx}...")
+        """Finalize processing and cleanup with video stats update"""
+        print(f"[INFO] Finalizing processing at frame {self.frame_idx} for video {self.video_id}...")
         
         # Check if there's any data to save (regardless of cancellation)
         has_tracking_data = len(self.vehicle_processor.changed_records) > 0
@@ -280,25 +278,28 @@ class VideoProcessor:
         
         if has_any_data:
             # There's data to save, save it regardless of cancellation
-            print(f"[INFO] Found data to save: {len(self.vehicle_processor.changed_records)} tracking records, {len(self.vehicle_processor.vehicle_type_counter)} vehicle counts")
+            print(f"[INFO] Found data to save: {len(self.vehicle_processor.changed_records)} tracking records, {len(self.vehicle_processor.vehicle_type_counter)} vehicle counts for video {self.video_id}")
             self.vehicle_processor.save_all_data_at_end()
             
             # Save heat maps
             self.heat_map.save_heat_maps(self.first_frame)
             
+            # Update video statistics in database
+            self._update_video_stats()
+            
             # Print final statistics
             self._print_final_statistics()
             
             if shutdown_manager.check_shutdown():
-                print("[INFO] Processing was cancelled but saved partial data.")
+                print(f"[INFO] Processing was interrupted but saved partial data for video {self.video_id}.")
             else:
-                print("[INFO] Tracking and counting completed successfully.")
+                print(f"[INFO] Tracking and counting completed successfully for video {self.video_id}.")
         else:
             # No data to save
             if shutdown_manager.check_shutdown():
-                print("[INFO] Processing was cancelled. No data to save.")
+                print(f"[INFO] Processing was cancelled for video {self.video_id}. No data to save.")
             else:
-                print("[INFO] Processing completed but no data was collected.")
+                print(f"[INFO] Processing completed for video {self.video_id} but no data was collected.")
         
         # Cleanup (always do this regardless of cancellation)
         self.device_manager.clear_gpu_memory()
@@ -307,30 +308,37 @@ class VideoProcessor:
             self.display_manager.stop_streaming()
         self.display_manager.cleanup()
     
+    def _update_video_stats(self):
+        """Update video processing statistics in database - now handled in main.py"""
+        # This method is kept for compatibility but video stats are now updated in main.py
+        # after the data is saved to ensure accurate statistics
+        pass
+    
     def _print_final_statistics(self):
         """Print final processing statistics"""
         end_time = time.time()
         total_time = end_time - self.start_time
         avg_fps = self.frame_idx / total_time if total_time > 0 else 0
         
-        print(f"[INFO] Total Time: {total_time:.2f}s, Frames: {self.frame_idx}, Avg FPS: {avg_fps:.2f}")
+        print(f"[INFO] Video {self.video_id} - Total Time: {total_time:.2f}s, Frames: {self.frame_idx}, Avg FPS: {avg_fps:.2f}")
     
     def get_session_data(self):
-        """Get session data for return"""
+        """Get session data for return with video_id filtering"""
         return self.vehicle_processor.get_session_data()
 
-def main(video_path=Config.VIDEO_PATH, output_video_path=Config.OUTPUT_VIDEO_PATH, mode="local"):
-    """Main processing function
+def main(video_path=Config.VIDEO_PATH, output_video_path=Config.OUTPUT_VIDEO_PATH, mode="api", video_id: int = None):
+    """Main processing function with video-based schema
     
     Args:
         video_path: Path to input video
         output_video_path: Path to output video
-        mode: "local" for CSV-only development, "api" for database-only API mode
+        mode: Always "api" for database-only mode
+        video_id: Video ID for linking data to database
     
     Returns:
-        dict: Session data containing tracking_data and vehicle_counts for API mode
+        dict: Session data containing tracking_data and vehicle_counts
     """
-    processor = VideoProcessor(video_path, output_video_path, mode)
+    processor = VideoProcessor(video_path, output_video_path, mode, video_id)
     processor.initialize()
     processor.process_video()
     return processor.get_session_data()

@@ -1,17 +1,17 @@
 # SynerX - Vehicle Tracking & Compliance System
 
-A comprehensive vehicle tracking and compliance monitoring system with dual-mode operation (local development and API production).
+A comprehensive vehicle tracking and compliance monitoring system with database-driven operation for production deployment.
 
 ## 🚀 Features
 
 - **Real-time vehicle tracking** with YOLO object detection
 - **Compliance monitoring** - tracks vehicles stopping in designated zones
-- **Dual-mode operation** - Local development (CSV) and API production (Database)
+- **Database-driven operation** - Supabase integration for cloud data storage
 - **FastAPI web interface** for video upload and processing
-- **Supabase integration** for cloud data storage
 - **Processing time tracking** and graceful shutdown
 - **Heat map generation** for traffic analysis
 - **Vehicle counting** by type (car, truck, etc.)
+- **Weather integration** for environmental data correlation
 
 ## 📋 Prerequisites
 
@@ -56,6 +56,9 @@ Create a `.env` file in the `backend` directory:
 SUPABASE_URL=https://your-project.supabase.co
 SUPABASE_KEY=your-supabase-anon-key
 GCS_BUCKET_NAME=your-supabase-storage-name
+
+# Optional: Weather API Key
+WEATHER_API_KEY=your-openweathermap-api-key
 ```
 
 ### 5. Model Setup
@@ -68,7 +71,7 @@ backend/models/best.pt
 
 ### 6. Supabase Database Setup
 
-Before ru the SQL commands, u can do the step 9 and step 10 wrote in `supabase_tables.sql` first and make sure you correct the name of bucket name
+Before running the SQL commands, you can do step 9 and step 10 written in `supabase_tables.sql` first and make sure you correct the name of bucket name.
 
 Run the SQL commands in `supabase_tables.sql` in your Supabase SQL editor to create the required tables and storage bucket.
 
@@ -106,27 +109,7 @@ uvicorn main:app --host 0.0.0.0 --port 8000
 python core/video_processor.py
 ```
 
-## 🔄 Dual-Mode Workflow
-
-### 🏠 Local Development Mode
-
-**Purpose**: Development, testing, and local analysis
-**Data Storage**: CSV files only
-**Input**: Video from config file
-
-```bash
-# Run local development mode (from backend root directory)
-python core/video_processor.py
-```
-
-**Features:**
-
-- Reads video from `Config.VIDEO_PATH`
-- Saves data to CSV files (`data/tracking_results.csv`, `data/vehicle_count.csv`)
-- No database dependency
-- Fast development cycle
-
-### 🌐 API Production Mode
+## 🔄 Database-Driven Workflow
 
 **Purpose**: Production deployment and web interface
 **Data Storage**: Supabase database only
@@ -151,6 +134,7 @@ uvicorn main:app --reload
 - Saves data to Supabase database
 - Processing time tracking
 - Graceful shutdown support
+- Real-time video streaming via WebSocket
 
 ## 📡 API Endpoints
 
@@ -249,7 +233,6 @@ Test database connectivity and current data.
 
 Test API endpoints.
 
-
 ## ⚙️ Configuration
 
 Edit `config/config.py` to customize:
@@ -272,6 +255,12 @@ Edit `config/config.py` to customize:
   "status": "stationary",
   "compliance": 1,
   "reaction_time": 3.22,
+  "weather_condition": "clear",
+  "temperature": 22.5,
+  "humidity": 65,
+  "visibility": 10.0,
+  "precipitation_type": "none",
+  "wind_speed": 5.2,
   "date": "2025-06-27 21:45:24"
 }
 ```
@@ -288,7 +277,7 @@ Edit `config/config.py` to customize:
 
 ## 🚦 Usage Examples
 
-### Local Development
+### Database Production Mode
 
 ```bash
 # 1. Set up environment
@@ -298,26 +287,15 @@ cp .env.example .env
 # 2. Configure video path in config/config.py
 VIDEO_PATH = "path/to/your/video.mp4"
 
-# 3. Run local processing (from backend root directory)
-python core/video_processor.py
-
-# 4. Check results in data/ folder
-cat data/tracking_results.csv
-cat data/vehicle_count.csv
-```
-
-### API Production
-
-```bash
-# 1. Start FastAPI server
+# 3. Start FastAPI server
 uvicorn main:app --reload
 
-# 2. Open web interface
+# 4. Open web interface
 # http://localhost:8000/docs
 
-# 3. Upload video via /upload-video endpoint
-# 4. Monitor processing status via /status endpoint
-# 5. Stop processing via /shutdown endpoint if needed
+# 5. Upload video via /upload-video endpoint
+# 6. Monitor processing status via /status endpoint
+# 7. Stop processing via /shutdown endpoint if needed
 ```
 
 ## 🔧 Troubleshooting
@@ -343,7 +321,7 @@ uvicorn main:app --reload
 3. **Database connection failed**
 
    ```
-   Failed to read from Supabase, falling back to CSV
+   Failed to read from database
    ```
 
    **Solution**: Check your Supabase credentials and network connection
@@ -378,13 +356,12 @@ backend/
 │   └── config.py           # Configuration settings
 ├── utils/
 │   ├── supabase_manager.py # Supabase database operations
-│   ├── data_manager.py     # CSV and data orchestration
+│   ├── data_manager.py     # Database data orchestration
 │   ├── vehicle_tracker.py  # Vehicle tracking logic
 │   ├── heatmap.py          # Heat map generation
 │   └── view_transformer.py # Coordinate transformation
 ├── models/
 │   └── best.pt             # YOLO model file
-├── data/                   # CSV output (local mode)
 ├── processed/              # Processed videos
 ├── requirements.txt        # Python dependencies
 ├── .env                    # Environment variables
@@ -396,7 +373,7 @@ backend/
 1. Fork the repository
 2. Create a feature branch
 3. Make your changes
-4. Test in both local and API modes
+4. Test in database mode
 5. Submit a pull request
 
 ## 📄 License
@@ -409,7 +386,7 @@ For issues and questions:
 
 1. Check the troubleshooting section
 2. Review the configuration options
-3. Test in local mode first
+3. Test database connectivity
 4. Create an issue with detailed error messages
 
 ---
