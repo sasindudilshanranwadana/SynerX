@@ -27,7 +27,7 @@ from clients.supabase_client import supabase_manager
 # Import middleware
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
-from starlette.responses import Response
+from starlette.responses import Response, FileResponse
 
 # Create organized temp directories within backend folder
 TEMP_DIR = Path("temp")
@@ -626,6 +626,11 @@ app.include_router(status_router)
 async def root():
     """Root endpoint to test CORS"""
     return {"message": "SynerX API is running!", "status": "ok"}
+
+
+@app.get("/videos", include_in_schema=False)
+async def videos_page():
+    return FileResponse("videos_dashboard.html")
 
 # WebSocket endpoint
 @app.websocket("/ws/video-stream/{client_id}")

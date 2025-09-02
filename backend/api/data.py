@@ -302,4 +302,17 @@ def init_data_router():
         except Exception as e:
             print(f"[ERROR] Failed to filter videos: {e}")
             return {"status": "error", "error": str(e), "data": []}
+    @router.delete("/videos/{video_id}")
+    async def delete_video(video_id: int):
+        """
+        Delete a video and its related data.
+        """
+        try:
+            ok = supabase_manager.delete_video_record(video_id)
+            if ok:
+                return {"status": "success", "deleted": video_id}
+            return {"status": "error", "error": "Failed to delete video"}
+        except Exception as e:
+            return {"status": "error", "error": str(e)}
+
     return router
