@@ -265,29 +265,9 @@
           });
           statusEl.textContent = `Queued job ${data.job_id} (pos ${data.queue_position})`;
           fileInput.value = "";
-          refreshJobs();
         } catch (e) {
           console.error(e);
           statusEl.textContent = `Error: ${e.message}`;
-        }
-      }
-
-      async function refreshJobs() {
-        try {
-          const data = await fetchJSON(`${API_BASE}/jobs/`);
-          if (data.status !== "success")
-            throw new Error(data.error || "Failed to load jobs");
-          document.getElementById("summary").textContent = ` | Total: ${
-            data.summary.total_jobs
-          } | Queue: ${data.summary.queue_length} | Running: ${
-            data.summary.queue_processor_running ? "Yes" : "No"
-          }`;
-          renderJobs(data.all_jobs || []);
-        } catch (e) {
-          console.error(e);
-          document.getElementById(
-            "summary"
-          ).textContent = ` | Error loading jobs: ${e.message}`;
         }
       }
 
