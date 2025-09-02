@@ -16,6 +16,7 @@ from api.data import init_data_router
 from api.analysis import init_analysis_router
 from api.system import init_system_router
 from api.status import init_status_router
+import asyncio
 
 # Import core modules
 from core.video_processor import main
@@ -643,6 +644,72 @@ async def websocket_video_stream(websocket: WebSocket, client_id: str):
         print(f"[WS] Error with client {client_id}: {e}")
     finally:
         await video_streamer.disconnect(client_id)
+
+# WebSocket endpoint for live jobs status updates
+@app.websocket("/ws/jobs")
+async def websocket_jobs_status(websocket: WebSocket):
+    """Push jobs summary and list to clients periodically."""
+    try:
+        await websocket.accept()
+        while True:
+            try:
+                with job_lock:
+                    # Build summary payload similar to GET /jobs/
+                    all_jobs = []
+                    for job_id, job in background_jobs.items():
+                        if job["status"] == "processing":
+                            elapsed_time = time.time() - job["start_time"]
+                        else:
+                            end_time = job.get("end_time", job["start_time"])  # default
+                            elapsed_time = max(0.0, end_time - job["start_time"])            
+                        info = {
+                            "job_id": job_id,
+                            "status": job["status"],
+                            "progress": job["progress"],
+                            "file_name": job["file_name"],
+                            "start_time": job["start_time"],
+                            "elapsed_time": elapsed_time,
+                            "message": job["message"],
+                            "error": job["error"],
+                        }
+                        if job.get("result"):
+                            info["result"] = job["result"]
+                        all_jobs.append(info)
+
+                    status_counts = {}
+                    for j in all_jobs:
+                        s = j["status"]
+                        status_counts[s] = status_counts.get(s, 0) + 1
+
+                    with queue_lock:
+                        queue_length = len(job_queue)
+                        queue_processor_running = queue_processor_active
+
+                    payload = {
+                        "status": "success",
+                        "summary": {
+                            "total_jobs": len(all_jobs),
+                            "status_counts": status_counts,
+                            "queue_length": queue_length,
+                            "queue_processor_running": queue_processor_running,
+                        },
+                        "all_jobs": all_jobs,
+                    }
+
+                await websocket.send_text(json.dumps(payload))
+                await asyncio.sleep(1.0)
+            except WebSocketDisconnect:
+                break
+            except Exception as e:
+                try:
+                    await websocket.send_text(json.dumps({"status":"error","error":str(e)}))
+                except Exception:
+                    pass
+                await asyncio.sleep(1.0)
+    except WebSocketDisconnect:
+        pass
+    except Exception as e:
+        print(f"[WS] Jobs status error: {e}")
 
 if __name__ == "__main__":
     import uvicorn
