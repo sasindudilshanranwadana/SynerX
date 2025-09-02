@@ -214,6 +214,8 @@ def process_single_job(job_data):
             pass
 
         # Progress callback updates background job progress (0-80% during processing)
+        last_progress_time = 0.0
+        last_pct = 10
         def on_progress(processed_frames: int, total):
             try:
                 with job_lock:
@@ -230,7 +232,14 @@ def process_single_job(job_data):
                             pct = max(10, min(80, pct))
                         # Quantize to 5% steps for clearer UI changes
                         pct = max(10, min(80, (pct // 5) * 5))
-                        background_jobs[job_id]["progress"] = pct
+                        # Throttle progress updates to ~5Hz and only when pct increases
+                        import time as _t
+                        now = _t.time()
+                        nonlocal last_progress_time, last_pct
+                        if pct > last_pct and (now - last_progress_time) >= 0.2:
+                            background_jobs[job_id]["progress"] = pct
+                            last_pct = pct
+                            last_progress_time = now
             except Exception:
                 pass
 
