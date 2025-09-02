@@ -200,11 +200,16 @@ def init_job_router(background_jobs, job_lock, job_queue, queue_lock, queue_proc
                             break
             
             if active_job:
-                # Mark the job as cancelled
+                # Mark job state based on whether it's processing or queued
                 with job_lock:
-                    background_jobs[active_job]["status"] = "cancelled"
-                    background_jobs[active_job]["message"] = "Job cancelled by user"
-                    background_jobs[active_job]["error"] = "Cancelled by user request"
+                    if job_status == "processing":
+                        background_jobs[active_job]["status"] = "interrupted"
+                        background_jobs[active_job]["message"] = "Job interrupted by user"
+                        background_jobs[active_job]["error"] = "Interrupted by user request"
+                    else:
+                        background_jobs[active_job]["status"] = "cancelled"
+                        background_jobs[active_job]["message"] = "Job cancelled by user"
+                        background_jobs[active_job]["error"] = "Cancelled by user request"
                 
                 # If it was a queued job, remove it from the queue
                 if job_status == "queued":
@@ -256,9 +261,9 @@ def init_job_router(background_jobs, job_lock, job_queue, queue_lock, queue_proc
                 print(f"[SHUTDOWN] Cancelled {job_status} job: {active_job}")
                 
                 return {
-                    "status": "cancelled", 
-                    "message": f"{job_status.capitalize()} job {active_job} has been cancelled",
-                    "cancelled_job": active_job,
+                    "status": "interrupted" if job_status == "processing" else "cancelled", 
+                    "message": f"{job_status.capitalize()} job {active_job} has been { 'interrupted' if job_status == 'processing' else 'cancelled' }",
+                    "job_id": active_job,
                     "job_status": job_status
                 }
             else:
@@ -305,10 +310,15 @@ def init_job_router(background_jobs, job_lock, job_queue, queue_lock, queue_proc
                         "job_status": job_status
                     }
                 
-                # Mark the job as cancelled
-                background_jobs[job_id]["status"] = "cancelled"
-                background_jobs[job_id]["message"] = "Job cancelled by user"
-                background_jobs[job_id]["error"] = "Cancelled by user request"
+                # Mark job state based on status
+                if job_status == "processing":
+                    background_jobs[job_id]["status"] = "interrupted"
+                    background_jobs[job_id]["message"] = "Job interrupted by user"
+                    background_jobs[job_id]["error"] = "Interrupted by user request"
+                else:
+                    background_jobs[job_id]["status"] = "cancelled"
+                    background_jobs[job_id]["message"] = "Job cancelled by user"
+                    background_jobs[job_id]["error"] = "Cancelled by user request"
                 
                 # If it was a queued job, remove it from the queue
                 if job_status == "queued":
@@ -359,9 +369,9 @@ def init_job_router(background_jobs, job_lock, job_queue, queue_lock, queue_proc
                 print(f"[SHUTDOWN] Cancelled {job_status} job: {job_id}")
                 
                 return {
-                    "status": "cancelled", 
-                    "message": f"{job_status.capitalize()} job {job_id} has been cancelled",
-                    "cancelled_job": job_id,
+                    "status": "interrupted" if job_status == "processing" else "cancelled", 
+                    "message": f"{job_status.capitalize()} job {job_id} has been { 'interrupted' if job_status == 'processing' else 'cancelled' }",
+                    "job_id": job_id,
                     "job_status": job_status
                 }
                 

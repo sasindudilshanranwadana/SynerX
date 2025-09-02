@@ -1,0 +1,449 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>SynerX Jobs Dashboard</title>
+    <style>
+      body {
+        font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial,
+          sans-serif;
+        background: #0f172a;
+        color: #e2e8f0;
+        margin: 0;
+      }
+      header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 16px 20px;
+        background: #111827;
+        position: sticky;
+        top: 0;
+        z-index: 5;
+      }
+      h1 {
+        font-size: 18px;
+        margin: 0;
+      }
+      .controls {
+        display: flex;
+        gap: 10px;
+      }
+      button,
+      .btn {
+        background: #2563eb;
+        color: #fff;
+        border: none;
+        padding: 8px 12px;
+        border-radius: 8px;
+        cursor: pointer;
+        font-weight: 600;
+      }
+      button.secondary {
+        background: #334155;
+      }
+      button.danger {
+        background: #dc2626;
+      }
+      button:disabled {
+        opacity: 0.6;
+        cursor: not-allowed;
+      }
+      main {
+        padding: 20px;
+        max-width: 1200px;
+        margin: 0 auto;
+      }
+      .card {
+        background: #111827;
+        border: 1px solid #1f2937;
+        border-radius: 12px;
+        padding: 16px;
+        margin-bottom: 16px;
+      }
+      .row {
+        display: flex;
+        gap: 12px;
+        align-items: center;
+        flex-wrap: wrap;
+      }
+      input[type="file"] {
+        color: #e2e8f0;
+      }
+      table {
+        width: 100%;
+        border-collapse: collapse;
+      }
+      th,
+      td {
+        border-bottom: 1px solid #1f2937;
+        padding: 10px;
+        font-size: 14px;
+      }
+      th {
+        text-align: left;
+        color: #94a3b8;
+        font-weight: 700;
+      }
+      tr:hover {
+        background: #0b1220;
+      }
+      .pill {
+        padding: 2px 8px;
+        border-radius: 999px;
+        font-size: 12px;
+        font-weight: 700;
+      }
+      .queued {
+        background: #1e293b;
+        color: #93c5fd;
+      }
+      .processing {
+        background: #1e293b;
+        color: #fbbf24;
+      }
+      .completed {
+        background: #052e16;
+        color: #86efac;
+      }
+      .failed {
+        background: #3f1d1d;
+        color: #fecaca;
+      }
+      .cancelled {
+        background: #3f1d1d;
+        color: #fca5a5;
+      }
+      .progress-bar {
+        background: #0b1220;
+        border: 1px solid #1f2937;
+        border-radius: 6px;
+        height: 10px;
+        width: 120px;
+        overflow: hidden;
+      }
+      .progress-inner {
+        height: 100%;
+        background: #22c55e;
+        width: 0%;
+      }
+      .muted {
+        color: #94a3b8;
+        font-size: 12px;
+      }
+      .actions {
+        display: flex;
+        gap: 6px;
+      }
+    </style>
+  </head>
+  <body>
+    <header>
+      <h1>SynerX Jobs Dashboard</h1>
+      <div class="controls">
+        <button class="secondary" onclick="refreshJobs()">Refresh</button>
+        <button class="secondary" onclick="clearCompleted()">
+          Clear Completed
+        </button>
+        <button class="danger" onclick="shutdownAny()">
+          Shutdown Active/Queued
+        </button>
+      </div>
+    </header>
+    <main>
+      <div class="card">
+        <div class="row">
+          <input id="videoFile" type="file" accept="video/*" />
+          <button onclick="uploadVideo()">Upload & Queue</button>
+          <span id="uploadStatus" class="muted"></span>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="row" style="justify-content: space-between">
+          <div>
+            <strong>Jobs</strong>
+            <span id="summary" class="muted"></span>
+          </div>
+          <div class="muted">
+            Auto-refresh: <span id="autorefreshState">On</span>
+          </div>
+        </div>
+        <div style="overflow: auto">
+          <table>
+            <thead>
+              <tr>
+                <th>Job ID</th>
+                <th>File</th>
+                <th>Status</th>
+                <th>Progress</th>
+                <th>Message</th>
+                <th>Elapsed</th>
+                <th>Actions</th>
+              </tr>
+            </thead>
+            <tbody id="jobsBody"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- Stream Modal -->
+      <div
+        id="streamModal"
+        style="
+          display: none;
+          position: fixed;
+          inset: 0;
+          background: rgba(0, 0, 0, 0.6);
+          align-items: center;
+          justify-content: center;
+        "
+      >
+        <div
+          style="
+            background: #0b1220;
+            border: 1px solid #1f2937;
+            border-radius: 12px;
+            padding: 12px;
+            width: min(960px, 95vw);
+          "
+        >
+          <div
+            class="row"
+            style="justify-content: space-between; margin-bottom: 8px"
+          >
+            <strong>Live Stream</strong>
+            <div class="actions">
+              <button class="secondary" onclick="closeStream()">Close</button>
+            </div>
+          </div>
+          <div
+            style="
+              background: #000;
+              display: flex;
+              justify-content: center;
+              align-items: center;
+              min-height: 360px;
+            "
+          >
+            <img
+              id="streamImage"
+              alt="stream"
+              style="max-width: 100%; height: auto; display: none"
+            />
+            <div id="streamPlaceholder" class="muted">Connecting...</div>
+          </div>
+        </div>
+      </div>
+    </main>
+
+    <script>
+      // Use explicit localhost API base
+      const API_BASE = "http://localhost:8000";
+      let autoTimer = null;
+
+      document.addEventListener("DOMContentLoaded", () => {
+        refreshJobs();
+        autoTimer = setInterval(refreshJobs, 3000);
+      });
+
+      async function uploadVideo() {
+        const fileInput = document.getElementById("videoFile");
+        const statusEl = document.getElementById("uploadStatus");
+        if (!fileInput.files.length) {
+          alert("Choose a video file first.");
+          return;
+        }
+        const file = fileInput.files[0];
+        const form = new FormData();
+        form.append("file", file);
+        statusEl.textContent = "Uploading...";
+        try {
+          const data = await fetchJSON(`${API_BASE}/video/upload`, {
+            method: "POST",
+            body: form,
+          });
+          statusEl.textContent = `Queued job ${data.job_id} (pos ${data.queue_position})`;
+          fileInput.value = "";
+          refreshJobs();
+        } catch (e) {
+          console.error(e);
+          statusEl.textContent = `Error: ${e.message}`;
+        }
+      }
+
+      async function refreshJobs() {
+        try {
+          const data = await fetchJSON(`${API_BASE}/jobs/`);
+          if (data.status !== "success")
+            throw new Error(data.error || "Failed to load jobs");
+          document.getElementById("summary").textContent = ` | Total: ${
+            data.summary.total_jobs
+          } | Queue: ${data.summary.queue_length} | Running: ${
+            data.summary.queue_processor_running ? "Yes" : "No"
+          }`;
+          renderJobs(data.all_jobs || []);
+        } catch (e) {
+          console.error(e);
+          document.getElementById(
+            "summary"
+          ).textContent = ` | Error loading jobs: ${e.message}`;
+        }
+      }
+
+      function renderJobs(jobs) {
+        const tbody = document.getElementById("jobsBody");
+        tbody.innerHTML = "";
+        jobs.sort((a, b) => (a.status === "processing" ? -1 : 1));
+        for (const j of jobs) {
+          const tr = document.createElement("tr");
+          const pillClass = (s) =>
+            ({
+              queued: "queued",
+              processing: "processing",
+              completed: "completed",
+              failed: "failed",
+              cancelled: "cancelled",
+            }[s] || "queued");
+          const progress = Math.max(
+            0,
+            Math.min(100, Math.round(j.progress || 0))
+          );
+          const elapsed = formatElapsed(j.elapsed_time || 0);
+          tr.innerHTML = `
+            <td style="font-family:monospace;">${j.job_id}</td>
+            <td title="${j.file_name}">${truncate(j.file_name, 36)}</td>
+            <td><span class="pill ${pillClass(j.status)}">${
+            j.status
+          }</span></td>
+            <td>
+              <div class="progress-bar"><div class="progress-inner" style="width:${progress}%;"></div></div>
+            </td>
+            <td class="muted" title="${j.message || ""}">${truncate(
+            j.message || "",
+            40
+          )}</td>
+            <td class="muted">${elapsed}</td>
+            <td class="actions">
+              <button class="danger" onclick="shutdownJob('${
+                j.job_id
+              }')">Shutdown</button>
+              ${
+                j.status === "processing"
+                  ? `<button onclick="openStream('${j.job_id}')">Open Stream</button>`
+                  : ""
+              }
+            </td>
+          `;
+          tbody.appendChild(tr);
+        }
+      }
+
+      function truncate(str, n) {
+        return str && str.length > n ? str.slice(0, n - 1) + "…" : str || "";
+      }
+      function formatElapsed(sec) {
+        const s = Math.floor(sec % 60);
+        const m = Math.floor(sec / 60) % 60;
+        const h = Math.floor(sec / 3600);
+        return `${h > 0 ? h + ":" : ""}${String(m).padStart(2, "0")}:${String(
+          s
+        ).padStart(2, "0")}`;
+      }
+
+      async function shutdownAny() {
+        if (!confirm("Shutdown current processing or next queued job?")) return;
+        try {
+          await fetch(`${API_BASE}/jobs/shutdown`, { method: "POST" });
+        } catch {}
+        refreshJobs();
+      }
+
+      async function clearCompleted() {
+        try {
+          await fetch(`${API_BASE}/jobs/clear-completed`, { method: "POST" });
+        } catch {}
+        refreshJobs();
+      }
+
+      async function shutdownJob(jobId) {
+        if (!confirm(`Shutdown job ${jobId}?`)) return;
+        try {
+          await fetch(`${API_BASE}/jobs/shutdown/${jobId}`, { method: "POST" });
+        } catch {}
+        refreshJobs();
+      }
+
+      let ws = null;
+      function openStream(jobId) {
+        const modal = document.getElementById("streamModal");
+        const img = document.getElementById("streamImage");
+        const ph = document.getElementById("streamPlaceholder");
+        img.style.display = "none";
+        ph.textContent = "Connecting...";
+        modal.style.display = "flex";
+        try {
+          if (ws) {
+            ws.close();
+            ws = null;
+          }
+        } catch {}
+        const wsUrl =
+          API_BASE.replace("http", "ws") +
+          `/ws/video-stream/${encodeURIComponent(jobId)}`;
+        ws = new WebSocket(wsUrl);
+        ws.onopen = () => {
+          ph.textContent = "Connected. Waiting for frames...";
+        };
+        ws.onmessage = (evt) => {
+          try {
+            const msg = JSON.parse(evt.data);
+            if (msg.type === "frame" && msg.frame_data) {
+              img.src = `data:image/jpeg;base64,${msg.frame_data}`;
+              img.style.display = "block";
+              ph.style.display = "none";
+            }
+          } catch {}
+        };
+        ws.onerror = () => {
+          ph.textContent = "WebSocket error.";
+        };
+        ws.onclose = () => {
+          ph.textContent = "Disconnected.";
+        };
+      }
+
+      function closeStream() {
+        const modal = document.getElementById("streamModal");
+        modal.style.display = "none";
+        try {
+          if (ws) {
+            ws.close();
+            ws = null;
+          }
+        } catch {}
+      }
+
+      // Robust JSON fetch helper to avoid "Unexpected end of JSON input"
+      async function fetchJSON(url, options) {
+        const res = await fetch(url, options);
+        const text = await res.text();
+        try {
+          const data = text ? JSON.parse(text) : {};
+          if (!res.ok) {
+            const msg =
+              data.detail || data.error || res.statusText || "Request failed";
+            throw new Error(`${res.status} ${msg}`);
+          }
+          return data;
+        } catch (err) {
+          // If content-type isn't JSON or body empty, surface meaningful error
+          if (!res.ok)
+            throw new Error(`${res.status} ${text || res.statusText}`);
+          throw err;
+        }
+      }
+    </script>
+  </body>
+</html>
