@@ -29,7 +29,12 @@ def init_job_router(background_jobs, job_lock, job_queue, queue_lock, queue_proc
                 # Get all jobs with detailed information
                 all_jobs = []
                 for job_id, job in background_jobs.items():
-                    elapsed_time = time.time() - job["start_time"]
+                    # Elapsed time counts only while processing; becomes fixed when ended
+                    if job["status"] == "processing":
+                        elapsed_time = time.time() - job["start_time"]
+                    else:
+                        end_time = job.get("end_time", job["start_time"])  # default to start if missing
+                        elapsed_time = max(0.0, end_time - job["start_time"])            
                     
                     job_info = {
                         "job_id": job_id,
@@ -220,6 +225,9 @@ def init_job_router(background_jobs, job_lock, job_queue, queue_lock, queue_proc
                 if job_status == "processing":
                     shutdown_manager.set_shutdown_flag()
                     print(f"[SHUTDOWN] Set shutdown flag to stop processing job: {active_job}")
+                # Mark end time
+                with job_lock:
+                    background_jobs[active_job]["end_time"] = time.time()
                 
                 # Clean up files for cancelled job
                 try:
@@ -329,6 +337,8 @@ def init_job_router(background_jobs, job_lock, job_queue, queue_lock, queue_proc
                 if job_status == "processing":
                     shutdown_manager.set_shutdown_flag()
                     print(f"[SHUTDOWN] Set shutdown flag to stop processing job: {job_id}")
+                # Mark end time
+                background_jobs[job_id]["end_time"] = time.time()
                 
                 # Clean up files for cancelled job
                 try:

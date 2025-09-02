@@ -325,6 +325,7 @@ def process_single_job(job_data):
             background_jobs[job_id]["status"] = "completed"
             background_jobs[job_id]["progress"] = 100
             background_jobs[job_id]["message"] = "Processing completed successfully!"
+            background_jobs[job_id]["end_time"] = time.time()
             background_jobs[job_id]["result"] = {
                 "status": "done",
                 "processed_video_url": processed_video_url,
@@ -358,6 +359,7 @@ def process_single_job(job_data):
             background_jobs[job_id]["status"] = "failed"
             background_jobs[job_id]["message"] = f"Processing failed: {str(e)}"
             background_jobs[job_id]["error"] = str(e)
+            background_jobs[job_id]["end_time"] = time.time()
         
         # Update video status in database with error details
         if video_id:
