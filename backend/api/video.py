@@ -98,6 +98,16 @@ def init_video_router(background_jobs, job_lock, job_queue, queue_lock, start_qu
             }
         except Exception as e:
             print(f"[UPLOAD] Error: {e}")
+            # Best-effort cleanup of temp file if it was created
+            try:
+                from pathlib import Path as _Path
+                if 'raw_path' in locals():
+                    _p = _Path(str(raw_path))
+                    if _p.exists():
+                        _p.unlink()
+                        print(f"[UPLOAD] Cleaned temp file after failure: {_p}")
+            except Exception as _ce:
+                print(f"[UPLOAD] Warning: failed to cleanup temp file: {_ce}")
             import traceback
             traceback.print_exc()
             raise HTTPException(status_code=500, detail=f"Upload failed: {str(e)}")
