@@ -37,7 +37,7 @@ class SupabaseManager:
             return val
         
         try:
-            # Make video_name unique by appending a timestamp (preserve extension if present)
+            # Format video_name as: <original_name> dd/mm/yyyy HH:MM:SS (preserve extension)
             original_name = to_py(video_data.get("video_name", "Unknown Video"))
             try:
                 name_stem = Path(original_name).stem
@@ -45,8 +45,8 @@ class SupabaseManager:
             except Exception:
                 name_stem = str(original_name)
                 name_suffix = ""
-            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-            unique_video_name = f"{name_stem}_{timestamp}{name_suffix}"
+            timestamp_human = datetime.now().strftime("%d/%m/%Y %H:%M:%S")
+            unique_video_name = f"{name_stem} {timestamp_human}{name_suffix}"
 
             data_to_insert = {
                 "video_name": unique_video_name,

@@ -137,48 +137,55 @@ def process_single_job(job_data):
     analytic_path = job_data['analytic_path']
     suffix = job_data['suffix']
     start_time = job_data['start_time']
-    video_id = job_data.get('video_id')  # New: video ID from job data
+    video_id = job_data.get('video_id')  # Will be created at processing start
     
-    # Validate video_id
-    if not video_id:
-        print(f"[QUEUE] ❌ Job {job_id} has no video_id - cannot process")
-        with job_lock:
-            background_jobs[job_id]["status"] = "failed"
-            background_jobs[job_id]["message"] = "No video_id provided - cannot process"
-            background_jobs[job_id]["error"] = "Missing video_id"
-        return
-    
-    print(f"[QUEUE] 🎯 Processing job {job_id} for video {video_id}")
+    print(f"[QUEUE] 🎯 Processing job {job_id}")
     
     try:
         # Reset shutdown flag before starting processing
         shutdown_manager.reset_shutdown_flag()
         
-        # Create job record in database if video_id exists
-        if video_id:
-            # No need to create job records - background tasks handle job management
-            # Just update video status to processing
+        # Create video record now (at processing start)
+        try:
+            file_size = os.path.getsize(raw_path) if raw_path.exists() else 0
+            # Use the original filename captured at upload time, not the temp uuid name
+            try:
+                with job_lock:
+                    original_display_name = background_jobs.get(job_id, {}).get('file_name', raw_path.name)
+            except Exception:
+                original_display_name = raw_path.name
+            video_data = {
+                "video_name": original_display_name,
+                "original_filename": raw_path.name,
+                "file_size": file_size,
+                "status": "processing",
+                "processing_start_time": datetime.now().isoformat()
+            }
+            video_id = supabase_manager.create_video_record(video_data)
+            if not video_id:
+                raise RuntimeError("Failed to create video record at processing start")
+            with job_lock:
+                background_jobs[job_id]["video_id"] = video_id
             print(f"[QUEUE] 🎯 Starting processing for video {video_id}")
-            
-            # Update video record with processing status
-            supabase_manager.update_video_status_preserve_timing(
-                video_id, 
-                "processing", 
-                message="Running video analytics..."
-            )
+        except Exception as e:
+            print(f"[QUEUE] ❌ Could not create video record for job {job_id}: {e}")
+            with job_lock:
+                background_jobs[job_id]["status"] = "failed"
+                background_jobs[job_id]["message"] = f"DB init failed: {str(e)}"
+                background_jobs[job_id]["error"] = str(e)
+            return
         
         with job_lock:
             background_jobs[job_id]["status"] = "processing"
             background_jobs[job_id]["message"] = "Running video analytics..."
             background_jobs[job_id]["progress"] = 10
         
-        # Update video status in database (no job records needed)
-        if video_id:
-            supabase_manager.update_video_status_preserve_timing(
-                video_id, 
-                "processing", 
-                message="Running video analytics..."
-            )
+        # Update video status in database (confirm processing)
+        supabase_manager.update_video_status_preserve_timing(
+            video_id, 
+            "processing", 
+            message="Running video analytics..."
+        )
         
         # Run video processing - always use database mode with video_id
         session_data = main(
@@ -217,12 +224,11 @@ def process_single_job(job_data):
             background_jobs[job_id]["progress"] = 80
         
         # Update video status in database
-        if video_id:
-            supabase_manager.update_video_status_preserve_timing(
-                video_id, 
-                "processing", 
-                message="Processing completed, uploading to storage..."
-            )
+        supabase_manager.update_video_status_preserve_timing(
+            video_id, 
+            "processing", 
+            message="Processing completed, uploading to storage..."
+        )
         
         # Upload processed video to Supabase storage
         processed_video_url = None
@@ -245,14 +251,14 @@ def process_single_job(job_data):
             print(f"[WARNING] Processed video file not found: {analytic_path}")
         
         # Update video record with processed URL if available
-        if video_id and processed_video_url:
+        if processed_video_url:
             supabase_manager.update_video_status_preserve_timing(
                 video_id, 
                 "completed",
                 processed_url=processed_video_url,
                 message="Processing completed successfully!"
             )
-        elif video_id:
+        else:
             # No processed video URL available
             supabase_manager.update_video_status_preserve_timing(
                 video_id, 
@@ -277,19 +283,16 @@ def process_single_job(job_data):
         print(f"[DEBUG] Calculated stats: {total_vehicles} vehicles, {compliance_count} compliant, {compliance_rate:.1f}% rate")
         
         # Update video statistics in database
-        if video_id:
-            success = supabase_manager.update_video_stats(
-                video_id, 
-                total_vehicles, 
-                compliance_rate, 
-                processing_time
-            )
-            if success:
-                print(f"[QUEUE] ✅ Video {video_id} statistics updated: {total_vehicles} vehicles, {compliance_rate:.1f}% compliance")
-            else:
-                print(f"[QUEUE] ⚠️ Failed to update video {video_id} statistics")
+        success = supabase_manager.update_video_stats(
+            video_id, 
+            total_vehicles, 
+            compliance_rate, 
+            processing_time
+        )
+        if success:
+            print(f"[QUEUE] ✅ Video {video_id} statistics updated: {total_vehicles} vehicles, {compliance_rate:.1f}% compliance")
         else:
-            print(f"[QUEUE] ⚠️ No video_id available for statistics update")
+            print(f"[QUEUE] ⚠️ Failed to update video {video_id} statistics")
         
         # Update background job with results
         with job_lock:
@@ -310,6 +313,16 @@ def process_single_job(job_data):
             }
         
         print(f"[QUEUE] ✅ Job {job_id} completed successfully for video {video_id}")
+
+        # If no tracking data at all, delete the video row (user preference)
+        try:
+            related = supabase_manager.get_related_counts(video_id)
+            has_any_data = (related.get("tracking_results", 0) > 0) or (related.get("vehicle_counts", 0) > 0)
+            if not has_any_data:
+                supabase_manager.delete_video_record(video_id)
+                print(f"[QUEUE] 🗑️ Removed empty video record {video_id} (no tracking data)")
+        except Exception as e:
+            print(f"[QUEUE] ⚠️ Failed to delete empty video {video_id}: {e}")
         
     except Exception as e:
         processing_time = time.time() - start_time
@@ -331,7 +344,7 @@ def process_single_job(job_data):
     
     finally:
         # Handle shutdown scenarios intelligently first
-        if video_id and shutdown_manager.check_shutdown():
+        if shutdown_manager.check_shutdown():
             try:
                 # Check if we have any saved data to determine the appropriate status
                 tracking_data = supabase_manager.get_tracking_data(video_id=video_id) if video_id else []

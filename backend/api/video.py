@@ -48,27 +48,7 @@ def init_video_router(background_jobs, job_lock, job_queue, queue_lock, start_qu
             
             print(f"[UPLOAD] Step 2: File saved to {raw_path}")
 
-            # 2. Create video record in database
-            from clients.supabase_client import supabase_manager
-            
-            # Get file size
-            file_size = os.path.getsize(raw_path)
-            
-            video_data = {
-                "video_name": file.filename,
-                "original_filename": temp_filename,
-                "file_size": file_size,
-                "status": "uploaded",
-                "processing_start_time": datetime.now().isoformat()
-            }
-            
-            video_id = supabase_manager.create_video_record(video_data)
-            if not video_id:
-                raise HTTPException(status_code=500, detail="Failed to create video record in database")
-            
-            print(f"[UPLOAD] Step 2.5: Video record created with ID: {video_id}")
-
-            # 3. Create job ID and add to queue
+            # 2. Create job ID and add to queue (DB record will be created when processing starts)
             job_id = str(uuid.uuid4())
             analytic_path = OUTPUT_DIR / f"{job_id}_out{suffix}"
             
@@ -82,17 +62,18 @@ def init_video_router(background_jobs, job_lock, job_queue, queue_lock, start_qu
                     "progress": 0,
                     "message": "Video added to processing queue...",
                     "result": None,
-                    "error": None
+                    "error": None,
+                    "video_id": None
                 }
             
-            # Add job to queue with video_id
+            # Add job to queue (video_id will be set when processing actually begins)
             job_data = {
                 "job_id": job_id,
                 "raw_path": raw_path,
                 "analytic_path": analytic_path,
                 "suffix": suffix,
                 "start_time": time.time(),
-                "video_id": video_id  # Link job to video
+                "video_id": None
             }
             
             with queue_lock:
@@ -102,7 +83,7 @@ def init_video_router(background_jobs, job_lock, job_queue, queue_lock, start_qu
             # Start queue processor if not already running
             try:
                 start_queue_processor()
-                print(f"[UPLOAD] Step 3: Job {job_id} added to queue (position: {queue_position}) for video {video_id}")
+                print(f"[UPLOAD] Step 3: Job {job_id} added to queue (position: {queue_position})")
             except Exception as e:
                 print(f"[UPLOAD] Warning: Failed to start queue processor: {e}")
                 # Continue anyway, the job is still added to queue
@@ -111,7 +92,6 @@ def init_video_router(background_jobs, job_lock, job_queue, queue_lock, start_qu
             return {
                 "status": "queued",
                 "job_id": job_id,
-                "video_id": video_id,
                 "queue_position": queue_position,
                 "message": f"Video added to processing queue (position: {queue_position})",
                 "file_name": file.filename
