@@ -265,4 +265,41 @@ def init_data_router():
             print(f"[ERROR] Failed to get summary for video {video_id}: {e}")
             return {"status": "error", "error": str(e), "video_id": video_id}
 
+
+    @router.get("/videos/filter")
+    async def filter_videos(
+        limit: int = 100,
+        date_from: str = None,  # YYYY-MM-DD
+        date_to: str = None,    # YYYY-MM-DD
+        order_by: str = "created_at",
+        order_desc: bool = True,
+    ):
+        """Filter videos by date range and ordering."""
+        try:
+            q = supabase_manager.client.table("videos").select("*")
+            if date_from:
+                q = q.gte("created_at", f"{date_from} 00:00:00")
+            if date_to:
+                q = q.lte("created_at", f"{date_to} 23:59:59")
+
+            q = q.order(order_by, desc=order_desc).limit(limit)
+            res = q.execute()
+            data = res.data or []
+
+            return {
+                "status": "success",
+                "table": "videos",
+                "count": len(data),
+                "limit": limit,
+                "filters_applied": {
+                    "date_from": date_from,
+                    "date_to": date_to,
+                    "order_by": order_by,
+                    "order_desc": order_desc,
+                },
+                "data": data,
+            }
+        except Exception as e:
+            print(f"[ERROR] Failed to filter videos: {e}")
+            return {"status": "error", "error": str(e), "data": []}
     return router
