@@ -154,12 +154,25 @@ def process_single_job(job_data):
                     original_display_name = background_jobs.get(job_id, {}).get('file_name', raw_path.name)
             except Exception:
                 original_display_name = raw_path.name
+            # Compute duration using OpenCV (fallback to 0 on failure)
+            duration_seconds = 0.0
+            try:
+                import cv2
+                cap = cv2.VideoCapture(str(raw_path))
+                fps = cap.get(cv2.CAP_PROP_FPS) or 0
+                frames = cap.get(cv2.CAP_PROP_FRAME_COUNT) or 0
+                cap.release()
+                if fps and frames:
+                    duration_seconds = float(frames / fps)
+            except Exception as e:
+                print(f"[QUEUE] Warning: failed to compute duration for {raw_path}: {e}")
             video_data = {
                 "video_name": original_display_name,
                 "original_filename": raw_path.name,
                 "file_size": file_size,
                 "status": "processing",
-                "processing_start_time": datetime.now().isoformat()
+                "processing_start_time": datetime.now().isoformat(),
+                "duration_seconds": duration_seconds
             }
             video_id = supabase_manager.create_video_record(video_data)
             if not video_id:
@@ -232,6 +245,7 @@ def process_single_job(job_data):
         
         # Upload processed video to Supabase storage
         processed_video_url = None
+        processed_duration_seconds = None
         if analytic_path.exists():
             try:
                 processed_filename = f"processed_{job_id}{suffix}"
@@ -244,6 +258,17 @@ def process_single_job(job_data):
                     print(f"[QUEUE] 📹 Processed video uploaded successfully: {processed_video_url}")
                 else:
                     print(f"[WARNING] Failed to upload processed video - no URL returned")
+                # Compute processed video duration
+                try:
+                    import cv2
+                    cap_o = cv2.VideoCapture(str(analytic_path))
+                    fps_o = cap_o.get(cv2.CAP_PROP_FPS) or 0
+                    frames_o = cap_o.get(cv2.CAP_PROP_FRAME_COUNT) or 0
+                    cap_o.release()
+                    if fps_o and frames_o:
+                        processed_duration_seconds = float(frames_o / fps_o)
+                except Exception as e:
+                    print(f"[QUEUE] ⚠️ Failed to compute processed duration: {e}")
                     
             except Exception as e:
                 print(f"[WARNING] Failed to upload processed video: {e}")
@@ -256,6 +281,7 @@ def process_single_job(job_data):
                 video_id, 
                 "completed",
                 processed_url=processed_video_url,
+                duration_seconds=processed_duration_seconds if processed_duration_seconds is not None else None,
                 message="Processing completed successfully!"
             )
         else:
@@ -377,12 +403,27 @@ def process_single_job(job_data):
                         processing_time
                     )
                     
+                    # Compute partial output duration if available
+                    partial_duration_seconds = None
+                    try:
+                        if analytic_path.exists():
+                            import cv2
+                            cap_p = cv2.VideoCapture(str(analytic_path))
+                            fps_p = cap_p.get(cv2.CAP_PROP_FPS) or 0
+                            frames_p = cap_p.get(cv2.CAP_PROP_FRAME_COUNT) or 0
+                            cap_p.release()
+                            if fps_p and frames_p:
+                                partial_duration_seconds = float(frames_p / fps_p)
+                    except Exception as e:
+                        print(f"[QUEUE] ⚠️ Failed to compute partial duration: {e}")
+
                     # Update video status, processing end time, and partial processed URL if available
                     supabase_manager.update_video_status_preserve_timing(
                         video_id, 
                         status,
                         processed_url=partial_video_url,
                         processing_end_time=datetime.now().isoformat(),
+                        duration_seconds=partial_duration_seconds if partial_duration_seconds is not None else None,
                         message=message
                     )
                     

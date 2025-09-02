@@ -57,6 +57,10 @@ class SupabaseManager:
                 "duration_seconds": to_py(video_data.get("duration_seconds", 0.0)),
                 "status": "uploaded"
             }
+
+            # Optional timing fields if provided
+            if video_data.get("processing_start_time"):
+                data_to_insert["processing_start_time"] = to_py(video_data.get("processing_start_time"))
             
             result = self.client.table("videos").insert(data_to_insert).execute()
             
@@ -371,6 +375,45 @@ class SupabaseManager:
             print(f"❌ Failed to update video stats: {e}")
             return False
     
+    # --- Helpers used by cleanup logic ---
+    def get_related_counts(self, video_id: int) -> Dict[str, int]:
+        """Return counts of related tracking_results and vehicle_counts for a video."""
+        try:
+            tr_res = self.client.table("tracking_results").select("tracker_id", count='exact').eq("video_id", video_id).execute()
+            vc_res = self.client.table("vehicle_counts").select("id", count='exact').eq("video_id", video_id).execute()
+            tr_count = getattr(tr_res, 'count', None)
+            vc_count = getattr(vc_res, 'count', None)
+            # Fallback if .count is not available
+            if tr_count is None:
+                tr_count = len(tr_res.data or [])
+            if vc_count is None:
+                vc_count = len(vc_res.data or [])
+            return {"tracking_results": tr_count or 0, "vehicle_counts": vc_count or 0}
+        except Exception as e:
+            print(f"[ERROR] Failed to get related counts for video {video_id}: {e}")
+            return {"tracking_results": 0, "vehicle_counts": 0}
+
+    def get_video_basic(self, video_id: int) -> Dict[str, Any]:
+        """Get minimal fields used for conditional cleanup/status decisions."""
+        try:
+            res = self.client.table("videos").select("id, status, processed_url, error, message").eq("id", video_id).limit(1).execute()
+            if res.data:
+                return res.data[0]
+            return {}
+        except Exception as e:
+            print(f"[ERROR] Failed to fetch video {video_id}: {e}")
+            return {}
+
+    def delete_video_record(self, video_id: int) -> bool:
+        """Delete a video row by id."""
+        try:
+            self.client.table("videos").delete().eq("id", video_id).execute()
+            print(f"🗑️ Deleted video record {video_id}")
+            return True
+        except Exception as e:
+            print(f"[ERROR] Failed to delete video {video_id}: {e}")
+            return False
+
     def upload_video_to_storage(self, file_path: str, file_name: str = None) -> str:
         """Upload video file to Supabase storage (simple upload)."""
         try:
