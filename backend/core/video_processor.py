@@ -21,15 +21,18 @@ from utils.device_manager import DeviceManager
 from utils.annotation_manager import AnnotationManager
 from utils.display_manager import DisplayManager
 from utils.vehicle_processor import VehicleProcessor
+from typing import Callable, Optional
 
 class VideoProcessor:
     """Main video processing class that orchestrates all components with video-based schema"""
     
-    def __init__(self, video_path=Config.VIDEO_PATH, output_video_path=Config.OUTPUT_VIDEO_PATH, mode="api", video_id: int = None):
+    def __init__(self, video_path=Config.VIDEO_PATH, output_video_path=Config.OUTPUT_VIDEO_PATH, mode="api", video_id: int = None, progress_callback: Optional[Callable[[int, Optional[int]], None]] = None, total_frames: Optional[int] = None):
         self.video_path = video_path
         self.output_video_path = output_video_path
         self.mode = mode  # Kept for compatibility but always uses database
         self.video_id = video_id  # New: video ID for linking data to database
+        self.progress_callback = progress_callback
+        self.total_frames = total_frames
         
         # Initialize managers
         self.device_manager = DeviceManager()
@@ -157,6 +160,12 @@ class VideoProcessor:
                         break
                     
                     self.frame_idx += 1
+                    # Progress callback (cap processing to 80%)
+                    try:
+                        if self.progress_callback:
+                            self.progress_callback(self.frame_idx, self.total_frames)
+                    except Exception:
+                        pass
                     
                     # Skip frames for better performance
                     if self.frame_idx % self.frame_skip != 0:

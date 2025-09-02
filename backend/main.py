@@ -200,13 +200,45 @@ def process_single_job(job_data):
             message="Running video analytics..."
         )
         
+        # Determine total frames for progress estimation
+        total_frames = None
+        try:
+            import cv2
+            cap_total = cv2.VideoCapture(str(raw_path))
+            tf = cap_total.get(cv2.CAP_PROP_FRAME_COUNT)
+            cap_total.release()
+            if tf and tf > 0:
+                total_frames = int(tf)
+        except Exception:
+            pass
+
+        # Progress callback updates background job progress (0-80% during processing)
+        def on_progress(processed_frames: int, total):
+            try:
+                with job_lock:
+                    if background_jobs.get(job_id, {}).get("status") == "processing":
+                        if total and total > 0:
+                            # Map 0..total -> 10..80 more responsively
+                            pct = int(10 + (processed_frames / total) * 70)
+                            if pct < 11 and processed_frames > 0:
+                                pct = 11
+                            pct = max(10, min(80, pct))
+                        else:
+                            # Fallback without total: bump roughly every few frames
+                            pct = int(10 + (processed_frames % 100))
+                            pct = max(10, min(80, pct))
+                        # Quantize to 5% steps for clearer UI changes
+                        pct = max(10, min(80, (pct // 5) * 5))
+                        background_jobs[job_id]["progress"] = pct
+            except Exception:
+                pass
+
         # Run video processing - always use database mode with video_id
-        session_data = main(
-            str(raw_path),          # input video (original)
-            str(analytic_path),     # processed output
-            "api",                  # Always use database mode
-            video_id                # New: video ID for linking data
-        )
+        from core.video_processor import VideoProcessor
+        processor = VideoProcessor(str(raw_path), str(analytic_path), "api", video_id, progress_callback=on_progress, total_frames=total_frames)
+        processor.initialize()
+        processor.process_video()
+        session_data = processor.get_session_data()
         
         # Check if processing was interrupted by shutdown
         partial_video_url = None  # Store partial video URL for interrupted videos
@@ -234,7 +266,7 @@ def process_single_job(job_data):
         
         with job_lock:
             background_jobs[job_id]["message"] = "Processing completed, uploading to storage..."
-            background_jobs[job_id]["progress"] = 80
+            background_jobs[job_id]["progress"] = 85
         
         # Update video status in database
         supabase_manager.update_video_status_preserve_timing(
