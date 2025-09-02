@@ -81,7 +81,8 @@ def init_data_router():
         date_to: str = None,
         compliance: int = None,
         vehicle_type: str = None,
-        weather_condition: str = None
+        weather_condition: str = None,
+        video_id: int = None,
     ):
         """
         Get filtered tracking results data from database
@@ -101,12 +102,15 @@ def init_data_router():
             dict: Filtered tracking data with applied filters information
         """
         try:
-            # Get all tracking data first
-            tracking_data = supabase_manager.get_tracking_data(limit=1000)
+            # Get tracking data (optionally by video)
+            tracking_data = supabase_manager.get_tracking_data(limit=1000, video_id=video_id)
             
             # Apply filters
             filtered_data = tracking_data
-            
+            # Filter by video_id if supplied (redundant when passed to DB, but safe)
+            if video_id is not None:
+                filtered_data = [item for item in filtered_data if item.get('video_id') == video_id]
+
             # Filter by date range
             if date_from:
                 filtered_data = [item for item in filtered_data if item.get('date', '').split(' ')[0] >= date_from]
@@ -139,7 +143,8 @@ def init_data_router():
                     "date_to": date_to,
                     "compliance": compliance,
                     "vehicle_type": vehicle_type,
-                    "weather_condition": weather_condition
+                    "weather_condition": weather_condition,
+                    "video_id": video_id,
                 },
                 "data": filtered_data
             }
@@ -157,7 +162,8 @@ def init_data_router():
         limit: int = 100,
         date_from: str = None,
         date_to: str = None,
-        vehicle_type: str = None
+        vehicle_type: str = None,
+        video_id: int = None,
     ):
         """
         Get filtered vehicle counts data from database
@@ -175,12 +181,15 @@ def init_data_router():
             dict: Filtered vehicle count data with applied filters information
         """
         try:
-            # Get all vehicle counts first
-            vehicle_counts = supabase_manager.get_vehicle_counts(limit=1000)
+            # Get vehicle counts (optionally by video)
+            vehicle_counts = supabase_manager.get_vehicle_counts(limit=1000, video_id=video_id)
             
             # Apply filters
             filtered_data = vehicle_counts
-            
+            # Filter by video_id if supplied (redundant when passed to DB, but safe)
+            if video_id is not None:
+                filtered_data = [item for item in filtered_data if item.get('video_id') == video_id]
+
             # Filter by date range
             if date_from:
                 filtered_data = [item for item in filtered_data if item.get('date', '').split(' ')[0] >= date_from]
@@ -203,7 +212,8 @@ def init_data_router():
                 "filters_applied": {
                     "date_from": date_from,
                     "date_to": date_to,
-                    "vehicle_type": vehicle_type
+                    "vehicle_type": vehicle_type,
+                    "video_id": video_id,
                 },
                 "data": filtered_data
             }
@@ -215,5 +225,44 @@ def init_data_router():
                 "error": str(e),
                 "data": []
             }
+
+    @router.get("/summary/by-video/{video_id}")
+    async def get_summary_by_video(video_id: int):
+        """
+        Get a combined payload: video details + tracking data + vehicle counts + totals.
+        """
+        try:
+            video = supabase_manager.get_video_data(video_id)
+            if not video:
+                return {"status": "error", "error": "Video not found", "video_id": video_id}
+
+            # The RPC returns tracking_data and vehicle_counts as JSON arrays already
+            tracking_data = video.get("tracking_data") or []
+            vehicle_counts = video.get("vehicle_counts") or []
+
+            # Prepare a minimal video subset for convenience
+            video_core = {
+                "id": video.get("video_id") or video_id,
+                "video_name": video.get("video_name"),
+                "status": video.get("status"),
+                "processed_url": video.get("processed_url"),
+                "duration_seconds": video.get("processing_time"),
+                "total_vehicles": video.get("total_vehicles"),
+                "compliance_rate": video.get("compliance_rate"),
+            }
+
+            return {
+                "status": "success",
+                "video": video_core,
+                "tracking_data": tracking_data,
+                "vehicle_counts": vehicle_counts,
+                "totals": {
+                    "tracking": len(tracking_data),
+                    "vehicle_counts": len(vehicle_counts),
+                }
+            }
+        except Exception as e:
+            print(f"[ERROR] Failed to get summary for video {video_id}: {e}")
+            return {"status": "error", "error": str(e), "video_id": video_id}
 
     return router
