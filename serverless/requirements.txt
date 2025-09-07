@@ -1,0 +1,5 @@
+runpod
+boto3
+requests
+ultralytics
+opencv-python
