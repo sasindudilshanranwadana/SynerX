@@ -1,7 +1,7 @@
 import threading
 
 class ShutdownManager:
-    """Manages graceful shutdown functionality for video processing"""
+    """Simple shutdown manager for video processing"""
     
     def __init__(self):
         self.shutdown_requested = False
@@ -13,7 +13,7 @@ class ShutdownManager:
             return self.shutdown_requested
     
     def set_shutdown_flag(self):
-        """Set the shutdown flag (called from API)"""
+        """Set the shutdown flag"""
         with self.shutdown_lock:
             self.shutdown_requested = True
     

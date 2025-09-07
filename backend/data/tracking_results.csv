@@ -99,3 +99,13 @@ tracker_id,vehicle_type,status,compliance,reaction_time,weather_condition,temper
 98,car,stationary,1,4.3,rainy,13.5,85,2.8,rain,18.2,2025-08-15 17:32:15
 99,car,moving,0,,rainy,13.5,85,2.8,rain,18.2,2025-08-15 17:35:33
 100,car,stationary,1,4.0,rainy,13.5,85,2.8,rain,18.2,2025-08-15 17:37:27
+101,car,moving,0,,cloudy,12.74,73,10.0,none,3.22,2025-08-31 11:03:32
+102,car,moving,0,,cloudy,12.74,73,10.0,none,3.22,2025-08-31 11:10:40
+103,car,stationary,1,1.87,cloudy,12.74,73,10.0,none,3.22,2025-08-31 11:10:53
+104,car,stationary,1,2.15,cloudy,12.74,73,10.0,none,3.22,2025-08-31 11:11:16
+105,car,stationary,1,1.9,cloudy,12.74,73,10.0,none,3.22,2025-08-31 11:11:36
+106,car,stationary,1,2.33,cloudy,12.74,73,10.0,none,3.22,2025-08-31 11:11:51
+107,car,moving,0,,cloudy,12.81,74,10.0,none,3.22,2025-08-31 11:22:53
+108,car,stationary,1,2.08,cloudy,12.81,74,10.0,none,3.22,2025-08-31 11:23:08
+109,car,stationary,1,2.77,cloudy,12.81,74,10.0,none,3.22,2025-08-31 11:23:34
+110,car,moving,0,,cloudy,12.81,74,10.0,none,3.22,2025-08-31 11:23:57

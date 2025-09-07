@@ -7,12 +7,13 @@ from utils.annotation_manager import AnnotationManager
 from utils.weather_manager import weather_manager
 
 class VehicleProcessor:
-    """Handles vehicle detection processing and tracking logic"""
+    """Handles vehicle detection processing and tracking logic with video-based schema"""
     
-    def __init__(self, vehicle_tracker, data_manager, mode):
+    def __init__(self, vehicle_tracker, data_manager, mode, video_id: int = None):
         self.vehicle_tracker = vehicle_tracker
         self.data_manager = data_manager
         self.mode = mode
+        self.video_id = video_id  # New: video ID for linking data
         self.counted_ids = set()
         self.vehicle_type_counter = Counter()
         self.changed_records = {}
@@ -23,46 +24,25 @@ class VehicleProcessor:
         self.tracker_id_offset = 0
         
     def initialize_data(self):
-        """Initialize tracking data based on mode"""
-        if self.mode == "local":
-            self.data_manager.initialize_csv_files()
-            self.stop_zone_history_dict = self.data_manager.read_existing_data()
-            print("[INFO] Local mode: Using CSV files for data storage")
-        else:
-            self.data_manager.initialize_csv_files()  # Still initialize CSV for backup
-            self.stop_zone_history_dict = {}
-            print("[INFO] API mode: Using database for data storage")
+        """Initialize tracking data - always use database mode with video_id"""
+        self.data_manager.initialize_csv_files()  # Kept for compatibility
+        self.stop_zone_history_dict = {}
+        print(f"[INFO] Using database for data storage with video_id: {self.video_id}")
         
         # Initialize weather cache
         self._weather_cache = None
         self._weather_cache_time = None
     
     def load_existing_counts(self):
-        """Load existing vehicle counts based on mode"""
+        """Load existing vehicle counts from database for specific video"""
         current_date = datetime.now().strftime("%Y-%m-%d")
-        
-        if self.mode == "local":
-            self._load_counts_from_csv(current_date)
-        else:
-            self._load_counts_from_database(current_date)
-    
-    def _load_counts_from_csv(self, current_date):
-        """Load counts from CSV file"""
-        try:
-            existing_count_data = self.data_manager.read_existing_count_data()
-            if current_date in existing_count_data:
-                self.vehicle_type_counter.update(existing_count_data[current_date])
-                print(f"[INFO] Loaded existing counts for today: {dict(self.vehicle_type_counter)}")
-            else:
-                print(f"[INFO] No existing counts for today, starting fresh")
-        except Exception as e:
-            print(f"[WARNING] Failed to load counts from CSV: {e}")
+        self._load_counts_from_database(current_date)
     
     def _load_counts_from_database(self, current_date):
-        """Load counts from database"""
+        """Load counts from database for specific video"""
         try:
             from clients.supabase_client import supabase_manager
-            db_vehicle_counts = supabase_manager.get_vehicle_counts(limit=1000)
+            db_vehicle_counts = supabase_manager.get_vehicle_counts(limit=1000, video_id=self.video_id)
             for row in db_vehicle_counts:
                 if row.get('date') and row.get('vehicle_type') and row.get('count'):
                     row_date = row['date'].split(' ')[0] if ' ' in row['date'] else row['date'].split('T')[0]
@@ -70,36 +50,22 @@ class VehicleProcessor:
                         vehicle_type = row['vehicle_type']
                         count = int(row['count'])
                         self.vehicle_type_counter[vehicle_type] = count
-            print(f"[INFO] Loaded counts from database: {dict(self.vehicle_type_counter)}")
+            print(f"[INFO] Loaded counts from database for video {self.video_id}: {dict(self.vehicle_type_counter)}")
         except Exception as e:
             print(f"[WARNING] Failed to load counts from database: {e}")
     
     def setup_tracker_offset(self):
-        """Setup tracker ID offset for continuation"""
-        if self.mode == "api":
-            next_tracker_id = self.data_manager.get_next_tracker_id()
-            self.tracker_id_offset = next_tracker_id - 1
-            if next_tracker_id > 1:
-                print(f"[INFO] Continuing from tracker ID: {next_tracker_id}")
-            else:
-                print(f"[INFO] Starting fresh with tracker ID: {next_tracker_id}")
+        """Setup tracker ID offset for continuation from database"""
+        next_tracker_id = self.data_manager.get_next_tracker_id()
+        self.tracker_id_offset = next_tracker_id - 1
+        if next_tracker_id > 1:
+            print(f"[INFO] Continuing from tracker ID: {next_tracker_id}")
         else:
-            # Local mode: Load existing stationary vehicles and mark existing vehicles as counted
-            for track_id, data in self.stop_zone_history_dict.items():
-                if data.get('status') == 'stationary':
-                    self.vehicle_tracker.stationary_vehicles.add(int(track_id))
-                if data.get('tracker_id'):
-                    self.counted_ids.add(int(data.get('tracker_id')))
-            
-            max_track_id = max((int(tid) for tid in self.stop_zone_history_dict.keys() if tid.isdigit()), default=0)
-            self.tracker_id_offset = max_track_id
-            if max_track_id > 0:
-                print(f"[INFO] Continuing from tracker ID: {self.tracker_id_offset + 1}")
+            print(f"[INFO] Starting fresh with tracker ID: {next_tracker_id}")
     
     def process_detections(self, detections, anchor_pts, transformed_pts):
         """Process vehicle detections and update tracking data"""
         top_labels, bottom_labels = [], []
-        csv_update_needed = False
         
         for track_id, orig_pt, trans_pt, class_id in zip(
             detections.tracker_id, anchor_pts, transformed_pts, detections.class_id
@@ -115,7 +81,7 @@ class VehicleProcessor:
             
             # Process stop zone logic
             if AnnotationManager.point_inside_polygon(orig_pt, Config.STOP_ZONE_POLYGON):
-                current_status, compliance, csv_update_needed = self._process_stop_zone_vehicle(
+                current_status, compliance = self._process_stop_zone_vehicle(
                     track_id, vehicle_type, trans_pt, current_status, compliance
                 )
             else:
@@ -129,8 +95,8 @@ class VehicleProcessor:
                 compliance = 1
             
             # Update status and labels
-            csv_update_needed = self._update_vehicle_status(
-                track_id, vehicle_type, previous_status, current_status, csv_update_needed
+            self._update_vehicle_status(
+                track_id, vehicle_type, previous_status, current_status
             )
             
             self.vehicle_tracker.status_cache[track_id] = current_status
@@ -141,15 +107,14 @@ class VehicleProcessor:
             
             # Update history dictionary for vehicles in stop zone
             if AnnotationManager.point_inside_polygon(orig_pt, Config.STOP_ZONE_POLYGON):
-                csv_update_needed = self._update_tracking_history(
-                    track_id, vehicle_type, current_status, compliance, csv_update_needed
+                self._update_tracking_history(
+                    track_id, vehicle_type, current_status, compliance
                 )
         
-        return top_labels, bottom_labels, csv_update_needed
+        return top_labels, bottom_labels
     
     def _process_stop_zone_vehicle(self, track_id, vehicle_type, trans_pt, current_status, compliance):
         """Process vehicle in stop zone"""
-        csv_update_needed = False
         
         # Count vehicle if first time in zone
         if track_id not in self.counted_ids:
@@ -164,7 +129,6 @@ class VehicleProcessor:
             record_key = (track_id, "entered")
             if record_key not in self.vehicle_tracker.written_records:
                 self.vehicle_tracker.written_records.add(record_key)
-                csv_update_needed = True
         
         # Check if stationary
         if len(self.vehicle_tracker.position_history[track_id]) >= Config.FRAME_BUFFER:
@@ -176,7 +140,7 @@ class VehicleProcessor:
                     self.vehicle_tracker.reaction_times[track_id] = reaction_time
                     print(f"[DEBUG] Vehicle {track_id} ({vehicle_type}) became stationary after {reaction_time}s")
         
-        return current_status, compliance, csv_update_needed
+        return current_status, compliance
     
     def _count_new_vehicle(self, track_id, vehicle_type):
         """Count a new vehicle entering the stop zone"""
@@ -195,15 +159,9 @@ class VehicleProcessor:
         self._update_vehicle_counts_realtime(vehicle_type)
     
     def _update_vehicle_counts_realtime(self, vehicle_type):
-        """Update vehicle counts in real-time based on mode"""
-        if self.mode == "local":
-            self.data_manager.update_count_file(self.vehicle_type_counter, self.mode)
-            print(f"[INFO] Vehicle counts updated in real-time: {dict(self.vehicle_type_counter)}")
-        else:
-            from clients.supabase_client import supabase_manager
-            current_date = datetime.now().strftime("%Y-%m-%d")
-            supabase_manager.save_vehicle_count(vehicle_type, self.vehicle_type_counter[vehicle_type], current_date)
-            print(f"[INFO] Vehicle count updated in database: {vehicle_type} = {self.vehicle_type_counter[vehicle_type]}")
+        """Update vehicle counts in real-time - only update local counters, save at end"""
+        # Only update local counters, don't save to database in real-time
+        print(f"[INFO] Vehicle count updated locally: {vehicle_type} = {self.vehicle_type_counter[vehicle_type]}")
     
     def _is_vehicle_stationary(self, track_id):
         """Check if vehicle is stationary based on velocity"""
@@ -217,7 +175,7 @@ class VehicleProcessor:
         
         return avg_velocity < Config.VELOCITY_THRESHOLD
     
-    def _update_vehicle_status(self, track_id, vehicle_type, previous_status, current_status, csv_update_needed):
+    def _update_vehicle_status(self, track_id, vehicle_type, previous_status, current_status):
         """Update vehicle status and handle status changes"""
         if previous_status != current_status and previous_status != "":
             print(f"[DEBUG] Vehicle {track_id} ({vehicle_type}) status changed: {previous_status} -> {current_status}")
@@ -225,15 +183,14 @@ class VehicleProcessor:
                 record_key = (track_id, current_status)
                 if record_key not in self.vehicle_tracker.written_records:
                     self.vehicle_tracker.written_records.add(record_key)
-                    csv_update_needed = True
                     
                     if current_status == "stationary":
                         self.vehicle_tracker.stationary_vehicles.add(track_id)
                         print(f"[DEBUG] Vehicle {track_id} added to stationary vehicles list")
         
-        return csv_update_needed
+        return
     
-    def _update_tracking_history(self, track_id, vehicle_type, current_status, compliance, csv_update_needed):
+    def _update_tracking_history(self, track_id, vehicle_type, current_status, compliance):
         """Update tracking history for vehicles in stop zone"""
         existing_record = self.stop_zone_history_dict.get(str(track_id))
         should_update = False
@@ -254,6 +211,7 @@ class VehicleProcessor:
             
             current_record = {
                 "tracker_id": track_id,
+                "video_id": self.video_id,  # Link to video
                 "vehicle_type": vehicle_type,
                 "status": current_status,
                 "compliance": compliance,
@@ -269,40 +227,68 @@ class VehicleProcessor:
             
             self.stop_zone_history_dict[str(track_id)] = current_record
             self.changed_records[str(track_id)] = current_record
-            csv_update_needed = True
             print(f"[DEBUG] Added/updated vehicle {track_id} in changed records. Changed records: {len(self.changed_records)}")
     
-        return csv_update_needed
+        return
     
-    def save_tracking_data(self, frame_idx):
-        """Save tracking data based on mode"""
-        if self.mode == "local":
-            if self.data_manager.update_tracking_file(self.stop_zone_history_dict, self.mode):
-                print(f"[INFO] Tracking data saved to CSV at frame {frame_idx}")
-        else:
+    def save_all_data_at_end(self):
+        """Save all collected data in one batch at the end of processing with video_id link"""
+        # Always save to database in batch with video_id
+        if self.changed_records:
             from clients.supabase_client import supabase_manager
-            for track_id_str, data in self.changed_records.items():
-                print(f"[DEBUG] Saving new/changed to DB: track_id={data.get('tracker_id')}, type={data.get('vehicle_type')}, status={data.get('status')}")
-                supabase_manager.save_tracking_data(data)
+            print(f"[INFO] Saving {len(self.changed_records)} records in final batch for video {self.video_id}...")
             
-            if self.changed_records:
-                print(f"[INFO] Saved {len(self.changed_records)} new/changed records to database")
-                self.changed_records.clear()
+            # Convert to list for batch save
+            all_records = []
+            for track_id_str, data in self.changed_records.items():
+                all_records.append(data)
+            
+            # Save all records in one batch operation with video_id
+            success = supabase_manager.save_tracking_data_batch(all_records, self.video_id)
+            if success:
+                print(f"[INFO] Successfully saved {len(all_records)} records in final batch for video {self.video_id}")
+            else:
+                print(f"[ERROR] Failed to save {len(all_records)} records in final batch for video {self.video_id}")
+            
+            # Clear the collected records
+            self.changed_records.clear()
+        else:
+            print("[INFO] No records to save at end of processing")
+        
+        # Save vehicle counts to database in batch with video_id
+        if self.vehicle_type_counter:
+            from clients.supabase_client import supabase_manager
+            print(f"[INFO] Saving {len(self.vehicle_type_counter)} vehicle counts to database in final batch for video {self.video_id}...")
+            
+            # Convert vehicle counts to list for batch save
+            current_date = datetime.now().strftime("%Y-%m-%d")
+            vehicle_count_records = []
+            for vehicle_type, count in self.vehicle_type_counter.items():
+                vehicle_count_records.append({
+                    "vehicle_type": vehicle_type,
+                    "count": count,
+                    "date": current_date
+                })
+            
+            # Save all vehicle counts in one batch operation with video_id
+            success = supabase_manager.save_vehicle_count_batch(vehicle_count_records, self.video_id)
+            if success:
+                print(f"[INFO] Successfully saved {len(vehicle_count_records)} vehicle counts to database in final batch for video {self.video_id}")
+            else:
+                print(f"[ERROR] Failed to save {len(vehicle_count_records)} vehicle counts to database for video {self.video_id}")
     
     def get_session_data(self):
-        """Get session data for return"""
+        """Get session data for return with video_id filtering"""
         session_data = {}
         current_date = datetime.now().strftime("%Y-%m-%d")
         
-        if self.mode == "api":
-            session_data = self._get_api_session_data(current_date)
-        else:
-            session_data = self._get_local_session_data(current_date)
+        # Always get session data from database with video_id filter
+        session_data = self._get_api_session_data(current_date)
         
         return session_data
     
     def _get_api_session_data(self, current_date):
-        """Get session data for API mode"""
+        """Get session data from database with video_id filter"""
         from clients.supabase_client import supabase_manager
         
         session_tracking_data = []
@@ -312,11 +298,12 @@ class VehicleProcessor:
                     result = supabase_manager.client.table("tracking_results") \
                         .select("*") \
                         .eq("tracker_id", tracker_id) \
+                        .eq("video_id", self.video_id) \
                         .execute()
                     if result.data:
                         session_tracking_data.extend(result.data)
                 
-                print(f"[INFO] Session tracking data: {len(session_tracking_data)} records for tracker_ids: {list(self.session_tracker_ids)}")
+                print(f"[INFO] Session tracking data: {len(session_tracking_data)} records for tracker_ids: {list(self.session_tracker_ids)} in video {self.video_id}")
             else:
                 print("[INFO] No session tracking data (no vehicles processed)")
         except Exception as e:
@@ -336,26 +323,26 @@ class VehicleProcessor:
         }
     
     def _get_current_weather_data(self):
-        """Get current weather data for the location (cached per vehicle)"""
+        """Get current weather data for the location (cached per session)"""
         # Get location coordinates from config
         lat = getattr(Config, 'LOCATION_LAT', -37.740585)  # Melbourne coordinates
         lon = getattr(Config, 'LOCATION_LON', 144.731637)  # Melbourne coordinates
         
-        # Check if we have cached weather data that's still fresh (less than 5 minutes old)
+        # Check if we have cached weather data that's still fresh (less than 15 minutes old)
         current_time = datetime.now()
         if (hasattr(self, '_weather_cache') and self._weather_cache is not None and 
             hasattr(self, '_weather_cache_time') and self._weather_cache_time is not None):
             time_diff = (current_time - self._weather_cache_time).total_seconds()
-            if time_diff < 300:  # 5 minutes cache
+            if time_diff < 900:  # 15 minutes cache (increased from 5 minutes)
                 return self._weather_cache
         
-        # Fetch fresh weather data
+        # Fetch fresh weather data only once per session
         print(f"[INFO] Fetching fresh weather data for location: {lat}, {lon}")
         try:
             weather_data = weather_manager.get_weather_for_analysis(lat, lon)
             print(f"[INFO] Weather data: {weather_data.get('weather_condition')}, {weather_data.get('temperature')}°C, {weather_data.get('humidity')}% humidity")
             
-            # Cache the weather data
+            # Cache the weather data for the entire session
             self._weather_cache = weather_data
             self._weather_cache_time = current_time
             
@@ -371,42 +358,3 @@ class VehicleProcessor:
                 'precipitation_type': 'none',
                 'wind_speed': 5.0
             }
-    
-    def _get_local_session_data(self, current_date):
-        """Get session data for local mode"""
-        session_tracking_data = []
-        try:
-            if self.session_tracker_ids:
-                csv_data = self.data_manager.read_existing_data()
-                for track_id_str, data in csv_data.items():
-                    if data.get('tracker_id') in self.session_tracker_ids:
-                        session_record = {
-                            "tracker_id": data.get('tracker_id'),
-                            "vehicle_type": data.get('vehicle_type'),
-                            "status": data.get('status'),
-                            "compliance": data.get('compliance'),
-                            "reaction_time": data.get('reaction_time'),
-                            "date": data.get('date'),
-                            "created_at": data.get('date'),
-                            "updated_at": data.get('date')
-                        }
-                        session_tracking_data.append(session_record)
-                
-                print(f"[INFO] Session tracking data: {len(session_tracking_data)} records for tracker_ids: {list(self.session_tracker_ids)}")
-            else:
-                print("[INFO] No session tracking data (no vehicles processed)")
-        except Exception as e:
-            print(f"[WARNING] Failed to get session tracking data from CSV: {e}")
-        
-        session_vehicle_counts_formatted = []
-        for vehicle_type, count in self.session_vehicle_counts.items():
-            session_vehicle_counts_formatted.append({
-                "vehicle_type": vehicle_type,
-                "count": count,
-                "date": current_date
-            })
-        
-        return {
-            "tracking_data": session_tracking_data,
-            "vehicle_counts": session_vehicle_counts_formatted
-        }

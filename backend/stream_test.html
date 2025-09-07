@@ -1,0 +1,1512 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>SynerX Video Streaming</title>
+    <style>
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+
+      body {
+        font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        min-height: 100vh;
+        padding: 20px;
+      }
+
+      .container {
+        max-width: 1200px;
+        margin: 0 auto;
+        background: rgba(255, 255, 255, 0.95);
+        border-radius: 15px;
+        box-shadow: 0 20px 40px rgba(0, 0, 0, 0.1);
+        overflow: hidden;
+      }
+
+      .header {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        color: white;
+        padding: 20px;
+        text-align: center;
+      }
+
+      .header h1 {
+        font-size: 2.5rem;
+        margin-bottom: 10px;
+      }
+
+      .header p {
+        opacity: 0.9;
+        font-size: 1.1rem;
+      }
+
+      .content {
+        padding: 30px;
+      }
+
+      .video-section {
+        display: grid;
+        grid-template-columns: 1fr 300px;
+        gap: 30px;
+        margin-bottom: 30px;
+      }
+
+      .video-container {
+        background: #000;
+        border-radius: 10px;
+        overflow: hidden;
+        position: relative;
+        min-height: 400px;
+      }
+
+      #videoCanvas {
+        width: 100%;
+        height: 100%;
+        display: block;
+      }
+
+      .controls {
+        background: #f8f9fa;
+        border-radius: 10px;
+        padding: 20px;
+      }
+
+      .control-group {
+        margin-bottom: 20px;
+      }
+
+      .control-group h3 {
+        color: #333;
+        margin-bottom: 15px;
+        font-size: 1.2rem;
+      }
+
+      .btn {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        color: white;
+        border: none;
+        padding: 12px 24px;
+        border-radius: 8px;
+        cursor: pointer;
+        font-size: 1rem;
+        font-weight: 500;
+        transition: all 0.3s ease;
+        margin: 5px;
+        width: 100%;
+      }
+
+      .btn:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 10px 20px rgba(0, 0, 0, 0.2);
+      }
+
+      .btn:active {
+        transform: translateY(0);
+      }
+
+      .btn.success {
+        background: linear-gradient(135deg, #56ab2f 0%, #a8e6cf 100%);
+      }
+
+      .btn.danger {
+        background: linear-gradient(135deg, #ff416c 0%, #ff4b2b 100%);
+      }
+
+      .btn.warning {
+        background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+      }
+
+      .status {
+        background: #e9ecef;
+        border-radius: 8px;
+        padding: 15px;
+        margin-bottom: 15px;
+      }
+
+      .status.connected {
+        background: #d4edda;
+        color: #155724;
+        border: 1px solid #c3e6cb;
+      }
+
+      .status.disconnected {
+        background: #f8d7da;
+        color: #721c24;
+        border: 1px solid #f5c6cb;
+      }
+
+      .log-container {
+        background: #2d3748;
+        color: #e2e8f0;
+        border-radius: 10px;
+        padding: 20px;
+        height: 300px;
+        overflow-y: auto;
+        font-family: "Courier New", monospace;
+        font-size: 0.9rem;
+        line-height: 1.4;
+      }
+
+      .log-entry {
+        margin-bottom: 5px;
+        padding: 2px 0;
+      }
+
+      .log-entry.info {
+        color: #63b3ed;
+      }
+      .log-entry.success {
+        color: #68d391;
+      }
+      .log-entry.error {
+        color: #fc8181;
+      }
+      .log-entry.warning {
+        color: #f6e05e;
+      }
+
+      .stats {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+        gap: 15px;
+        margin-top: 20px;
+      }
+
+      .stat-card {
+        background: white;
+        border-radius: 8px;
+        padding: 15px;
+        text-align: center;
+        box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+      }
+
+      .stat-value {
+        font-size: 2rem;
+        font-weight: bold;
+        color: #667eea;
+      }
+
+      .stat-label {
+        color: #666;
+        font-size: 0.9rem;
+        margin-top: 5px;
+      }
+
+      .job-id-display {
+        margin-top: 15px;
+        padding: 10px;
+        background: #f0f0f0;
+        border-radius: 8px;
+        display: flex;
+        align-items: center;
+        gap: 10px;
+      }
+
+      .job-id-display strong {
+        color: #333;
+      }
+
+      .copy-btn {
+        background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);
+        color: white;
+        border: none;
+        padding: 8px 12px;
+        border-radius: 6px;
+        cursor: pointer;
+        font-size: 0.9rem;
+        font-weight: 500;
+        transition: all 0.3s ease;
+      }
+
+      .copy-btn:hover {
+        transform: translateY(-1px);
+        box-shadow: 0 5px 10px rgba(0, 0, 0, 0.1);
+      }
+
+      .copy-btn:active {
+        transform: translateY(0);
+      }
+
+      @media (max-width: 768px) {
+        .video-section {
+          grid-template-columns: 1fr;
+        }
+
+        .header h1 {
+          font-size: 2rem;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="container">
+      <div class="header">
+        <h1>🎥 SynerX Video Streaming</h1>
+        <p>Real-time vehicle detection and tracking</p>
+      </div>
+
+      <div class="content">
+        <div class="video-section">
+          <div class="video-container">
+            <canvas id="videoCanvas"></canvas>
+          </div>
+
+          <div class="controls">
+            <div class="control-group">
+              <h3>🔗 Connection</h3>
+              <div id="connectionStatus" class="status disconnected">
+                Disconnected
+              </div>
+              <button id="connectBtn" class="btn" onclick="connectToStream()">
+                Connect to Stream
+              </button>
+            </div>
+
+            <div class="control-group">
+              <h3>📤 Video Upload</h3>
+              <input
+                type="file"
+                id="videoFile"
+                accept="video/*"
+                style="display: none"
+              />
+              <button
+                id="uploadBtn"
+                class="btn primary"
+                onclick="document.getElementById('videoFile').click()"
+              >
+                📁 Choose Video File
+              </button>
+              <div id="uploadStatus" class="status"></div>
+              <div
+                id="currentJobId"
+                class="job-id-display"
+                style="display: none"
+              >
+                <strong>🆔 Current Job ID:</strong>
+                <span id="jobIdText"></span>
+                <button onclick="copyJobId()" class="copy-btn">📋 Copy</button>
+              </div>
+            </div>
+
+            <div class="control-group">
+              <h3>🎬 Video Controls</h3>
+              <button id="shutdownBtn" class="btn danger" onclick="shutdown()">
+                Cancel Current Job
+              </button>
+              <button
+                id="shutdownSpecificBtn"
+                class="btn danger"
+                onclick="shutdownSpecificJob()"
+              >
+                Cancel Specific Job
+              </button>
+            </div>
+
+            <div class="control-group">
+              <h3>📊 Job Management</h3>
+              <button id="listJobsBtn" class="btn" onclick="listJobs()">
+                List All Jobs
+              </button>
+              <button id="checkJobBtn" class="btn" onclick="checkSpecificJob()">
+                Check Current Job
+              </button>
+              <button id="recentJobsBtn" class="btn" onclick="showRecentJobs()">
+                Show Recent Jobs
+              </button>
+              <button
+                id="queueStatusBtn"
+                class="btn"
+                onclick="checkQueueStatus()"
+              >
+                Check Queue Status
+              </button>
+              <button
+                id="restartQueueBtn"
+                class="btn warning"
+                onclick="restartQueue()"
+              >
+                Restart Queue
+              </button>
+              <button
+                id="clearJobsBtn"
+                class="btn warning"
+                onclick="clearCompletedJobs()"
+              >
+                Clear Completed Jobs
+              </button>
+              <button
+                id="cleanupTempBtn"
+                class="btn warning"
+                onclick="cleanupTempFiles()"
+              >
+                Cleanup Temp Files
+              </button>
+              <button
+                id="cleanupOrphanedBtn"
+                class="btn danger"
+                onclick="cleanupOrphanedFiles()"
+              >
+                Cleanup Orphaned Files
+              </button>
+            </div>
+
+            <div class="control-group">
+              <h3>🔧 System Tests</h3>
+              <button id="testDbBtn" class="btn" onclick="testDatabase()">
+                Test Database
+              </button>
+              <button
+                id="testStreamBtn"
+                class="btn"
+                onclick="testStreamStatus()"
+              >
+                Test Stream Status
+              </button>
+            </div>
+
+            <div class="stats">
+              <div class="stat-card">
+                <div id="fpsValue" class="stat-value">0</div>
+                <div class="stat-label">FPS</div>
+              </div>
+              <div class="stat-card">
+                <div id="frameValue" class="stat-value">0</div>
+                <div class="stat-label">Frames</div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="log-container" id="logContainer">
+          <div class="log-entry info">
+            🚀 System ready. Click "Connect to Stream" to start.
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <script>
+      let ws = null;
+      let canvas = null;
+      let ctx = null;
+      let frameCount = 0;
+      let lastFrameTime = 0;
+      let fps = 0;
+
+      // Global variables
+      let currentJobId = null;
+      let recentJobIds = [];
+
+      // Initialize canvas
+      function initCanvas() {
+        canvas = document.getElementById("videoCanvas");
+        ctx = canvas.getContext("2d");
+
+        // Set canvas size
+        const container = canvas.parentElement;
+        canvas.width = container.clientWidth;
+        canvas.height = container.clientHeight;
+      }
+
+      // Logging function
+      function log(message, type = "info") {
+        const logContainer = document.getElementById("logContainer");
+        const timestamp = new Date().toLocaleTimeString();
+        const logEntry = document.createElement("div");
+        logEntry.className = `log-entry ${type}`;
+        logEntry.textContent = `[${timestamp}] ${message}`;
+
+        logContainer.appendChild(logEntry);
+        logContainer.scrollTop = logContainer.scrollHeight;
+
+        // Keep only last 100 entries
+        while (logContainer.children.length > 100) {
+          logContainer.removeChild(logContainer.firstChild);
+        }
+      }
+
+      // Update connection status
+      function updateConnectionStatus(connected) {
+        const status = document.getElementById("connectionStatus");
+        const connectBtn = document.getElementById("connectBtn");
+
+        if (connected) {
+          status.className = "status connected";
+          status.textContent = "Connected";
+          connectBtn.textContent = "Disconnect";
+          connectBtn.onclick = disconnectFromStream;
+        } else {
+          status.className = "status disconnected";
+          status.textContent = "Disconnected";
+          connectBtn.textContent = "Connect to Stream";
+          connectBtn.onclick = connectToStream;
+        }
+      }
+
+      // Connect to WebSocket stream
+      function connectToStream() {
+        if (ws) {
+          log("❌ Already connected to stream", "error");
+          return;
+        }
+
+        const clientId = "client_" + Math.random().toString(36).substr(2, 9);
+        log("🔌 Connecting to video stream...", "info");
+        log(
+          `🔗 WebSocket URL: ws://localhost:8000/ws/video-stream/${clientId}`,
+          "info"
+        );
+
+        ws = new WebSocket(`ws://localhost:8000/ws/video-stream/${clientId}`);
+
+        ws.onopen = function () {
+          log("✅ WebSocket connection established", "success");
+          updateConnectionStatus(true);
+
+          // Send ping to keep connection alive
+          setInterval(() => {
+            if (ws && ws.readyState === WebSocket.OPEN) {
+              ws.send("ping");
+            }
+          }, 30000);
+        };
+
+        ws.onmessage = function (event) {
+          try {
+            const data = JSON.parse(event.data);
+
+            if (data.type === "frame") {
+              displayFrame(data.frame_data);
+              updateStats(data.frame_number);
+            } else if (data.type === "pong") {
+              // Connection alive
+            }
+          } catch (error) {
+            log(`❌ Error parsing message: ${error}`, "error");
+          }
+        };
+
+        ws.onclose = function () {
+          log("🔌 WebSocket connection closed", "warning");
+          updateConnectionStatus(false);
+          ws = null;
+        };
+
+        ws.onerror = function (error) {
+          log(`❌ WebSocket error: ${error}`, "error");
+          updateConnectionStatus(false);
+        };
+      }
+
+      // Disconnect from stream
+      function disconnectFromStream() {
+        if (ws) {
+          ws.close();
+          ws = null;
+          log("🔌 Disconnected from stream", "info");
+        }
+      }
+
+      // Display video frame
+      function displayFrame(frameData) {
+        if (!canvas || !ctx) return;
+
+        const img = new Image();
+        img.onload = function () {
+          // Clear canvas
+          ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+          // Calculate aspect ratio
+          const imgAspect = img.width / img.height;
+          const canvasAspect = canvas.width / canvas.height;
+
+          let drawWidth, drawHeight, offsetX, offsetY;
+
+          if (imgAspect > canvasAspect) {
+            drawWidth = canvas.width;
+            drawHeight = canvas.width / imgAspect;
+            offsetX = 0;
+            offsetY = (canvas.height - drawHeight) / 2;
+          } else {
+            drawHeight = canvas.height;
+            drawWidth = canvas.height * imgAspect;
+            offsetX = (canvas.width - drawWidth) / 2;
+            offsetY = 0;
+          }
+
+          ctx.drawImage(img, offsetX, offsetY, drawWidth, drawHeight);
+        };
+        img.src = "data:image/jpeg;base64," + frameData;
+      }
+
+      // Update statistics
+      function updateStats(frameNumber) {
+        frameCount++;
+
+        // Calculate FPS
+        const now = performance.now();
+        if (lastFrameTime > 0) {
+          const delta = now - lastFrameTime;
+          fps = 1000 / delta;
+        }
+        lastFrameTime = now;
+
+        // Update display
+        document.getElementById("fpsValue").textContent = fps.toFixed(1);
+        document.getElementById("frameValue").textContent =
+          frameNumber || frameCount;
+      }
+
+      // Handle file selection
+      document
+        .getElementById("videoFile")
+        .addEventListener("change", async function (e) {
+          const file = e.target.files[0];
+          if (!file) return;
+
+          log(
+            `📤 Uploading video: ${file.name} (${(
+              file.size /
+              1024 /
+              1024
+            ).toFixed(2)} MB)`,
+            "info"
+          );
+
+          const formData = new FormData();
+          formData.append("file", file);
+
+          try {
+            log("📤 Uploading video to server...", "info");
+
+            const response = await fetch(
+              "http://localhost:8000/upload-video/",
+              {
+                method: "POST",
+                body: formData,
+              }
+            );
+
+            if (!response.ok) {
+              const errorText = await response.text();
+              log(
+                `❌ Server error (${response.status}): ${errorText}`,
+                "error"
+              );
+              return;
+            }
+
+            const result = await response.json();
+
+            if (result.status === "queued") {
+              log("✅ Video added to processing queue!", "success");
+              log(`🆔 Job ID: ${result.job_id}`, "info");
+              log(`📋 Queue Position: ${result.queue_position}`, "info");
+              log(
+                "⏳ Video is queued for processing - you can continue using the interface",
+                "info"
+              );
+
+              // Store job ID in recent jobs (but don't set as current if it's queued)
+              if (!recentJobIds.includes(result.job_id)) {
+                recentJobIds.unshift(result.job_id);
+                if (recentJobIds.length > 5) {
+                  recentJobIds.pop(); // Keep only last 5 jobs
+                }
+              }
+
+              // Only set as current job if it's processing, not if it's queued
+              if (result.status === "processing") {
+                currentJobId = result.job_id;
+              }
+
+              // Display job ID prominently
+              const jobIdDisplay = document.getElementById("currentJobId");
+              const jobIdText = document.getElementById("jobIdText");
+              jobIdText.textContent = result.job_id;
+              jobIdDisplay.style.display = "flex";
+
+              // Start monitoring job status
+              monitorJobStatus(result.job_id);
+            } else if (result.status === "processing") {
+              log("✅ Video processing started in background!", "success");
+              log(`🆔 Job ID: ${result.job_id}`, "info");
+              log(
+                "⏳ Processing in background - you can continue using the interface",
+                "info"
+              );
+
+              // Store job ID in recent jobs and set as current (since it's processing)
+              if (!recentJobIds.includes(result.job_id)) {
+                recentJobIds.unshift(result.job_id);
+                if (recentJobIds.length > 5) {
+                  recentJobIds.pop(); // Keep only last 5 jobs
+                }
+              }
+
+              // Set as current job since it's processing
+              currentJobId = result.job_id;
+
+              // Display job ID prominently
+              const jobIdDisplay = document.getElementById("currentJobId");
+              const jobIdText = document.getElementById("jobIdText");
+              jobIdText.textContent = result.job_id;
+              jobIdDisplay.style.display = "flex";
+
+              // Start monitoring job status
+              monitorJobStatus(result.job_id);
+            } else if (result.status === "done") {
+              log("✅ Video processing completed!", "success");
+              log(
+                `📊 Stats: ${
+                  result.processing_stats.total_vehicles
+                } vehicles, ${result.processing_stats.compliance_rate.toFixed(
+                  1
+                )}% compliance`,
+                "info"
+              );
+              if (result.processed_video_url) {
+                log(
+                  `🎥 Processed video: ${result.processed_video_url}`,
+                  "info"
+                );
+              }
+            } else {
+              log(
+                `❌ Video processing failed: ${
+                  result.error || "Unknown error"
+                }`,
+                "error"
+              );
+            }
+          } catch (error) {
+            log(`❌ Upload failed: ${error.message}`, "error");
+          }
+        });
+
+      // Monitor job status
+      async function monitorJobStatus(jobId) {
+        const checkStatus = async () => {
+          try {
+            const response = await fetch(
+              `http://localhost:8000/job-status/${jobId}`
+            );
+
+            if (!response.ok) {
+              log(`❌ Failed to check job status: ${response.status}`, "error");
+              return;
+            }
+
+            const jobStatus = await response.json();
+
+            // Update progress in UI
+            updateJobProgress(jobStatus);
+
+            if (
+              jobStatus.status === "processing" ||
+              jobStatus.status === "queued"
+            ) {
+              // Continue monitoring for both processing and queued jobs
+              setTimeout(checkStatus, 2000); // Check every 2 seconds
+            } else if (jobStatus.status === "completed") {
+              log("✅ Video processing completed!", "success");
+              if (jobStatus.result) {
+                const stats = jobStatus.result.processing_stats;
+                log(
+                  `📊 Stats: ${
+                    stats.total_vehicles
+                  } vehicles, ${stats.compliance_rate.toFixed(1)}% compliance`,
+                  "info"
+                );
+                if (jobStatus.result.processed_video_url) {
+                  log(
+                    `🎥 Processed video: ${jobStatus.result.processed_video_url}`,
+                    "info"
+                  );
+                }
+              }
+            } else if (jobStatus.status === "failed") {
+              log(`❌ Video processing failed: ${jobStatus.error}`, "error");
+            }
+          } catch (error) {
+            log(`❌ Error checking job status: ${error.message}`, "error");
+          }
+        };
+
+        // Start monitoring
+        checkStatus();
+      }
+
+      // Update job progress in UI
+      function updateJobProgress(jobStatus) {
+        // You can add a progress bar or status indicator here
+        const progressMessage = `⏳ ${jobStatus.message} (${jobStatus.progress}%)`;
+        log(progressMessage, "info");
+      }
+
+      // List all background jobs
+      async function listJobs() {
+        try {
+          log("📋 Fetching all jobs...", "info");
+          const response = await fetch("http://localhost:8000/jobs/");
+
+          if (!response.ok) {
+            log(`❌ Failed to fetch jobs: ${response.status}`, "error");
+            return;
+          }
+
+          const data = await response.json();
+
+          if (data.status === "success") {
+            const summary = data.summary;
+            log(`📊 System Summary:`, "info");
+            log(`   Total Jobs: ${summary.total_jobs}`, "info");
+            log(`   Queue Length: ${summary.queue_length}`, "info");
+            log(
+              `   Queue Processor: ${
+                summary.queue_processor_running ? "🟢 Running" : "🔴 Stopped"
+              }`,
+              "info"
+            );
+
+            // Show status breakdown
+            if (summary.status_counts) {
+              log("📈 Status Breakdown:", "info");
+              Object.entries(summary.status_counts).forEach(
+                ([status, count]) => {
+                  const icon =
+                    status === "completed"
+                      ? "✅"
+                      : status === "processing"
+                      ? "🔄"
+                      : status === "queued"
+                      ? "⏳"
+                      : status === "failed"
+                      ? "❌"
+                      : "🚫";
+                  log(`   ${icon} ${status}: ${count}`, "info");
+                }
+              );
+            }
+
+            // Show jobs by status
+            if (data.jobs_by_status) {
+              Object.entries(data.jobs_by_status).forEach(([status, jobs]) => {
+                if (jobs.length > 0) {
+                  const icon =
+                    status === "completed"
+                      ? "✅"
+                      : status === "processing"
+                      ? "🔄"
+                      : status === "queued"
+                      ? "⏳"
+                      : status === "failed"
+                      ? "❌"
+                      : "🚫";
+                  log(
+                    `\n${icon} ${status.toUpperCase()} Jobs (${jobs.length}):`,
+                    "info"
+                  );
+                  jobs.forEach((job, index) => {
+                    const elapsed = job.elapsed_time
+                      ? `${job.elapsed_time.toFixed(1)}s`
+                      : "N/A";
+                    const progress = job.progress ? `${job.progress}%` : "N/A";
+                    log(
+                      `   ${index + 1}. ${
+                        job.file_name
+                      } - ${progress} - ${elapsed}`,
+                      status === "completed"
+                        ? "success"
+                        : status === "failed"
+                        ? "error"
+                        : "info"
+                    );
+                    if (job.message) {
+                      log(`      💬 ${job.message}`, "info");
+                    }
+                  });
+                }
+              });
+            }
+
+            // Show queue order if any
+            if (data.queue_order && data.queue_order.length > 0) {
+              log("\n⏳ Queue Order:", "info");
+              data.queue_order.forEach((item) => {
+                log(
+                  `   ${item.position}. ${item.file_name} (${item.job_id.slice(
+                    0,
+                    8
+                  )}...)`,
+                  "info"
+                );
+              });
+            }
+          } else {
+            log("📋 No jobs found", "info");
+          }
+        } catch (error) {
+          log(`❌ Error listing jobs: ${error.message}`, "error");
+        }
+      }
+
+      // Check current job status
+      async function checkSpecificJob() {
+        // First try to get from global variable
+        let jobId = currentJobId;
+
+        // If no global job ID, try to get from display
+        if (!jobId) {
+          const jobIdText = document.getElementById("jobIdText");
+          jobId = jobIdText.textContent;
+        }
+
+        if (!jobId || jobId.trim() === "") {
+          // Try to find any active job from the server
+          try {
+            log(
+              "🔍 No current job found locally, checking for active jobs...",
+              "info"
+            );
+            const response = await fetch("http://localhost:8000/jobs/");
+
+            if (response.ok) {
+              const result = await response.json();
+              if (result.jobs && result.jobs.length > 0) {
+                // Prioritize processing jobs over queued jobs
+                let activeJob = result.jobs.find(
+                  (job) => job.status === "processing"
+                );
+
+                // If no processing job, look for queued job
+                if (!activeJob) {
+                  activeJob = result.jobs.find(
+                    (job) => job.status === "queued"
+                  );
+                }
+
+                if (activeJob) {
+                  jobId = activeJob.job_id;
+                  currentJobId = jobId; // Set as current job
+                  log(`🆔 Found active job: ${jobId}`, "info");
+                } else {
+                  log(
+                    "❌ No active jobs found. All jobs are completed or failed.",
+                    "warning"
+                  );
+                  return;
+                }
+              } else {
+                log("❌ No jobs found on server.", "warning");
+                return;
+              }
+            } else {
+              log("❌ Failed to fetch jobs from server.", "error");
+              return;
+            }
+          } catch (error) {
+            log(`❌ Error checking for active jobs: ${error.message}`, "error");
+            return;
+          }
+        }
+
+        // Now check the job status
+        try {
+          log(`🔍 Checking status for job: ${jobId}`, "info");
+          const response = await fetch(
+            `http://localhost:8000/job-status/${jobId}`
+          );
+
+          if (!response.ok) {
+            if (response.status === 404) {
+              log(`❌ Job not found: ${jobId}`, "error");
+            } else {
+              log(`❌ Failed to check job: ${response.status}`, "error");
+            }
+            return;
+          }
+
+          const jobStatus = await response.json();
+
+          const status =
+            jobStatus.status === "processing"
+              ? "🔄"
+              : jobStatus.status === "completed"
+              ? "✅"
+              : jobStatus.status === "failed"
+              ? "❌"
+              : jobStatus.status === "queued"
+              ? "⏳"
+              : "❓";
+
+          log(`${status} Job Status:`, "info");
+          log(`  File: ${jobStatus.file_name}`, "info");
+          log(`  Status: ${jobStatus.status}`, "info");
+          log(`  Progress: ${jobStatus.progress}%`, "info");
+          log(`  Message: ${jobStatus.message}`, "info");
+
+          if (jobStatus.elapsed_time) {
+            log(`  Elapsed: ${jobStatus.elapsed_time.toFixed(1)}s`, "info");
+          }
+
+          if (jobStatus.error) {
+            log(`  Error: ${jobStatus.error}`, "error");
+          }
+
+          if (jobStatus.result) {
+            const stats = jobStatus.result.processing_stats;
+            log(
+              `  Results: ${
+                stats.total_vehicles
+              } vehicles, ${stats.compliance_rate.toFixed(1)}% compliance`,
+              "info"
+            );
+            if (jobStatus.result.processed_video_url) {
+              log(
+                `  🎥 Processed video: ${jobStatus.result.processed_video_url}`,
+                "info"
+              );
+            }
+          }
+        } catch (error) {
+          log(`❌ Error checking job: ${error.message}`, "error");
+        }
+      }
+
+      // Restart queue processor
+      async function restartQueue() {
+        try {
+          log("🔄 Restarting queue processor...", "info");
+          const response = await fetch("http://localhost:8000/restart-queue/", {
+            method: "POST",
+          });
+
+          if (!response.ok) {
+            log(`❌ Failed to restart queue: ${response.status}`, "error");
+            return;
+          }
+
+          const result = await response.json();
+
+          if (result.status === "success") {
+            log(`✅ ${result.message}`, "success");
+            log(
+              `🔄 Queue processor running: ${result.queue_processor_running}`,
+              "info"
+            );
+            log(`📋 Queue length: ${result.queue_length}`, "info");
+
+            if (result.queue_length > 0) {
+              log(
+                "💡 Queue restarted with pending jobs. Jobs should start processing now.",
+                "info"
+              );
+            }
+          } else {
+            log(`❌ Failed to restart queue: ${result.error}`, "error");
+          }
+        } catch (error) {
+          log(`❌ Error restarting queue: ${error.message}`, "error");
+        }
+      }
+
+      // Cleanup temporary files
+      async function cleanupTempFiles() {
+        try {
+          log("🧹 Cleaning up temporary files...", "info");
+          const response = await fetch(
+            "http://localhost:8000/system/cleanup-temp-files",
+            {
+              method: "POST",
+            }
+          );
+
+          if (!response.ok) {
+            log(`❌ Failed to cleanup temp files: ${response.status}`, "error");
+            return;
+          }
+
+          const result = await response.json();
+
+          if (result.status === "success") {
+            log("✅ Temporary files cleaned up successfully", "success");
+            log(`🗑️ Cleaned up ${result.cleaned_count} old files`, "info");
+          } else {
+            log(`❌ Failed to cleanup temp files: ${result.error}`, "error");
+          }
+        } catch (error) {
+          log(`❌ Error cleaning up temp files: ${error.message}`, "error");
+        }
+      }
+
+      // Cleanup orphaned files
+      async function cleanupOrphanedFiles() {
+        try {
+          log("🗑️ Cleaning up orphaned files...", "info");
+          const response = await fetch(
+            "http://localhost:8000/system/cleanup-orphaned-files",
+            {
+              method: "POST",
+            }
+          );
+
+          if (!response.ok) {
+            log(
+              `❌ Failed to cleanup orphaned files: ${response.status}`,
+              "error"
+            );
+            return;
+          }
+
+          const result = await response.json();
+
+          if (result.status === "success") {
+            log("✅ Orphaned files cleaned up successfully", "success");
+            log(`🗑️ Cleaned up ${result.cleaned_count} orphaned files`, "info");
+          } else {
+            log(
+              `❌ Failed to cleanup orphaned files: ${result.error}`,
+              "error"
+            );
+          }
+        } catch (error) {
+          log(`❌ Error cleaning up orphaned files: ${error.message}`, "error");
+        }
+      }
+
+      // Show recent job IDs
+      async function showRecentJobs() {
+        if (recentJobIds.length === 0) {
+          // Try to fetch jobs from server
+          try {
+            log("📋 No local recent jobs, fetching from server...", "info");
+            const response = await fetch("http://localhost:8000/jobs/");
+
+            if (response.ok) {
+              const result = await response.json();
+              if (result.jobs && result.jobs.length > 0) {
+                log(`📋 Found ${result.jobs.length} jobs on server:`, "info");
+                result.jobs.forEach((job, index) => {
+                  const status =
+                    job.status === "processing"
+                      ? "🔄"
+                      : job.status === "completed"
+                      ? "✅"
+                      : job.status === "failed"
+                      ? "❌"
+                      : job.status === "queued"
+                      ? "⏳"
+                      : "❓";
+                  log(
+                    `${status} ${index + 1}. ${job.job_id} - ${
+                      job.file_name
+                    } (${job.status})`,
+                    "info"
+                  );
+                });
+
+                // Update local tracking
+                result.jobs.forEach((job) => {
+                  if (!recentJobIds.includes(job.job_id)) {
+                    recentJobIds.unshift(job.job_id);
+                  }
+                });
+                if (recentJobIds.length > 5) {
+                  recentJobIds.splice(5); // Keep only last 5
+                }
+
+                // Set current job if there's an active one (prioritize processing)
+                let activeJob = result.jobs.find(
+                  (job) => job.status === "processing"
+                );
+
+                // If no processing job, look for queued job
+                if (!activeJob) {
+                  activeJob = result.jobs.find(
+                    (job) => job.status === "queued"
+                  );
+                }
+                if (activeJob) {
+                  currentJobId = activeJob.job_id;
+                  log(`🆔 Set current job: ${activeJob.job_id}`, "info");
+                }
+              } else {
+                log(
+                  "📋 No jobs found on server. Upload a video to get started!",
+                  "info"
+                );
+              }
+            } else {
+              log("❌ Failed to fetch jobs from server.", "error");
+            }
+          } catch (error) {
+            log(`❌ Error fetching jobs: ${error.message}`, "error");
+          }
+          return;
+        }
+
+        log(`📋 Recent Job IDs (last ${recentJobIds.length}):`, "info");
+        recentJobIds.forEach((jobId, index) => {
+          const isCurrent = jobId === currentJobId;
+          const prefix = isCurrent ? "🆔 CURRENT:" : `  ${index + 1}.`;
+          log(`${prefix} ${jobId}`, "info");
+        });
+
+        if (currentJobId) {
+          log(
+            "💡 Use 'Check Current Job' to see the status of the current job",
+            "info"
+          );
+        }
+        log(
+          "💡 Use 'List All Jobs' to see all active jobs with details",
+          "info"
+        );
+      }
+
+      // Clear completed jobs
+      async function clearCompletedJobs() {
+        try {
+          log("🧹 Clearing completed jobs...", "info");
+          const response = await fetch(
+            "http://localhost:8000/clear-completed-jobs/",
+            {
+              method: "POST",
+            }
+          );
+
+          if (!response.ok) {
+            log(`❌ Failed to clear jobs: ${response.status}`, "error");
+            return;
+          }
+
+          const result = await response.json();
+
+          if (result.status === "success") {
+            log(`✅ ${result.message}`, "success");
+            log(`🗑️ Jobs removed: ${result.jobs_removed}`, "info");
+          } else {
+            log(`❌ Failed to clear jobs: ${result.error}`, "error");
+          }
+        } catch (error) {
+          log(`❌ Error clearing jobs: ${error.message}`, "error");
+        }
+      }
+
+      // Test database connectivity
+      async function testDatabase() {
+        try {
+          log("🔍 Testing database connectivity...", "info");
+          const response = await fetch("http://localhost:8000/test-db/");
+
+          if (!response.ok) {
+            log(`❌ Database test failed: ${response.status}`, "error");
+            return;
+          }
+
+          const result = await response.json();
+
+          if (result.status === "success") {
+            log("✅ Database connection successful!", "success");
+            log(
+              `📊 Tracking data: ${result.tracking_data_count} records`,
+              "info"
+            );
+            log(
+              `📊 Vehicle counts: ${result.vehicle_counts_count} records`,
+              "info"
+            );
+          } else {
+            log(`❌ Database test failed: ${result.error}`, "error");
+          }
+        } catch (error) {
+          log(`❌ Database test error: ${error.message}`, "error");
+        }
+      }
+
+      // Test stream status
+      async function testStreamStatus() {
+        try {
+          log("🔍 Testing stream status...", "info");
+          const response = await fetch("http://localhost:8000/stream-status/");
+
+          if (!response.ok) {
+            log(`❌ Stream status test failed: ${response.status}`, "error");
+            return;
+          }
+
+          const result = await response.json();
+
+          if (result.status === "success") {
+            log("✅ Stream status check successful!", "success");
+            log(`📺 Streaming active: ${result.streaming_active}`, "info");
+            log(`👥 Active clients: ${result.active_clients}`, "info");
+            log(`📊 Frames processed: ${result.frames_processed}`, "info");
+            log(`📤 Frames sent: ${result.frames_sent}`, "info");
+          } else {
+            log(`❌ Stream status test failed: ${result.error}`, "error");
+          }
+        } catch (error) {
+          log(`❌ Stream status test error: ${error.message}`, "error");
+        }
+      }
+
+      // Check queue status
+      async function checkQueueStatus() {
+        try {
+          log("🔍 Checking queue status...", "info");
+          const response = await fetch("http://localhost:8000/queue-status/");
+
+          if (!response.ok) {
+            log(`❌ Queue status check failed: ${response.status}`, "error");
+            return;
+          }
+
+          const result = await response.json();
+
+          if (result.status === "success") {
+            log("✅ Queue status check successful!", "success");
+            log(
+              `🔄 Queue processor running: ${result.queue_processor_running}`,
+              "info"
+            );
+            log(`📋 Queue length: ${result.queue_length}`, "info");
+            log(`📊 Total jobs: ${result.total_jobs}`, "info");
+
+            // Show status counts
+            if (result.status_counts) {
+              log("📈 Job status breakdown:", "info");
+              for (const [status, count] of Object.entries(
+                result.status_counts
+              )) {
+                const icon =
+                  status === "queued"
+                    ? "⏳"
+                    : status === "processing"
+                    ? "🔄"
+                    : status === "completed"
+                    ? "✅"
+                    : status === "failed"
+                    ? "❌"
+                    : "❓";
+                log(`  ${icon} ${status}: ${count}`, "info");
+              }
+            }
+
+            // Show queue details
+            if (result.queue_details && result.queue_details.length > 0) {
+              log("📋 Current queue:", "info");
+              result.queue_details.forEach((item) => {
+                const statusIcon =
+                  item.status === "queued"
+                    ? "⏳"
+                    : item.status === "processing"
+                    ? "🔄"
+                    : "❓";
+                log(
+                  `  ${statusIcon} Position ${item.position}: ${item.file_name} (${item.progress}%)`,
+                  "info"
+                );
+              });
+            } else {
+              log("📋 Queue is empty", "info");
+            }
+          } else {
+            log(`❌ Queue status check failed: ${result.error}`, "error");
+          }
+        } catch (error) {
+          log(`❌ Queue status check error: ${error.message}`, "error");
+        }
+      }
+
+      // Test video processing
+      async function testVideoProcessing() {
+        try {
+          log("🔍 Testing video processing setup...", "info");
+          const response = await fetch(
+            "http://localhost:8000/test-video-processing/"
+          );
+
+          if (!response.ok) {
+            const errorText = await response.text();
+            log(`❌ Test failed (${response.status}): ${errorText}`, "error");
+            return;
+          }
+
+          const result = await response.json();
+
+          if (result.status === "success") {
+            log("✅ Video processing is ready!", "success");
+            log(`📁 Model: ${result.model_path}`, "info");
+            log(`🎥 Video: ${result.video_path}`, "info");
+          } else if (result.status === "warning") {
+            log(`⚠️ ${result.message}`, "warning");
+            log(`ℹ️ ${result.note}`, "info");
+          } else {
+            log(`❌ ${result.error}`, "error");
+          }
+        } catch (error) {
+          log(`❌ Test failed: ${error.message}`, "error");
+        }
+      }
+
+      // Start local processing
+      async function startLocalProcessing() {
+        try {
+          log("🚀 Starting local video processing...", "info");
+          const response = await fetch(
+            "http://localhost:8000/start-local-processing/",
+            {
+              method: "POST",
+            }
+          );
+
+          const result = await response.json();
+
+          if (result.status === "started") {
+            log("✅ Local processing started!", "success");
+            log("📺 Check the video stream above", "info");
+          } else {
+            log(`❌ Failed to start processing: ${result.error}`, "error");
+          }
+        } catch (error) {
+          log(`❌ Start processing failed: ${error.message}`, "error");
+        }
+      }
+
+      // Shutdown processing
+      async function shutdown() {
+        try {
+          log("🛑 Cancelling current job...", "info");
+          const response = await fetch("http://localhost:8000/jobs/shutdown", {
+            method: "POST",
+          });
+
+          const result = await response.json();
+
+          if (result.status === "cancelled") {
+            const jobType = result.job_status || "processing";
+            log(
+              `✅ ${
+                jobType.charAt(0).toUpperCase() + jobType.slice(1)
+              } job cancelled successfully`,
+              "success"
+            );
+            log(`🆔 Cancelled job: ${result.cancelled_job}`, "info");
+            log(
+              "💡 The job has been stopped. You can upload a new video or check other jobs.",
+              "info"
+            );
+
+            // Clear the current job display if it was the cancelled one
+            if (currentJobId === result.cancelled_job) {
+              currentJobId = null;
+              const jobIdDisplay = document.getElementById("currentJobId");
+              jobIdDisplay.style.display = "none";
+            }
+          } else if (result.status === "no_job") {
+            log("ℹ️ No active job found to cancel", "info");
+            log(
+              "💡 All jobs are either completed, failed, or not started.",
+              "info"
+            );
+          } else {
+            log(`❌ Cancellation failed: ${result.error}`, "error");
+          }
+        } catch (error) {
+          log(`❌ Cancellation request failed: ${error.message}`, "error");
+        }
+      }
+
+      // Shutdown specific job by ID
+      async function shutdownSpecificJob() {
+        try {
+          // Prompt user for job ID
+          const jobId = prompt("Enter the Job ID to cancel:");
+          if (!jobId) {
+            log("❌ No job ID provided. Cancellation cancelled.", "warning");
+            return;
+          }
+
+          log(`🛑 Cancelling specific job: ${jobId}...`, "info");
+          const response = await fetch(
+            `http://localhost:8000/jobs/shutdown/${jobId}`,
+            {
+              method: "POST",
+            }
+          );
+
+          const result = await response.json();
+
+          if (result.status === "cancelled") {
+            const jobType = result.job_status || "processing";
+            log(
+              `✅ ${
+                jobType.charAt(0).toUpperCase() + jobType.slice(1)
+              } job ${jobId} cancelled successfully`,
+              "success"
+            );
+            log(`🆔 Cancelled job: ${result.cancelled_job}`, "info");
+            log(
+              "💡 The job has been stopped. You can upload a new video or check other jobs.",
+              "info"
+            );
+
+            // Clear the current job display if it was the cancelled one
+            if (currentJobId === result.cancelled_job) {
+              currentJobId = null;
+              const jobIdDisplay = document.getElementById("currentJobId");
+              jobIdDisplay.style.display = "none";
+            }
+          } else if (result.status === "not_found") {
+            log(`❌ Job ${jobId} not found`, "error");
+          } else if (result.status === "cannot_cancel") {
+            log(`❌ Cannot cancel job ${jobId}: ${result.message}`, "error");
+          } else {
+            log(`❌ Cancellation failed: ${result.error}`, "error");
+          }
+        } catch (error) {
+          log(`❌ Cancellation request failed: ${error.message}`, "error");
+        }
+      }
+
+      // Function to copy job ID
+      function copyJobId() {
+        const jobIdText = document.getElementById("jobIdText");
+        const jobId = jobIdText.textContent;
+        if (jobId) {
+          navigator.clipboard
+            .writeText(jobId)
+            .then(() => {
+              log(`🔗 Job ID "${jobId}" copied to clipboard!`, "success");
+            })
+            .catch((err) => {
+              log(`❌ Failed to copy job ID: ${err}`, "error");
+            });
+        } else {
+          log("❌ No job ID to copy.", "warning");
+        }
+      }
+
+      // Initialize on page load
+      window.onload = function () {
+        initCanvas();
+        log(
+          "🚀 System initialized. Click 'Connect to Stream' to start video streaming.",
+          "info"
+        );
+      };
+
+      // Handle window resize
+      window.addEventListener("resize", function () {
+        initCanvas();
+      });
+    </script>
+  </body>
+</html>

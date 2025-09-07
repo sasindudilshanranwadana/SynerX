@@ -1,5 +1,6 @@
 import numpy as np
 import os
+import cv2
 
 class Config:
     """Configuration class to centralize all settings"""
@@ -9,9 +10,8 @@ class Config:
     # File Paths (relative to backend root)
     VIDEO_PATH = os.path.join(BACKEND_ROOT, 'asset', 'videoplayback.mp4')  # Input video file path
     OUTPUT_VIDEO_PATH = os.path.join(BACKEND_ROOT, 'asset', 'TrackingWithStopResult.mp4')  # Output processed video path
-    OUTPUT_CSV_PATH = os.path.join(BACKEND_ROOT, 'data', 'tracking_results.csv')  # CSV file for tracking results
-    COUNT_CSV_PATH = os.path.join(BACKEND_ROOT, 'data', 'vehicle_count.csv')  # CSV file for vehicle counts
     MODEL_PATH = os.path.join(BACKEND_ROOT, 'models', 'yolo12s.pt')  # YOLO model weights file path
+    LICENSE_PLATE_MODEL_PATH = os.path.join(BACKEND_ROOT, 'models', 'best.pt')  # License plate detection model path
     
     # Detection Zones
     SOURCE_POLYGON = np.array([(422, 10), (594, 16), (801, 665), (535, 649)])  # Detection area polygon coordinates
@@ -30,6 +30,7 @@ class Config:
     # Video Settings
     TARGET_FPS = 25  # Target frames per second for output video (Range: 15-60, Recommended: 25-30 for real-time processing)
     FPS_UPDATE_INTERVAL = 30  # Interval (in frames) to update FPS display (Range: 10-100, Recommended: 30-60 frames)
+    PROCESSING_FRAME_SKIP = 1  # Skip every N frames during processing (1 = process all frames, 2 = skip every other frame)
     
     # Visual Settings
     ANNOTATION_THICKNESS = 1  # Thickness of bounding box lines (Range: 1-5, Recommended: 2-3 for visibility)
@@ -47,8 +48,8 @@ class Config:
     # Vehicle Classes
     CLASS_NAMES = {2: "car", 3: "motorcycle", 5: "bus", 7: "truck"}  # YOLO class ID to vehicle type mapping
     
-    # Display Settings (for local mode)
-    ENABLE_DISPLAY = True  # Whether to show live video window in local mode
+    # Display Settings (for API mode)
+    ENABLE_DISPLAY = True  # Whether to show live video window in API mode
     MAX_DISPLAY_WIDTH = 1280  # Maximum width for display window (resize if larger)
     DISPLAY_FRAME_SKIP = 1  # Skip every N frames for better performance (1 = no skip, 2 = skip every other frame)
     DISPLAY_WAIT_KEY_DELAY = 1  # Delay in milliseconds for cv2.waitKey() (1 = responsive, 0 = fastest)
@@ -57,4 +58,13 @@ class Config:
     # Camera location coordinates for weather data collection
     LOCATION_LAT = -37.740585  # Latitude (Melbourne, Australia)
     LOCATION_LON = 144.731637  # Longitude (Melbourne, Australia)
+    
+    # WebSocket Streaming Configuration
+    # Performance settings for real-time video streaming
+    STREAMING_FRAME_SKIP = 1  # Send every frame for maximum responsiveness (Range: 1-10, Recommended: 1-3)
+    STREAMING_JPEG_QUALITY = 85  # JPEG quality for frame encoding (Range: 50-95, Recommended: 70-85 for balance)
+    STREAMING_MAX_FRAME_SIZE = (800, 600)  # Maximum frame dimensions for streaming (width, height)
+    STREAMING_QUEUE_SIZE = 2  # Frame buffer queue size (Range: 1-10, Recommended: 2-5 for low latency)
+    STREAMING_WORKERS = 2  # Number of encoding worker threads (Range: 1-4, Recommended: 2-3)
+    STREAMING_INTERPOLATION = cv2.INTER_NEAREST  # OpenCV interpolation method for resizing (INTER_NEAREST = fastest)
     
