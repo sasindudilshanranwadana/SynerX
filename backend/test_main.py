@@ -132,7 +132,6 @@ def test_websocket_connection():
     with client.websocket_connect("/ws/video-stream/test_client_id") as websocket:
         pass
 
-# --- Corrected Test ---
 def test_get_data_tracking():
     """
     Tests the GET /data/tracking endpoint.
@@ -142,7 +141,6 @@ def test_get_data_tracking():
     
     response_json = response.json()
     
-    # FIX: Check that the response is a dictionary with the correct structure.
     assert isinstance(response_json, dict)
     assert "status" in response_json
     assert response_json["status"] == "success"
