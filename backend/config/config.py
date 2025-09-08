@@ -10,8 +10,6 @@ class Config:
     # File Paths (relative to backend root)
     VIDEO_PATH = os.path.join(BACKEND_ROOT, 'asset', 'videoplayback.mp4')  # Input video file path
     OUTPUT_VIDEO_PATH = os.path.join(BACKEND_ROOT, 'asset', 'TrackingWithStopResult.mp4')  # Output processed video path
-    OUTPUT_CSV_PATH = os.path.join(BACKEND_ROOT, 'data', 'tracking_results.csv')  # CSV file for tracking results
-    COUNT_CSV_PATH = os.path.join(BACKEND_ROOT, 'data', 'vehicle_count.csv')  # CSV file for vehicle counts
     MODEL_PATH = os.path.join(BACKEND_ROOT, 'models', 'yolo12s.pt')  # YOLO model weights file path
     LICENSE_PLATE_MODEL_PATH = os.path.join(BACKEND_ROOT, 'models', 'best.pt')  # License plate detection model path
     
@@ -50,8 +48,8 @@ class Config:
     # Vehicle Classes
     CLASS_NAMES = {2: "car", 3: "motorcycle", 5: "bus", 7: "truck"}  # YOLO class ID to vehicle type mapping
     
-    # Display Settings (for local mode)
-    ENABLE_DISPLAY = True  # Whether to show live video window in local mode
+    # Display Settings (for API mode)
+    ENABLE_DISPLAY = True  # Whether to show live video window in API mode
     MAX_DISPLAY_WIDTH = 1280  # Maximum width for display window (resize if larger)
     DISPLAY_FRAME_SKIP = 1  # Skip every N frames for better performance (1 = no skip, 2 = skip every other frame)
     DISPLAY_WAIT_KEY_DELAY = 1  # Delay in milliseconds for cv2.waitKey() (1 = responsive, 0 = fastest)

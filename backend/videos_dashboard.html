@@ -1,0 +1,757 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>SynerX Videos</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+      body {
+        font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial,
+          sans-serif;
+        background: #0f172a;
+        color: #e2e8f0;
+        margin: 0;
+      }
+      header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 16px 20px;
+        background: #111827;
+        position: sticky;
+        top: 0;
+        z-index: 5;
+      }
+      h1 {
+        font-size: 18px;
+        margin: 0;
+      }
+      main {
+        padding: 20px;
+        max-width: 1200px;
+        margin: 0 auto;
+      }
+      .card {
+        background: #111827;
+        border: 1px solid #1f2937;
+        border-radius: 12px;
+        padding: 16px;
+        margin-bottom: 16px;
+      }
+      .row {
+        display: flex;
+        gap: 12px;
+        align-items: center;
+        flex-wrap: wrap;
+      }
+      label {
+        font-weight: 600;
+        color: #94a3b8;
+      }
+      input,
+      select {
+        background: #0b1220;
+        color: #e2e8f0;
+        border: 1px solid #1f2937;
+        border-radius: 6px;
+        padding: 6px 8px;
+      }
+      button {
+        background: #2563eb;
+        color: #fff;
+        border: none;
+        padding: 8px 12px;
+        border-radius: 8px;
+        cursor: pointer;
+        font-weight: 600;
+      }
+      button.secondary {
+        background: #334155;
+      }
+      table {
+        width: 100%;
+        border-collapse: collapse;
+      }
+      th,
+      td {
+        border-bottom: 1px solid #1f2937;
+        padding: 10px;
+        font-size: 14px;
+      }
+      th {
+        text-align: left;
+        color: #94a3b8;
+        font-weight: 700;
+      }
+      tr:hover {
+        background: #0b1220;
+      }
+      .muted {
+        color: #94a3b8;
+        font-size: 12px;
+      }
+      .actions {
+        display: flex;
+        gap: 6px;
+      }
+      .pill {
+        padding: 2px 8px;
+        border-radius: 999px;
+        font-size: 12px;
+        font-weight: 700;
+      }
+      .processing {
+        background: #1e293b;
+        color: #fbbf24;
+      }
+      .completed {
+        background: #052e16;
+        color: #86efac;
+      }
+      .failed {
+        background: #3f1d1d;
+        color: #fecaca;
+      }
+      .cancelled {
+        background: #3f1d1d;
+        color: #fca5a5;
+      }
+      .uploaded {
+        background: #1e293b;
+        color: #93c5fd;
+      }
+    </style>
+  </head>
+  <body>
+    <header>
+      <h1>SynerX Videos</h1>
+      <div class="actions">
+        <button class="secondary" onclick="loadVideos()">Refresh</button>
+      </div>
+    </header>
+    <main>
+      <div class="card">
+        <div class="row">
+          <label for="from">From</label>
+          <input id="from" type="date" />
+          <label for="to">To</label>
+          <input id="to" type="date" />
+          <label for="order">Order</label>
+          <select id="order">
+            <option value="created_at">Created</option>
+            <option value="upload_date">Upload Date</option>
+            <option value="duration_seconds">Duration</option>
+          </select>
+          <label for="desc">Desc</label>
+          <select id="desc">
+            <option value="true" selected>True</option>
+            <option value="false">False</option>
+          </select>
+          <button onclick="applyFilters()">Apply</button>
+          <span id="status" class="muted"></span>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="row" style="justify-content: space-between">
+          <div>
+            <strong>Videos</strong>
+            <span id="summary" class="muted"></span>
+          </div>
+        </div>
+        <div style="overflow: auto">
+          <table>
+            <thead>
+              <tr>
+                <th>ID</th>
+                <th>Name</th>
+                <th>Status</th>
+                <th>Duration</th>
+                <th>Processed URL</th>
+                <th>Created</th>
+                <th>Actions</th>
+              </tr>
+            </thead>
+            <tbody id="videosBody"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- Summary Modal -->
+      <div
+        id="summaryModal"
+        style="
+          display: none;
+          position: fixed;
+          inset: 0;
+          background: rgba(0, 0, 0, 0.6);
+          align-items: center;
+          justify-content: center;
+        "
+      >
+        <div
+          style="
+            background: #111827;
+            border: 1px solid #1f2937;
+            border-radius: 12px;
+            padding: 16px;
+            width: min(1000px, 95vw);
+            max-height: 90vh;
+            overflow: auto;
+          "
+        >
+          <div
+            class="row"
+            style="justify-content: space-between; margin-bottom: 8px"
+          >
+            <strong id="modalTitle">Video Summary</strong>
+            <div class="actions">
+              <button class="secondary" onclick="closeSummary()">Close</button>
+            </div>
+          </div>
+          <div id="summaryContent" class="muted">Loading...</div>
+          <div id="chartsContainer" style="margin-top: 12px; display: none">
+            <div class="row" style="gap: 16px; align-items: flex-start">
+              <div
+                style="
+                  flex: 1;
+                  min-width: 300px;
+                  background: #0b1220;
+                  border: 1px solid #1f2937;
+                  border-radius: 10px;
+                  padding: 12px;
+                "
+              >
+                <div class="muted" style="margin-bottom: 6px">
+                  Vehicle Counts by Type
+                </div>
+                <canvas id="vcChart" height="160"></canvas>
+              </div>
+              <div
+                style="
+                  flex: 1;
+                  min-width: 300px;
+                  background: #0b1220;
+                  border: 1px solid #1f2937;
+                  border-radius: 10px;
+                  padding: 12px;
+                "
+              >
+                <div class="muted" style="margin-bottom: 6px">
+                  Compliance Breakdown
+                </div>
+                <canvas id="complianceChart" height="160"></canvas>
+              </div>
+            </div>
+            <div
+              class="row"
+              style="gap: 16px; align-items: flex-start; margin-top: 12px"
+            >
+              <div
+                style="
+                  flex: 1;
+                  min-width: 300px;
+                  background: #0b1220;
+                  border: 1px solid #1f2937;
+                  border-radius: 10px;
+                  padding: 12px;
+                "
+              >
+                <div class="muted" style="margin-bottom: 6px">
+                  Detections by Weather
+                </div>
+                <canvas id="weatherCountsChart" height="160"></canvas>
+              </div>
+              <div
+                style="
+                  flex: 1;
+                  min-width: 300px;
+                  background: #0b1220;
+                  border: 1px solid #1f2937;
+                  border-radius: 10px;
+                  padding: 12px;
+                "
+              >
+                <div class="muted" style="margin-bottom: 6px">
+                  Reaction Time by Weather (avg seconds)
+                </div>
+                <canvas id="weatherReactionChart" height="160"></canvas>
+              </div>
+            </div>
+            <div
+              class="row"
+              style="gap: 16px; align-items: flex-start; margin-top: 12px"
+            >
+              <div
+                style="
+                  flex: 1;
+                  min-width: 300px;
+                  background: #0b1220;
+                  border: 1px solid #1f2937;
+                  border-radius: 10px;
+                  padding: 12px;
+                "
+              >
+                <div class="muted" style="margin-bottom: 6px">
+                  Compliance Rate by Weather (%)
+                </div>
+                <canvas id="weatherComplianceRateChart" height="160"></canvas>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </main>
+
+    <script>
+      const API_BASE = "";
+
+      document.addEventListener("DOMContentLoaded", () => {
+        try {
+          setDefaultDateRange(7);
+        } catch {}
+        applyFilters().catch(() => loadVideos());
+      });
+
+      async function loadVideos() {
+        const s = document.getElementById("status");
+        s.textContent = "Loading...";
+        try {
+          const data = await fetchJSON(`${API_BASE}/data/videos`);
+          if (data.status !== "success")
+            throw new Error(data.error || "Failed");
+          renderVideos(data.data || []);
+          document.getElementById(
+            "summary"
+          ).textContent = ` | Count: ${data.count}`;
+          s.textContent = "";
+        } catch (e) {
+          s.textContent = `Error: ${e.message}`;
+        }
+      }
+
+      async function applyFilters() {
+        const from = document.getElementById("from").value;
+        const to = document.getElementById("to").value;
+        const order = document.getElementById("order").value;
+        const desc = document.getElementById("desc").value;
+        const s = document.getElementById("status");
+        s.textContent = "Loading...";
+        try {
+          const url = new URL(
+            `${API_BASE}/data/videos/filter`,
+            location.origin
+          );
+          if (from) url.searchParams.set("date_from", from);
+          if (to) url.searchParams.set("date_to", to);
+          if (order) url.searchParams.set("order_by", order);
+          if (desc) url.searchParams.set("order_desc", desc);
+          const data = await fetchJSON(url.toString());
+          if (data.status !== "success")
+            throw new Error(data.error || "Failed");
+          renderVideos(data.data || []);
+          document.getElementById(
+            "summary"
+          ).textContent = ` | Count: ${data.count}`;
+          s.textContent = "";
+        } catch (e) {
+          s.textContent = `Error: ${e.message}`;
+        }
+      }
+
+      function setDefaultDateRange(days) {
+        const toEl = document.getElementById("to");
+        const fromEl = document.getElementById("from");
+        const now = new Date();
+        const toStr = now.toISOString().slice(0, 10);
+        const past = new Date(now.getTime() - days * 24 * 60 * 60 * 1000);
+        const fromStr = past.toISOString().slice(0, 10);
+        toEl.value = toStr;
+        fromEl.value = fromStr;
+      }
+
+      function renderVideos(videos) {
+        const tbody = document.getElementById("videosBody");
+        tbody.innerHTML = "";
+        for (const v of videos) {
+          const tr = document.createElement("tr");
+          const dur =
+            v.duration_seconds != null
+              ? formatDuration(v.duration_seconds)
+              : "-";
+          const url = v.processed_url
+            ? `<a href="${v.processed_url}" target="_blank">Open</a>`
+            : "-";
+          const statusPill = `<span class="pill ${v.status}">${v.status}</span>`;
+          tr.innerHTML = `
+            <td>${v.id}</td>
+            <td title="${v.video_name || ""}">${truncate(
+            v.video_name || "",
+            50
+          )}</td>
+            <td>${statusPill}</td>
+            <td>${dur}</td>
+            <td>${url}</td>
+            <td>${(v.created_at || "")
+              .toString()
+              .replace("T", " ")
+              .replace("Z", "")}</td>
+            <td class="actions">
+              <button onclick="openSummary(${v.id}, '${escapeAttr(
+            v.video_name || "Video"
+          )}')">View</button>
+              <button class="secondary" onclick="openDeleteConfirm(${
+                v.id
+              }, '${escapeAttr(v.video_name || "Video")}')">Delete</button>
+            </td>
+          `;
+          tbody.appendChild(tr);
+        }
+      }
+
+      function truncate(str, n) {
+        return str && str.length > n ? str.slice(0, n - 1) + "…" : str || "";
+      }
+      function formatDuration(sec) {
+        const s = Math.floor(sec % 60);
+        const m = Math.floor(sec / 60) % 60;
+        const h = Math.floor(sec / 3600);
+        return `${h > 0 ? h + ":" : ""}${String(m).padStart(2, "0")}:${String(
+          s
+        ).padStart(2, "0")}`;
+      }
+      function escapeAttr(str) {
+        return str.replace(/['"\\]/g, "_");
+      }
+
+      async function openSummary(videoId, name) {
+        const modal = document.getElementById("summaryModal");
+        const content = document.getElementById("summaryContent");
+        const title = document.getElementById("modalTitle");
+        title.textContent = `Video ${videoId} - ${name}`;
+        content.textContent = "Loading...";
+        modal.style.display = "flex";
+        try {
+          const data = await fetchJSON(
+            `${API_BASE}/data/summary/by-video/${videoId}`
+          );
+          if (data.status !== "success")
+            throw new Error(data.error || "Failed");
+          const v = data.video || {};
+          const t = data.tracking_data || [];
+          const c = data.vehicle_counts || [];
+          const url = v.processed_url
+            ? `<a href="${v.processed_url}" target="_blank">Open Processed Video</a>`
+            : "-";
+          const html = `
+            <div style="margin-bottom:8px;">
+              <div><strong>Status:</strong> ${v.status || "-"}</div>
+              <div><strong>Processed URL:</strong> ${url}</div>
+              <div><strong>Duration (processed):</strong> ${
+                v.duration_seconds != null
+                  ? formatDuration(v.duration_seconds)
+                  : "-"
+              }</div>
+              <div><strong>Total Vehicles:</strong> ${
+                v.total_vehicles != null ? v.total_vehicles : "-"
+              }</div>
+              <div><strong>Compliance Rate:</strong> ${
+                v.compliance_rate != null ? v.compliance_rate : "-"
+              }%</div>
+            </div>
+            <div class="row" style="justify-content:space-between;">
+              <strong>Tracking Data (${t.length})</strong>
+              <strong>Vehicle Counts (${c.length})</strong>
+            </div>
+            <div class="row" style="gap:16px; align-items:flex-start;">
+              <div style="flex:1; min-width:300px;">
+                <table style="width:100%;">
+                  <thead><tr><th>ID</th><th>Type</th><th>Status</th><th>Compliance</th></tr></thead>
+                  <tbody>
+                    ${t
+                      .slice(0, 50)
+                      .map(
+                        (it) =>
+                          `<tr><td>${it.tracker_id || ""}</td><td>${
+                            it.vehicle_type || ""
+                          }</td><td>${it.status || ""}</td><td>${
+                            it.compliance == 1 ? "✅" : "❌"
+                          }</td></tr>`
+                      )
+                      .join("")}
+                  </tbody>
+                </table>
+                ${
+                  t.length > 50
+                    ? `<div class="muted">Showing first 50 of ${t.length}</div>`
+                    : ""
+                }
+              </div>
+              <div style="flex:1; min-width:300px;">
+                <table style="width:100%;">
+                  <thead><tr><th>Type</th><th>Count</th><th>Date</th></tr></thead>
+                  <tbody>
+                    ${c
+                      .slice(0, 50)
+                      .map(
+                        (it) =>
+                          `<tr><td>${it.vehicle_type || ""}</td><td>${
+                            it.count || 0
+                          }</td><td>${it.date || ""}</td></tr>`
+                      )
+                      .join("")}
+                  </tbody>
+                </table>
+                ${
+                  c.length > 50
+                    ? `<div class="muted">Showing first 50 of ${c.length}</div>`
+                    : ""
+                }
+              </div>
+            </div>
+          `;
+          content.innerHTML = html;
+          // Build charts
+          try {
+            buildCharts(t, c);
+            buildWeatherCharts(t);
+            buildWeatherComplianceRate(t);
+          } catch {}
+        } catch (e) {
+          content.textContent = `Error: ${e.message}`;
+        }
+      }
+
+      function closeSummary() {
+        document.getElementById("summaryModal").style.display = "none";
+      }
+
+      async function fetchJSON(url, options) {
+        const res = await fetch(url, options);
+        const text = await res.text();
+        try {
+          const data = text ? JSON.parse(text) : {};
+          if (!res.ok) {
+            throw new Error(
+              `${res.status} ${
+                data.detail || data.error || res.statusText || "Request failed"
+              }`
+            );
+          }
+          return data;
+        } catch (err) {
+          if (!res.ok)
+            throw new Error(`${res.status} ${text || res.statusText}`);
+          throw err;
+        }
+      }
+
+      // Charts
+      let vcChart = null;
+      let compChart = null;
+      function buildCharts(tracking, counts) {
+        const cc = document.getElementById("chartsContainer");
+        if (!counts || counts.length === 0) {
+          cc.style.display = "none";
+          return;
+        }
+        cc.style.display = "block";
+        // Vehicle counts by type
+        const grouped = {};
+        for (const it of counts) {
+          const k = it.vehicle_type || "unknown";
+          grouped[k] = (grouped[k] || 0) + (it.count || 0);
+        }
+        const labels = Object.keys(grouped);
+        const data = labels.map((k) => grouped[k]);
+        if (vcChart) vcChart.destroy();
+        vcChart = new Chart(
+          document.getElementById("vcChart").getContext("2d"),
+          {
+            type: "bar",
+            data: {
+              labels,
+              datasets: [{ label: "Count", data, backgroundColor: "#3b82f6" }],
+            },
+            options: {
+              responsive: true,
+              plugins: { legend: { display: false } },
+            },
+          }
+        );
+        // Compliance breakdown from tracking
+        let compYes = 0,
+          compNo = 0;
+        for (const it of tracking || []) {
+          if (it.compliance === 1) compYes++;
+          else compNo++;
+        }
+        if (compChart) compChart.destroy();
+        compChart = new Chart(
+          document.getElementById("complianceChart").getContext("2d"),
+          {
+            type: "doughnut",
+            data: {
+              labels: ["Compliant", "Non-Compliant"],
+              datasets: [
+                {
+                  data: [compYes, compNo],
+                  backgroundColor: ["#22c55e", "#ef4444"],
+                },
+              ],
+            },
+            options: { responsive: true },
+          }
+        );
+      }
+
+      // Weather charts
+      let wCountChart = null;
+      let wReactChart = null;
+      function buildWeatherCharts(tracking) {
+        const byWeather = {};
+        for (const it of tracking || []) {
+          const w = (it.weather_condition || "unknown").toLowerCase();
+          if (!byWeather[w]) byWeather[w] = { count: 0, compliant: 0, non: 0 };
+          byWeather[w].count += 1;
+          if (it.compliance === 1) byWeather[w].compliant += 1;
+          else byWeather[w].non += 1;
+        }
+        const labels = Object.keys(byWeather);
+        if (labels.length === 0) {
+          return;
+        }
+        const counts = labels.map((k) => byWeather[k].count);
+        const compYes = labels.map((k) => byWeather[k].compliant);
+        const compNo = labels.map((k) => byWeather[k].non);
+        if (wCountChart) wCountChart.destroy();
+        wCountChart = new Chart(
+          document.getElementById("weatherCountsChart").getContext("2d"),
+          {
+            type: "bar",
+            data: {
+              labels,
+              datasets: [
+                {
+                  label: "Detections",
+                  data: counts,
+                  backgroundColor: "#38bdf8",
+                },
+              ],
+            },
+            options: {
+              responsive: true,
+              plugins: { legend: { display: false } },
+            },
+          }
+        );
+        // Reaction time by weather
+        const react = {};
+        for (const it of tracking || []) {
+          const w = (it.weather_condition || "unknown").toLowerCase();
+          const rt = parseFloat(it.reaction_time);
+          if (!isNaN(rt)) {
+            if (!react[w]) react[w] = { sum: 0, n: 0 };
+            react[w].sum += rt;
+            react[w].n += 1;
+          }
+        }
+        const rLabels = Object.keys(react);
+        const rData = rLabels.map((k) =>
+          react[k].n > 0 ? react[k].sum / react[k].n : 0
+        );
+        if (wReactChart) wReactChart.destroy();
+        wReactChart = new Chart(
+          document.getElementById("weatherReactionChart").getContext("2d"),
+          {
+            type: "bar",
+            data: {
+              labels: rLabels,
+              datasets: [
+                {
+                  label: "Avg Reaction (s)",
+                  data: rData,
+                  backgroundColor: "#f59e0b",
+                },
+              ],
+            },
+            options: {
+              responsive: true,
+              plugins: { legend: { display: false } },
+            },
+          }
+        );
+      }
+
+      // Weather compliance rate
+      let wCompRateChart = null;
+      function buildWeatherComplianceRate(tracking) {
+        const byWeather = {};
+        for (const it of tracking || []) {
+          const w = (it.weather_condition || "unknown").toLowerCase();
+          if (!byWeather[w]) byWeather[w] = { total: 0, compliant: 0 };
+          byWeather[w].total += 1;
+          if (it.compliance === 1) byWeather[w].compliant += 1;
+        }
+        const labels = Object.keys(byWeather);
+        if (labels.length === 0) return;
+        const rates = labels.map((k) =>
+          byWeather[k].total > 0
+            ? (byWeather[k].compliant / byWeather[k].total) * 100
+            : 0
+        );
+        if (wCompRateChart) wCompRateChart.destroy();
+        wCompRateChart = new Chart(
+          document
+            .getElementById("weatherComplianceRateChart")
+            .getContext("2d"),
+          {
+            type: "bar",
+            data: {
+              labels,
+              datasets: [
+                {
+                  label: "Compliance %",
+                  data: rates,
+                  backgroundColor: "#22c55e",
+                },
+              ],
+            },
+            options: {
+              responsive: true,
+              scales: { y: { beginAtZero: true, max: 100 } },
+            },
+          }
+        );
+      }
+
+      function openDeleteConfirm(videoId, name) {
+        const msg = `Are you sure you want to delete "${name}" (ID ${videoId})?\n\nThis will also delete all tracking data and vehicle counts linked to this video.`;
+        if (confirm(msg)) deleteVideo(videoId);
+      }
+
+      async function deleteVideo(videoId) {
+        if (!confirm(`Delete video ${videoId}? This cannot be undone.`)) return;
+        const s = document.getElementById("status");
+        s.textContent = "Deleting...";
+        try {
+          const res = await fetch(`${API_BASE}/data/videos/${videoId}`, {
+            method: "DELETE",
+          });
+          const text = await res.text();
+          const data = text ? JSON.parse(text) : {};
+          if (!res.ok || data.status !== "success")
+            throw new Error(data.error || res.statusText);
+          s.textContent = "Deleted.";
+          await applyFilters();
+          setTimeout(() => {
+            s.textContent = "";
+          }, 1000);
+        } catch (e) {
+          s.textContent = `Error: ${e.message}`;
+        }
+      }
+    </script>
+  </body>
+</html>

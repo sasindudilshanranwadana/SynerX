@@ -11,128 +11,9 @@ router = APIRouter(prefix="/jobs", tags=["Job Management"])
 def init_job_router(background_jobs, job_lock, job_queue, queue_lock, queue_processor_active, start_queue_processor, shutdown_manager):
     """Initialize the job router with global variables"""
     
-    @router.get("/")
-    async def list_all_jobs():
-        """
-        Get comprehensive status of all background jobs
-        
-        Returns detailed information about all jobs including:
-        - Jobs organized by status (processing, queued, completed, failed, cancelled)
-        - System summary with total jobs and queue information
-        - Queue order and status breakdown
-        
-        Returns:
-            dict: Comprehensive job status information
-        """
-        try:
-            with job_lock:
-                # Get all jobs with detailed information
-                all_jobs = []
-                for job_id, job in background_jobs.items():
-                    elapsed_time = time.time() - job["start_time"]
-                    
-                    job_info = {
-                        "job_id": job_id,
-                        "status": job["status"],
-                        "progress": job["progress"],
-                        "file_name": job["file_name"],
-                        "start_time": job["start_time"],
-                        "elapsed_time": elapsed_time,
-                        "message": job["message"],
-                        "error": job["error"]
-                    }
-                    
-                    # Add result info if available
-                    if job["result"]:
-                        job_info["result"] = job["result"]
-                    
-                    all_jobs.append(job_info)
-                
-                # Organize jobs by status
-                jobs_by_status = {
-                    "processing": [],
-                    "queued": [],
-                    "completed": [],
-                    "failed": [],
-                    "cancelled": []
-                }
-                
-                for job in all_jobs:
-                    status = job["status"]
-                    if status in jobs_by_status:
-                        jobs_by_status[status].append(job)
-                
-                # Get queue information
-                with queue_lock:
-                    queue_length = len(job_queue)
-                    queue_processor_running = queue_processor_active
-                    
-                    # Get queue order
-                    queue_order = []
-                    for i, job_data in enumerate(job_queue):
-                        job_id = job_data['job_id']
-                        if job_id in background_jobs:
-                            job_info = background_jobs[job_id]
-                            queue_order.append({
-                                "position": i + 1,
-                                "job_id": job_id,
-                                "file_name": job_info["file_name"],
-                                "status": job_info["status"]
-                            })
-                
-                # Count jobs by status
-                status_counts = {}
-                for job in all_jobs:
-                    status = job["status"]
-                    status_counts[status] = status_counts.get(status, 0) + 1
-                
-                return {
-                    "status": "success",
-                    "summary": {
-                        "total_jobs": len(all_jobs),
-                        "status_counts": status_counts,
-                        "queue_length": queue_length,
-                        "queue_processor_running": queue_processor_running
-                    },
-                    "jobs_by_status": jobs_by_status,
-                    "queue_order": queue_order,
-                    "all_jobs": all_jobs  # Complete list for backward compatibility
-                }
-        except Exception as e:
-            return {"status": "error", "error": str(e)}
+    
 
-    @router.get("/status/{job_id}")
-    async def get_job_status(job_id: str):
-        """
-        Get the status of a specific background video processing job
-        
-        Args:
-            job_id: The unique identifier of the job to check
-        
-        Returns:
-            dict: Detailed job status information including progress, elapsed time, and results
-        """
-        try:
-            with job_lock:
-                if job_id not in background_jobs:
-                    raise HTTPException(status_code=404, detail="Job not found")
-                
-                job = background_jobs[job_id]
-                return {
-                    "job_id": job_id,
-                    "status": job["status"],
-                    "progress": job["progress"],
-                    "message": job["message"],
-                    "file_name": job["file_name"],
-                    "start_time": job["start_time"],
-                    "elapsed_time": time.time() - job["start_time"],
-                    "result": job["result"],
-                    "error": job["error"]
-                }
-        except HTTPException:
-            raise
-        except Exception as e:
-            return {"status": "error", "error": str(e)}
+    
 
     @router.post("/clear-completed", response_model=JobStatusResponse)
     async def clear_completed_jobs():
@@ -200,11 +81,16 @@ def init_job_router(background_jobs, job_lock, job_queue, queue_lock, queue_proc
                             break
             
             if active_job:
-                # Mark the job as cancelled
+                # Mark job state based on whether it's processing or queued
                 with job_lock:
-                    background_jobs[active_job]["status"] = "cancelled"
-                    background_jobs[active_job]["message"] = "Job cancelled by user"
-                    background_jobs[active_job]["error"] = "Cancelled by user request"
+                    if job_status == "processing":
+                        background_jobs[active_job]["status"] = "interrupted"
+                        background_jobs[active_job]["message"] = "Job interrupted by user"
+                        background_jobs[active_job]["error"] = "Interrupted by user request"
+                    else:
+                        background_jobs[active_job]["status"] = "cancelled"
+                        background_jobs[active_job]["message"] = "Job cancelled by user"
+                        background_jobs[active_job]["error"] = "Cancelled by user request"
                 
                 # If it was a queued job, remove it from the queue
                 if job_status == "queued":
@@ -215,6 +101,9 @@ def init_job_router(background_jobs, job_lock, job_queue, queue_lock, queue_proc
                 if job_status == "processing":
                     shutdown_manager.set_shutdown_flag()
                     print(f"[SHUTDOWN] Set shutdown flag to stop processing job: {active_job}")
+                # Mark end time
+                with job_lock:
+                    background_jobs[active_job]["end_time"] = time.time()
                 
                 # Clean up files for cancelled job
                 try:
@@ -256,9 +145,9 @@ def init_job_router(background_jobs, job_lock, job_queue, queue_lock, queue_proc
                 print(f"[SHUTDOWN] Cancelled {job_status} job: {active_job}")
                 
                 return {
-                    "status": "cancelled", 
-                    "message": f"{job_status.capitalize()} job {active_job} has been cancelled",
-                    "cancelled_job": active_job,
+                    "status": "interrupted" if job_status == "processing" else "cancelled", 
+                    "message": f"{job_status.capitalize()} job {active_job} has been { 'interrupted' if job_status == 'processing' else 'cancelled' }",
+                    "job_id": active_job,
                     "job_status": job_status
                 }
             else:
@@ -305,10 +194,15 @@ def init_job_router(background_jobs, job_lock, job_queue, queue_lock, queue_proc
                         "job_status": job_status
                     }
                 
-                # Mark the job as cancelled
-                background_jobs[job_id]["status"] = "cancelled"
-                background_jobs[job_id]["message"] = "Job cancelled by user"
-                background_jobs[job_id]["error"] = "Cancelled by user request"
+                # Mark job state based on status
+                if job_status == "processing":
+                    background_jobs[job_id]["status"] = "interrupted"
+                    background_jobs[job_id]["message"] = "Job interrupted by user"
+                    background_jobs[job_id]["error"] = "Interrupted by user request"
+                else:
+                    background_jobs[job_id]["status"] = "cancelled"
+                    background_jobs[job_id]["message"] = "Job cancelled by user"
+                    background_jobs[job_id]["error"] = "Cancelled by user request"
                 
                 # If it was a queued job, remove it from the queue
                 if job_status == "queued":
@@ -319,6 +213,8 @@ def init_job_router(background_jobs, job_lock, job_queue, queue_lock, queue_proc
                 if job_status == "processing":
                     shutdown_manager.set_shutdown_flag()
                     print(f"[SHUTDOWN] Set shutdown flag to stop processing job: {job_id}")
+                # Mark end time
+                background_jobs[job_id]["end_time"] = time.time()
                 
                 # Clean up files for cancelled job
                 try:
@@ -359,97 +255,17 @@ def init_job_router(background_jobs, job_lock, job_queue, queue_lock, queue_proc
                 print(f"[SHUTDOWN] Cancelled {job_status} job: {job_id}")
                 
                 return {
-                    "status": "cancelled", 
-                    "message": f"{job_status.capitalize()} job {job_id} has been cancelled",
-                    "cancelled_job": job_id,
+                    "status": "interrupted" if job_status == "processing" else "cancelled", 
+                    "message": f"{job_status.capitalize()} job {job_id} has been { 'interrupted' if job_status == 'processing' else 'cancelled' }",
+                    "job_id": job_id,
                     "job_status": job_status
                 }
                 
         except Exception as e:
             return {"status": "error", "error": str(e)}
 
-    @router.post("/restart-queue")
-    async def restart_queue_processor():
-        """
-        Restart the job queue processor
-        
-        Restarts the background queue processor that handles video processing jobs.
-        This can be useful if the queue processor gets stuck or stops working.
-        
-        Returns:
-            dict: Status of the restart operation and current queue information
-        """
-        try:
-            global queue_processor_active
-            
-            # Stop current processor if running
-            with queue_lock:
-                if queue_processor_active:
-                    queue_processor_active = False
-                    print("[QUEUE] 🛑 Stopping current queue processor")
-                    time.sleep(1)  # Give it time to stop
-            
-            # Start new processor
-            start_queue_processor()
-            
-            return {
-                "status": "success",
-                "message": "Queue processor restarted",
-                "queue_processor_running": queue_processor_active,
-                "queue_length": len(job_queue)
-            }
-        except Exception as e:
-            return {"status": "error", "error": str(e)}
+    
 
-    @router.get("/queue-status")
-    async def get_queue_status():
-        """
-        Get current queue status and information
-        
-        Returns detailed information about the job queue including:
-        - Queue processor status (running/stopped)
-        - Queue length and total jobs
-        - Status breakdown (processing, queued, completed, etc.)
-        - Queue details with job positions
-        
-        Returns:
-            dict: Comprehensive queue status information
-        """
-        try:
-            with queue_lock:
-                queue_length = len(job_queue)
-                queue_processor_running = queue_processor_active
-            
-            with job_lock:
-                # Count jobs by status
-                status_counts = {}
-                for job in background_jobs.values():
-                    status = job["status"]
-                    status_counts[status] = status_counts.get(status, 0) + 1
-                
-                # Get queue details
-                queue_details = []
-                for i, job_data in enumerate(job_queue):
-                    job_id = job_data['job_id']
-                    if job_id in background_jobs:
-                        job_info = background_jobs[job_id]
-                        queue_details.append({
-                            "position": i + 1,
-                            "job_id": job_id,
-                            "file_name": job_info["file_name"],
-                            "status": job_info["status"],
-                            "progress": job_info["progress"]
-                        })
-            
-            return {
-                "status": "success",
-                "queue_processor_running": queue_processor_running,
-                "queue_length": queue_length,
-                "total_jobs": len(background_jobs),
-                "status_counts": status_counts,
-                "queue_details": queue_details
-            }
-        except Exception as e:
-            return {"status": "error", "error": str(e)}
+    
 
     return router

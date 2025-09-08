@@ -3,6 +3,8 @@ from pathlib import Path
 import shutil
 import uuid
 import time
+import os
+from datetime import datetime
 
 router = APIRouter(prefix="/video", tags=["Video Processing"])
 
@@ -46,7 +48,7 @@ def init_video_router(background_jobs, job_lock, job_queue, queue_lock, start_qu
             
             print(f"[UPLOAD] Step 2: File saved to {raw_path}")
 
-            # 2. Create job ID and add to queue
+            # 2. Create job ID and add to queue (DB record will be created when processing starts)
             job_id = str(uuid.uuid4())
             analytic_path = OUTPUT_DIR / f"{job_id}_out{suffix}"
             
@@ -60,16 +62,18 @@ def init_video_router(background_jobs, job_lock, job_queue, queue_lock, start_qu
                     "progress": 0,
                     "message": "Video added to processing queue...",
                     "result": None,
-                    "error": None
+                    "error": None,
+                    "video_id": None
                 }
             
-            # Add job to queue
+            # Add job to queue (video_id will be set when processing actually begins)
             job_data = {
                 "job_id": job_id,
                 "raw_path": raw_path,
                 "analytic_path": analytic_path,
                 "suffix": suffix,
-                "start_time": time.time()
+                "start_time": time.time(),
+                "video_id": None
             }
             
             with queue_lock:
@@ -94,6 +98,16 @@ def init_video_router(background_jobs, job_lock, job_queue, queue_lock, start_qu
             }
         except Exception as e:
             print(f"[UPLOAD] Error: {e}")
+            # Best-effort cleanup of temp file if it was created
+            try:
+                from pathlib import Path as _Path
+                if 'raw_path' in locals():
+                    _p = _Path(str(raw_path))
+                    if _p.exists():
+                        _p.unlink()
+                        print(f"[UPLOAD] Cleaned temp file after failure: {_p}")
+            except Exception as _ce:
+                print(f"[UPLOAD] Warning: failed to cleanup temp file: {_ce}")
             import traceback
             traceback.print_exc()
             raise HTTPException(status_code=500, detail=f"Upload failed: {str(e)}")
