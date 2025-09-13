@@ -1,14 +1,15 @@
 import React from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { supabase } from './lib/supabase';
+import { initializeTheme } from './lib/theme';
 import LandingPage from './pages/LandingPage';
 import Dashboard from './pages/Dashboard';
 import Auth from './pages/Auth';
 import Upload from './pages/Upload';
 import Analytics from './pages/Analytics';
-import Progress from './pages/Progress';
-import ProgressBoard from './pages/ProgressBoard';
 import Settings from './pages/Settings';
+import Playback from './pages/Playback';
+import ConfirmationSuccess from './pages/ConfirmationSuccess';
 import LoadingScreen from './components/LoadingScreen';
 
 function App() {
@@ -17,6 +18,9 @@ function App() {
   const [pageLoading, setPageLoading] = React.useState(false);
 
   React.useEffect(() => {
+    // Initialize theme on app start
+    initializeTheme();
+
     // Set up Supabase auth listener
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
       setUser(session?.user ?? null);
@@ -51,10 +55,10 @@ function App() {
         <Route path="/dashboard" element={user ? <Dashboard /> : <Navigate to="/auth" />} />
         <Route path="/upload" element={user ? <Upload /> : <Navigate to="/auth" />} />
         <Route path="/analytics" element={user ? <Analytics /> : <Navigate to="/auth" />} />
-        <Route path="/progress" element={user ? <Progress /> : <Navigate to="/auth" />} />
-        <Route path="/progress/board" element={user ? <ProgressBoard /> : <Navigate to="/auth" />} />
+        <Route path="/playback" element={user ? <Playback /> : <Navigate to="/auth" />} />
         <Route path="/settings" element={user ? <Settings /> : <Navigate to="/auth" />} />
         <Route path="/auth" element={!user ? <Auth /> : <Navigate to="/dashboard" />} />
+        <Route path="/confirmation-success" element={<ConfirmationSuccess />} />
         <Route path="*" element={<Navigate to="/" />} />
       </Routes>
     </Router>

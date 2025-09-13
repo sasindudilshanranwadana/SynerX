@@ -1,10 +1,11 @@
 import React from 'react';
 import { Link } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
+import { getStoredTheme, toggleTheme } from '../lib/theme';
 import { Activity, AlertTriangle, BarChart3, Brain, FileText, Github, Grid, Linkedin, Lock, Mail, Moon, Shield, Sun, Twitter, Camera, Database, Code, Users, BarChart as ChartBar, Eye } from 'lucide-react';
 
 function LandingPage() {
-  const [darkMode, setDarkMode] = React.useState(true);
+  const [darkMode, setDarkMode] = React.useState(() => getStoredTheme() === 'dark');
   const [user, setUser] = React.useState<any>(null);
 
   React.useEffect(() => {
@@ -18,6 +19,11 @@ function LandingPage() {
 
     return () => subscription.unsubscribe();
   }, []);
+
+  const handleThemeToggle = () => {
+    const newTheme = toggleTheme(darkMode ? 'dark' : 'light');
+    setDarkMode(newTheme === 'dark');
+  };
 
   const isLoggedIn = user !== null;
 
@@ -126,20 +132,26 @@ function LandingPage() {
     { 
       quarter: 'Sprint 2', 
       title: 'Data Collection & Processing', 
-      status: 'In Progress',
+      status: 'Completed',
       tasks: 'Video data collection, preprocessing, and initial model training'
     },
     { 
       quarter: 'Sprint 3', 
       title: 'Core Development', 
-      status: 'Upcoming',
+      status: 'Completed',
       tasks: 'YOLOv8 integration, dashboard development, and API implementation'
     },
     { 
       quarter: 'Sprint 4', 
       title: 'Testing & Optimization', 
-      status: 'Planned',
+      status: 'Completed',
       tasks: 'System testing, performance optimization, and stakeholder feedback'
+    },
+    { 
+      quarter: 'Sprint 5', 
+      title: 'Deployment', 
+      status: 'In Progress',
+      tasks: 'Production deployment, final testing, and system go-live'
     }
   ];
 
@@ -177,7 +189,7 @@ function LandingPage() {
                 <Github className="w-5 h-5" />
               </a>
               <button
-                onClick={() => setDarkMode(!darkMode)}
+                onClick={handleThemeToggle}
                 className={`p-2 rounded-lg transition-all duration-300 ${
                   darkMode 
                     ? 'bg-neural-800 text-gray-200 hover:bg-neural-700' 

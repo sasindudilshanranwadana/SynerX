@@ -1,5 +1,15 @@
 import { supabase } from './supabase';
-import { Task } from './types';
+import { 
+  getAllVideos, 
+  getAllTrackingResults, 
+  getAllVehicleCounts,
+  insertVideo,
+  updateVideo,
+  getOverallAnalytics,
+  insertTrackingResults,
+  insertVehicleCounts
+} from './database';
+import { Video, TrackingResultInsert, VehicleCountInsert, Job, JobsResponse } from './types';
 import jsPDF from 'jspdf';
 import 'jspdf-autotable';
 import { format, parseISO } from 'date-fns';
@@ -7,231 +17,176 @@ import { Chart, registerables } from 'chart.js';
 import Papa from 'papaparse';
 Chart.register(...registerables);
 
-export const fetchJiraTasks = async (): Promise<Task[]> => {
-  try {
-    const tasks = [
-      // In Progress Tasks
-      {
-        id: 'PROJECT49-46',
-        project_id: 'PROJECT49',
-        title: 'Correlations to API',
-        description: null,
-        status: 'in_progress',
-        priority: 'high',
-        type: 'task',
-        labels: ['technical & development'],
-        assignee: 'Franco Perez',
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString()
-      },
-      {
-        id: 'PROJECT49-42',
-        project_id: 'PROJECT49',
-        title: 'Improve "Classification Correction Line" feature',
-        description: null,
-        status: 'in_progress',
-        priority: 'medium',
-        type: 'task',
-        labels: ['technical & development'],
-        assignee: 'Quang Le',
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString()
-      },
-      {
-        id: 'PROJECT49-43',
-        project_id: 'PROJECT49',
-        title: 'Implement the correlation analysis between weather and driver behaviour',
-        description: null,
-        status: 'in_progress',
-        priority: 'high',
-        type: 'task',
-        labels: ['technical & development'],
-        assignee: 'Thiviru Thejan',
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString()
-      },
-      {
-        id: 'PROJECT49-45',
-        project_id: 'PROJECT49',
-        title: 'Improve the numberplate detection yolo model to detect pedestrian faces',
-        description: null,
-        status: 'in_progress',
-        priority: 'medium',
-        type: 'task',
-        labels: ['technical & development'],
-        assignee: 'Risinu Cooray',
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString()
-      },
-      // Done Tasks
-      {
-        id: 'PROJECT49-36',
-        project_id: 'PROJECT49',
-        title: 'API uses Visualisations',
-        description: null,
-        status: 'done',
-        priority: 'high',
-        type: 'task',
-        labels: ['technical & development'],
-        assignee: 'Franco Perez',
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString()
-      },
-      {
-        id: 'PROJECT49-33',
-        project_id: 'PROJECT49',
-        title: 'Incorporate blurring changes to API',
-        description: null,
-        status: 'done',
-        priority: 'medium',
-        type: 'task',
-        labels: ['technical & development'],
-        assignee: 'Franco Perez',
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString()
-      },
-      {
-        id: 'PROJECT49-34',
-        project_id: 'PROJECT49',
-        title: 'Driver behaviour even when no stop',
-        description: null,
-        status: 'done',
-        priority: 'high',
-        type: 'task',
-        labels: ['technical & development'],
-        assignee: 'Quang Le',
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString()
-      },
-      {
-        id: 'PROJECT49-35',
-        project_id: 'PROJECT49',
-        title: 'Visualisation Improvements',
-        description: null,
-        status: 'done',
-        priority: 'high',
-        type: 'task',
-        labels: ['technical & development'],
-        assignee: 'Janith Athuluwage',
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString()
-      },
-      {
-        id: 'PROJECT49-37',
-        project_id: 'PROJECT49',
-        title: 'Fix CORS Configuration for Supabase ⇔ Render Communication',
-        description: null,
-        status: 'done',
-        priority: 'high',
-        type: 'task',
-        labels: ['technical & development'],
-        assignee: 'Sasindu Ranwadana',
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString()
-      },
-      {
-        id: 'PROJECT49-38',
-        project_id: 'PROJECT49',
-        title: 'Update Supabase Edge Function to Handle JSON Payload',
-        description: null,
-        status: 'done',
-        priority: 'medium',
-        type: 'task',
-        labels: ['technical & development'],
-        assignee: 'Sasindu Ranwadana',
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString()
-      },
-      {
-        id: 'PROJECT49-39',
-        project_id: 'PROJECT49',
-        title: 'Handle Render 500 Errors and Improve Logging',
-        description: null,
-        status: 'done',
-        priority: 'high',
-        type: 'task',
-        labels: ['technical & development'],
-        assignee: 'Sasindu Ranwadana',
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString()
-      },
-      {
-        id: 'PROJECT49-40',
-        project_id: 'PROJECT49',
-        title: 'Refactor main.py to Support Headless Processing',
-        description: null,
-        status: 'done',
-        priority: 'high',
-        type: 'task',
-        labels: ['technical & development'],
-        assignee: 'Sasindu Ranwadana',
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString()
-      },
-      {
-        id: 'PROJECT49-41',
-        project_id: 'PROJECT49',
-        title: 'Prepare Backend for Sprint 3 Data Visualization',
-        description: null,
-        status: 'done',
-        priority: 'high',
-        type: 'task',
-        labels: ['technical & development'],
-        assignee: 'Sasindu Ranwadana',
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString()
-      }
-    ];
+// RunPod API Base URL
+const RUNPOD_API_BASE = import.meta.env.VITE_RUNPOD_URL || 'http://localhost:8000';
 
-    return tasks;
+// Robust JSON fetch helper to avoid "Unexpected end of JSON input"
+export const fetchJSON = async (url: string, options?: RequestInit) => {
+  const res = await fetch(url, options);
+  const text = await res.text();
+  try {
+    const data = text ? JSON.parse(text) : {};
+    if (!res.ok) {
+      const msg = data.detail || data.error || res.statusText || 'Request failed';
+      throw new Error(`${res.status} ${msg}`);
+    }
+    return data;
+  } catch (err) {
+    // If content-type isn't JSON or body empty, surface meaningful error
+    if (!res.ok) throw new Error(`${res.status} ${text || res.statusText}`);
+    throw err;
+  }
+};
+
+export const fetchTrackingResults = async () => {
+  return getAllTrackingResults();
+};
+
+export const fetchVideos = async () => {
+  return getAllVideos();
+};
+
+export const fetchVehicleCounts = async () => {
+  return getAllVehicleCounts();
+};
+
+export const createVideo = async (videoData: {
+  video_name: string;
+  original_filename: string;
+  original_url?: string;
+  file_size?: number;
+  duration_seconds?: number;
+}): Promise<Video> => {
+  return insertVideo(videoData);
+};
+
+export const updateVideoStatus = async (
+  videoId: number, 
+  status: Video['status'], 
+  additionalData?: Partial<Video>
+): Promise<Video> => {
+  return updateVideo(videoId, { status, ...additionalData });
+};
+
+export const saveTrackingResults = async (
+  videoId: number, 
+  results: Omit<TrackingResultInsert, 'video_id'>[]
+): Promise<void> => {
+  const trackingResults = results.map(result => ({
+    ...result,
+    video_id: videoId
+  }));
+  
+  await insertTrackingResults(trackingResults);
+};
+
+export const saveVehicleCounts = async (
+  videoId: number, 
+  counts: Omit<VehicleCountInsert, 'video_id'>[]
+): Promise<void> => {
+  const vehicleCounts = counts.map(count => ({
+    ...count,
+    video_id: videoId
+  }));
+  
+  await insertVehicleCounts(vehicleCounts);
+};
+
+// RunPod Job Management Functions
+export const startRunPodProcessing = async (video: Video): Promise<{ job_id: string; queue_position: number }> => {
+  try {
+    const formData = new FormData();
+    
+    // Create a mock file object with the video URL for RunPod processing
+    const response = await fetch(video.original_url!);
+    const blob = await response.blob();
+    const file = new File([blob], video.original_filename, { type: 'video/mp4' });
+    
+    formData.append('file', file);
+    formData.append('video_id', video.id.toString());
+    formData.append('video_name', video.video_name);
+    
+    const data = await fetchJSON(`${RUNPOD_API_BASE}/video/upload`, {
+      method: 'POST',
+      body: formData,
+    });
+    
+    return data;
   } catch (error) {
-    console.error('Error fetching tasks:', error);
+    console.error('Error starting RunPod processing:', error);
     throw error;
   }
 };
 
-export const subscribeToTasks = (callback: (tasks: Task[]) => void): (() => void) => {
-  const subscription = supabase
-    .channel('tasks_channel')
-    .on(
-      'postgres_changes',
-      {
-        event: '*',
-        schema: 'public',
-        table: 'tasks'
-      },
-      async () => {
-        // Fetch updated tasks when changes occur
-        const tasks = await fetchJiraTasks();
-        callback(tasks);
-      }
-    )
-    .subscribe();
+export const clearCompletedRunPodJobs = async (): Promise<void> => {
+  try {
+    await fetch(`${RUNPOD_API_BASE}/jobs/clear-completed`, { method: 'POST' });
+  } catch (error) {
+    console.error('Error clearing completed jobs:', error);
+    throw error;
+  }
+};
 
-  // Return unsubscribe function
-  return () => {
-    subscription.unsubscribe();
-  };
+export const shutdownAllRunPodJobs = async (): Promise<void> => {
+  try {
+    await fetch(`${RUNPOD_API_BASE}/jobs/shutdown`, { method: 'POST' });
+  } catch (error) {
+    console.error('Error shutting down all jobs:', error);
+    throw error;
+  }
+};
+
+export const shutdownSpecificRunPodJob = async (jobId: string): Promise<void> => {
+  try {
+    await fetch(`${RUNPOD_API_BASE}/jobs/shutdown/${jobId}`, { method: 'POST' });
+  } catch (error) {
+    console.error('Error shutting down job:', error);
+    throw error;
+  }
 };
 
 export const deleteVideo = async (fileName: string, uploadId: string): Promise<void> => {
   try {
-    // First, delete the video file from storage
-    const { error: storageError } = await supabase.storage
-      .from('videos')
-      .remove([fileName]);
-
-    if (storageError) throw storageError;
-
-    // Then, delete the database record
-    const { error: dbError } = await supabase
-      .from('video_uploads')
-      .delete()
-      .eq('id', uploadId);
-
-    if (dbError) throw dbError;
+    // Video deletion functionality is disabled
+    throw new Error('Video deletion is currently disabled');
   } catch (error) {
     console.error('Error deleting video:', error);
+    throw error;
+  }
+};
+
+export const processVideoWithDatabase = async (
+  videoFile: File,
+  videoName: string
+): Promise<{ video: Video; uploadUrl: string }> => {
+  try {
+    // Upload video to Supabase Storage
+    const fileName = `${Date.now()}-${videoFile.name}`;
+    const { data: uploadData, error: uploadError } = await supabase.storage
+      .from('videos')
+      .upload(fileName, videoFile, {
+        upsert: false
+      });
+
+    if (uploadError) throw uploadError;
+
+    // Get public URL
+    const { data: { publicUrl } } = supabase.storage
+      .from('videos')
+      .getPublicUrl(fileName);
+
+    // Create video record in database
+    const video = await createVideo({
+      video_name: videoName,
+      original_filename: videoFile.name,
+      original_url: publicUrl,
+      file_size: videoFile.size,
+      status: 'uploaded'
+    });
+
+    return { video, uploadUrl: publicUrl };
+  } catch (error) {
+    console.error('Error processing video with database:', error);
     throw error;
   }
 };
@@ -255,6 +210,8 @@ export const uploadCSV = async (file: File, fileName: string, videoId: string): 
       skipEmptyLines: true
     });
     
+    const videoIdNum = parseInt(videoId);
+    
     if (fileName.includes('count')) {
       // Process vehicle count data
       const countData = results.data as Array<{
@@ -271,16 +228,19 @@ export const uploadCSV = async (file: File, fileName: string, videoId: string): 
 
       const totalCount = Object.values(vehicleCounts).reduce((sum, count) => sum + count, 0);
 
-      // Store in database with video_id
-      const { error: dbError } = await supabase
-        .from('vehicle_tracking_results')
-        .upsert({
-          video_id: videoId,
-          vehicle_count: totalCount,
-          raw_count_csv: fileName
-        });
-
-      if (dbError) throw dbError;
+      // Save to database if videoId is provided
+      if (!isNaN(videoIdNum)) {
+        const vehicleCountInserts = Object.entries(vehicleCounts).map(([vehicleType, count]) => ({
+          vehicle_type: vehicleType,
+          count: count,
+          date: new Date().toISOString().split('T')[0] // Today's date
+        }));
+        
+        await saveVehicleCounts(videoIdNum, vehicleCountInserts);
+        console.log('Saved vehicle count data to database');
+      } else {
+        console.log('Processed vehicle count data:', { totalCount, vehicleCounts });
+      }
     } else if (fileName.includes('tracking')) {
       // Process tracking data
       const trackingData = results.data as any[];
@@ -289,16 +249,27 @@ export const uploadCSV = async (file: File, fileName: string, videoId: string): 
         ? validReactionTimes.reduce((sum, d) => sum + parseFloat(d.reaction_time), 0) / validReactionTimes.length
         : 0;
 
-      // Store in database with video_id
-      const { error: dbError } = await supabase
-        .from('vehicle_tracking_results')
-        .upsert({
-          video_id: videoId,
-          average_reaction_time: avgReactionTime,
-          raw_tracking_csv: fileName
-        });
-
-      if (dbError) throw dbError;
+      // Save to database if videoId is provided
+      if (!isNaN(videoIdNum)) {
+        const trackingInserts = trackingData.map(row => ({
+          vehicle_type: row.vehicle_type || 'unknown',
+          status: (row.status === 'moving' || row.status === 'stationary') ? row.status : 'moving',
+          compliance: parseInt(row.compliance) === 1 ? 1 : 0,
+          reaction_time: row.reaction_time ? parseFloat(row.reaction_time) : undefined,
+          weather_condition: row.weather_condition,
+          temperature: row.temperature ? parseFloat(row.temperature) : undefined,
+          humidity: row.humidity ? parseInt(row.humidity) : undefined,
+          visibility: row.visibility ? parseFloat(row.visibility) : undefined,
+          precipitation_type: row.precipitation_type,
+          wind_speed: row.wind_speed ? parseFloat(row.wind_speed) : undefined,
+          date: row.date || new Date().toISOString()
+        })) as Omit<TrackingResultInsert, 'video_id'>[];
+        
+        await saveTrackingResults(videoIdNum, trackingInserts);
+        console.log('Saved tracking data to database');
+      } else {
+        console.log('Processed tracking data:', { avgReactionTime, validReactionTimes: validReactionTimes.length });
+      }
     }
 
     const { data: { publicUrl } } = supabase.storage
@@ -608,42 +579,12 @@ export const getVideoUrl = async (fileName: string): Promise<string> => {
   }
 };
 
-export const processVideo = async (uploadId: string, videoUrl: string): Promise<void> => {
+export const processVideo = async (videoId: string, videoUrl: string): Promise<void> => {
   try {
-    const backendUrl = import.meta.env.VITE_BACKEND_URL;
-    if (!backendUrl) {
-      throw new Error('Backend URL not configured');
-    }
-
-    const response = await fetch(`${backendUrl}/process-video`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({ 
-        upload_id: uploadId,
-        video_url: videoUrl 
-      }),
-    });
-
-    if (!response.ok) {
-      throw new Error(`Backend responded with status: ${response.status}`);
-    }
-
-    const data = await response.json();
-    if (data.error) {
-      throw new Error(data.error);
-    }
+    // Video processing functionality is disabled
+    throw new Error('Video processing is currently disabled');
   } catch (error) {
     console.error('Error processing video:', error);
-    // Update video status to failed
-    await supabase
-      .from('video_uploads')
-      .update({ 
-        status: 'failed',
-        error: error instanceof Error ? error.message : 'Unknown error occurred'
-      })
-      .eq('id', uploadId);
     throw error;
   }
 };
