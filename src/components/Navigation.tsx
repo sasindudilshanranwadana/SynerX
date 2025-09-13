@@ -5,19 +5,12 @@ import {
   BarChart2, 
   Upload, 
   Activity, 
-<<<<<<< Updated upstream
-  FileText, 
-=======
->>>>>>> Stashed changes
-  RefreshCw,
+  Play,
   Settings, 
   LogOut 
 } from 'lucide-react';
-<<<<<<< Updated upstream
-import { getAuth } from 'firebase/auth';
-=======
 import { supabase } from '../lib/supabase';
->>>>>>> Stashed changes
+import { getStoredTheme } from '../lib/theme';
 
 interface NavigationProps {
   activePath: string;
@@ -29,23 +22,13 @@ export const navItems = [
   { icon: <BarChart2 className="w-5 h-5" />, label: 'Dashboard', path: '/dashboard' },
   { icon: <Upload className="w-5 h-5" />, label: 'Video Upload', path: '/upload' },
   { icon: <Activity className="w-5 h-5" />, label: 'Analytics', path: '/analytics' },
-<<<<<<< Updated upstream
-  { icon: <FileText className="w-5 h-5" />, label: 'Reports', path: '/reports' },
-=======
->>>>>>> Stashed changes
-  { icon: <RefreshCw className="w-5 h-5" />, label: 'Progress', path: '/progress' },
+  { icon: <Play className="w-5 h-5" />, label: 'Video Playback', path: '/playback' },
   { icon: <Settings className="w-5 h-5" />, label: 'Settings', path: '/settings' }
 ];
 
 function Navigation({ activePath, onCloseSidebar }: NavigationProps) {
-<<<<<<< Updated upstream
-  const auth = getAuth();
-
-  const handleSignOut = async () => {
-    try {
-      await auth.signOut();
-=======
   const [user, setUser] = React.useState<any>(null);
+  const [isDark, setIsDark] = React.useState(() => getStoredTheme() === 'dark');
 
   React.useEffect(() => {
     supabase.auth.getUser().then(({ data: { user } }) => {
@@ -59,10 +42,18 @@ function Navigation({ activePath, onCloseSidebar }: NavigationProps) {
     return () => subscription.unsubscribe();
   }, []);
 
+  React.useEffect(() => {
+    const handleThemeChange = () => {
+      setIsDark(getStoredTheme() === 'dark');
+    };
+    
+    window.addEventListener('themeChanged', handleThemeChange);
+    return () => window.removeEventListener('themeChanged', handleThemeChange);
+  }, []);
+
   const handleSignOut = async () => {
     try {
       await supabase.auth.signOut();
->>>>>>> Stashed changes
     } catch (error) {
       console.error('Error signing out:', error);
     }
@@ -71,25 +62,20 @@ function Navigation({ activePath, onCloseSidebar }: NavigationProps) {
   return (
     <>
       {/* User Profile */}
-      <div className="p-6 border-b border-[#1E293B] mt-14 lg:mt-0">
+      <div className={`p-6 mt-14 lg:mt-0 border-b ${
+        isDark ? 'border-[#1E293B]' : 'border-gray-200'
+      }`}>
         <div className="flex items-center gap-3">
           <img
-<<<<<<< Updated upstream
-            src={auth.currentUser?.photoURL || `https://ui-avatars.com/api/?name=${auth.currentUser?.displayName || 'User'}&background=0B1121&color=fff`}
-=======
             src={user?.user_metadata?.avatar_url || `https://ui-avatars.com/api/?name=${user?.email || 'User'}&background=0B1121&color=fff`}
->>>>>>> Stashed changes
             alt="Profile"
-            className="w-12 h-12 rounded-full border-2 border-primary-400"
+            className="w-12 h-12 rounded-full border-2 border-primary-500"
           />
           <div>
-<<<<<<< Updated upstream
-            <h2 className="font-semibold">{auth.currentUser?.displayName || 'User'}</h2>
-            <p className="text-sm text-gray-400 truncate max-w-[150px]">{auth.currentUser?.email}</p>
-=======
             <h2 className="font-semibold">{user?.user_metadata?.full_name || 'User'}</h2>
-            <p className="text-sm text-gray-400 truncate max-w-[150px]">{user?.email}</p>
->>>>>>> Stashed changes
+            <p className={`text-sm truncate max-w-[150px] ${
+              isDark ? 'text-gray-400' : 'text-gray-600'
+            }`}>{user?.email}</p>
           </div>
         </div>
       </div>
@@ -103,8 +89,10 @@ function Navigation({ activePath, onCloseSidebar }: NavigationProps) {
             onClick={onCloseSidebar}
             className={`flex items-center gap-3 px-4 py-3 rounded-lg mb-1 transition-colors ${
               item.path === activePath
-                ? 'bg-primary-500/20 text-primary-400' 
-                : 'hover:bg-[#1E293B] text-gray-400 hover:text-white'
+                ? 'bg-primary-500/20 text-primary-500' 
+                : isDark
+                ? 'hover:bg-[#1E293B] text-gray-400 hover:text-white'
+                : 'hover:bg-gray-100 text-gray-600 hover:text-gray-900'
             }`}
           >
             {item.icon}
@@ -117,7 +105,9 @@ function Navigation({ activePath, onCloseSidebar }: NavigationProps) {
       <div className="absolute bottom-0 w-full p-4">
         <button
           onClick={handleSignOut}
-          className="flex items-center gap-2 w-full px-4 py-2 rounded-lg text-red-400 hover:bg-red-500/10 transition-colors"
+          className={`flex items-center gap-2 w-full px-4 py-2 rounded-lg text-red-500 transition-colors ${
+            isDark ? 'hover:bg-red-500/10' : 'hover:bg-red-50'
+          }`}
         >
           <LogOut className="w-5 h-5" />
           Sign Out

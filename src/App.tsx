@@ -1,56 +1,26 @@
 import React from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
-<<<<<<< Updated upstream
-import { initializeApp } from 'firebase/app';
-import { getAuth, onAuthStateChanged } from 'firebase/auth';
-=======
 import { supabase } from './lib/supabase';
->>>>>>> Stashed changes
+import { initializeTheme } from './lib/theme';
 import LandingPage from './pages/LandingPage';
 import Dashboard from './pages/Dashboard';
 import Auth from './pages/Auth';
 import Upload from './pages/Upload';
 import Analytics from './pages/Analytics';
-<<<<<<< Updated upstream
-import Reports from './pages/Reports';
-=======
->>>>>>> Stashed changes
-import Progress from './pages/Progress';
-import ProgressBoard from './pages/ProgressBoard';
 import Settings from './pages/Settings';
+import Playback from './pages/Playback';
+import ConfirmationSuccess from './pages/ConfirmationSuccess';
 import LoadingScreen from './components/LoadingScreen';
 
-<<<<<<< Updated upstream
-// Firebase configuration from environment variables
-const firebaseConfig = {
-  apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
-  authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN,
-  projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID,
-  storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET,
-  messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID,
-  appId: import.meta.env.VITE_FIREBASE_APP_ID
-};
-
-// Initialize Firebase
-const app = initializeApp(firebaseConfig);
-const auth = getAuth(app);
-
-=======
->>>>>>> Stashed changes
 function App() {
   const [user, setUser] = React.useState<any>(null);
   const [loading, setLoading] = React.useState(true);
   const [pageLoading, setPageLoading] = React.useState(false);
 
   React.useEffect(() => {
-<<<<<<< Updated upstream
-    const unsubscribe = onAuthStateChanged(auth, (user) => {
-      setUser(user);
-      setLoading(false);
-    });
+    // Initialize theme on app start
+    initializeTheme();
 
-    return () => unsubscribe();
-=======
     // Set up Supabase auth listener
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
       setUser(session?.user ?? null);
@@ -58,7 +28,6 @@ function App() {
     });
 
     return () => subscription.unsubscribe();
->>>>>>> Stashed changes
   }, []);
 
   // Add loading state for route changes
@@ -83,49 +52,14 @@ function App() {
     <Router>
       <Routes>
         <Route path="/" element={<LandingPage />} />
-<<<<<<< Updated upstream
-        <Route 
-          path="/dashboard/*" 
-          element={user ? <Dashboard /> : <Navigate to="/auth" />} 
-        />
-        <Route 
-          path="/upload" 
-          element={user ? <Upload /> : <Navigate to="/auth" />} 
-        />
-        <Route 
-          path="/analytics" 
-          element={user ? <Analytics /> : <Navigate to="/auth" />} 
-        />
-        <Route 
-          path="/reports" 
-          element={user ? <Reports /> : <Navigate to="/auth" />} 
-        />
-        <Route 
-          path="/progress" 
-          element={user ? <Progress /> : <Navigate to="/auth" />} 
-        />
-        <Route 
-          path="/progress/board" 
-          element={user ? <ProgressBoard /> : <Navigate to="/auth" />} 
-        />
-        <Route 
-          path="/settings" 
-          element={user ? <Settings /> : <Navigate to="/auth" />} 
-        />
-        <Route 
-          path="/auth" 
-          element={!user ? <Auth /> : <Navigate to="/dashboard" />} 
-        />
-=======
         <Route path="/dashboard" element={user ? <Dashboard /> : <Navigate to="/auth" />} />
         <Route path="/upload" element={user ? <Upload /> : <Navigate to="/auth" />} />
         <Route path="/analytics" element={user ? <Analytics /> : <Navigate to="/auth" />} />
-        <Route path="/progress" element={user ? <Progress /> : <Navigate to="/auth" />} />
-        <Route path="/progress/board" element={user ? <ProgressBoard /> : <Navigate to="/auth" />} />
+        <Route path="/playback" element={user ? <Playback /> : <Navigate to="/auth" />} />
         <Route path="/settings" element={user ? <Settings /> : <Navigate to="/auth" />} />
         <Route path="/auth" element={!user ? <Auth /> : <Navigate to="/dashboard" />} />
+        <Route path="/confirmation-success" element={<ConfirmationSuccess />} />
         <Route path="*" element={<Navigate to="/" />} />
->>>>>>> Stashed changes
       </Routes>
     </Router>
   );

@@ -1,6 +1,3 @@
-<<<<<<< Updated upstream
-// This file can be deleted as we're no longer using Supabase
-=======
 import { createClient } from '@supabase/supabase-js';
 
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
@@ -42,4 +39,3 @@ export const getSession = async () => {
   if (error) throw error;
   return session;
 };
->>>>>>> Stashed changes

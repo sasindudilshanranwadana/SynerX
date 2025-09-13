@@ -11,13 +11,10 @@ export default defineConfig({
     host: true, // Listen on all local IPs
     port: 5173,
     strictPort: true,
-<<<<<<< Updated upstream
-=======
     fs: {
       strict: true,
     },
     middlewareMode: false,
->>>>>>> Stashed changes
   },
   preview: {
     port: 4173,

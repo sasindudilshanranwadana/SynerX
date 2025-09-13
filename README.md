@@ -20,11 +20,6 @@ A comprehensive web application for analyzing road user behavior at level crossi
 - **Analytics**: Recharts
 - **Storage**: Firebase Storage
 
-<<<<<<< Updated upstream
-## Access
-
-https://synerx.netlify.app/
-=======
 ## Getting Started
 
 1. Clone the repository
@@ -52,7 +47,6 @@ https://synerx.netlify.app/
    ```bash
    npm run dev
    ```
->>>>>>> Stashed changes
 
 ## Project Structure
 
@@ -117,8 +111,4 @@ This project is licensed under the MIT License - see the LICENSE file for detail
 - VicRoads
 - Department of Transport
 - V/Line
-<<<<<<< Updated upstream
 - Swinburne University of Technology
-=======
-- Swinburne University of Technology
->>>>>>> Stashed changes

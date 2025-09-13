@@ -17,13 +17,13 @@ serve(async (req) => {
   try {
     console.log('🎯 Edge Function triggered');
     const json = await req.json();
-    const uploadId = json?.upload_id;
+    const videoId = json?.video_id;
     const videoUrl = json?.video_url;
 
-    if (!uploadId || !videoUrl) {
+    if (!videoId || !videoUrl) {
       console.error('❌ Missing required fields');
       return new Response(JSON.stringify({
-        error: 'Missing required fields: upload_id and video_url'
+        error: 'Missing required fields: video_id and video_url'
       }), {
         status: 400,
         headers: {
@@ -41,7 +41,7 @@ serve(async (req) => {
         ...corsHeaders // ✅ Add CORS headers to actual fetch request
       },
       body: JSON.stringify({
-        upload_id: uploadId,
+        video_id: videoId,
         video_url: videoUrl
       })
     });
