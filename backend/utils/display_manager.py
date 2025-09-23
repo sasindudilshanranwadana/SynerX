@@ -82,5 +82,6 @@ class DisplayManager:
             
     def cleanup(self):
         """Clean up display resources"""
-        cv2.destroyAllWindows()
+        if Config.ENABLE_DISPLAY:
+            cv2.destroyAllWindows()
         self.stop_streaming()
