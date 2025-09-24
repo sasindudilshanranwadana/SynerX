@@ -35,7 +35,7 @@ function ServerStatusIndicator({ className = '' }: ServerStatusIndicatorProps) {
     setRunpodStatus('connecting');
     
     try {
-      const response = await fetch(`${RUNPOD_API_BASE}/jobs/completed`, {
+      const response = await fetch(`${RUNPOD_API_BASE}/`, {
         method: 'GET',
         headers: {
           'Content-Type': 'application/json',
@@ -44,7 +44,14 @@ function ServerStatusIndicator({ className = '' }: ServerStatusIndicatorProps) {
       });
       
       if (response.ok) {
-        setRunpodStatus('connected');
+        const data = await response.json();
+        
+        // Check if the response matches the expected health check message
+        if (data.message === "SynerX API is running!" && data.status === "ok") {
+          setRunpodStatus('connected');
+        } else {
+          setRunpodStatus('error');
+        }
       } else {
         setRunpodStatus('error');
       }

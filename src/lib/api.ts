@@ -7,7 +7,11 @@ import {
   updateVideo,
   getOverallAnalytics,
   insertTrackingResults,
-  insertVehicleCounts
+  insertVehicleCounts,
+  insertProcessingJob,
+  updateProcessingJob,
+  getAllProcessingJobs,
+  getProcessingJobsByStatus
 } from './database';
 import { Video, TrackingResultInsert, VehicleCountInsert, Job, JobsResponse } from './types';
 import jsPDF from 'jspdf';
@@ -97,12 +101,7 @@ export const startRunPodProcessing = async (video: Video): Promise<{ job_id: str
   try {
     const formData = new FormData();
     
-    // Create a mock file object with the video URL for RunPod processing
-    const response = await fetch(video.original_url!);
-    const blob = await response.blob();
-    const file = new File([blob], video.original_filename, { type: 'video/mp4' });
-    
-    formData.append('file', file);
+    formData.append('file', video);
     formData.append('video_id', video.id.toString());
     formData.append('video_name', video.video_name);
     
@@ -112,6 +111,32 @@ export const startRunPodProcessing = async (video: Video): Promise<{ job_id: str
     });
     
     return data;
+  } catch (error) {
+    console.error('Error starting RunPod processing:', error);
+    throw error;
+  }
+};
+
+export const startRunPodProcessingDirect = async (
+  videoFile: File,
+  videoName: string
+): Promise<{ job_id: string; queue_position: number; original_url: string }> => {
+  try {
+    const formData = new FormData();
+    
+    formData.append('file', videoFile);
+    formData.append('video_name', videoName);
+    
+    const data = await fetchJSON(`${RUNPOD_API_BASE}/video/upload`, {
+      method: 'POST',
+      body: formData,
+    });
+    
+    return {
+      job_id: data.job_id,
+      queue_position: data.queue_position,
+      original_url: data.original_url || data.video_url || ''
+    };
   } catch (error) {
     console.error('Error starting RunPod processing:', error);
     throw error;
@@ -155,38 +180,25 @@ export const deleteVideo = async (fileName: string, uploadId: string): Promise<v
   }
 };
 
-export const processVideoWithDatabase = async (
+export const createVideoMetadataRecord = async (
   videoFile: File,
-  videoName: string
-): Promise<{ video: Video; uploadUrl: string }> => {
+  videoName: string,
+  originalUrl: string
+): Promise<Video> => {
   try {
-    // Upload video to Supabase Storage
-    const fileName = `${Date.now()}-${videoFile.name}`;
-    const { data: uploadData, error: uploadError } = await supabase.storage
-      .from('videos')
-      .upload(fileName, videoFile, {
-        upsert: false
-      });
-
-    if (uploadError) throw uploadError;
-
-    // Get public URL
-    const { data: { publicUrl } } = supabase.storage
-      .from('videos')
-      .getPublicUrl(fileName);
-
     // Create video record in database
     const video = await createVideo({
       video_name: videoName,
       original_filename: videoFile.name,
-      original_url: publicUrl,
+      original_url: originalUrl,
       file_size: videoFile.size,
-      status: 'uploaded'
+      status: 'processing',
+      duration_seconds: 0 // Will be updated when processing completes
     });
 
-    return { video, uploadUrl: publicUrl };
+    return video;
   } catch (error) {
-    console.error('Error processing video with database:', error);
+    console.error('Error creating video metadata record:', error);
     throw error;
   }
 };
@@ -556,6 +568,27 @@ export const generateDetailedReport = (trackingData: any[]): string => {
   return csvContent;
 };
 
+// Enhanced job management functions that integrate with database
+export const syncProcessingJobStatus = async (jobId: string, status: string, progress?: number, message?: string): Promise<void> => {
+  try {
+    // Processing job sync disabled - using RunPod backend only
+    console.log(`Job ${jobId} status: ${status}, progress: ${progress}%, message: ${message}`);
+  } catch (error) {
+    console.error('Error syncing processing job status:', error);
+    throw error;
+  }
+};
+
+export const getJobsFromDatabase = async (): Promise<any[]> => {
+  try {
+    // Return empty array - jobs are managed by RunPod backend only
+    return [];
+  } catch (error) {
+    console.error('Error getting jobs from database:', error);
+    return [];
+  }
+};
+
 export const downloadCSV = (content: string, fileName: string): void => {
   const blob = new Blob([content], { type: 'text/csv;charset=utf-8;' });
   const link = document.createElement('a');
@@ -568,11 +601,9 @@ export const downloadCSV = (content: string, fileName: string): void => {
 
 export const getVideoUrl = async (fileName: string): Promise<string> => {
   try {
-    const { data } = supabase.storage
-      .from('videos')
-      .getPublicUrl(fileName);
-
-    return data.publicUrl;
+    // Videos are now served from backend /processed folder
+    const runpodUrl = import.meta.env.VITE_RUNPOD_URL || 'http://localhost:8000';
+    return `${runpodUrl}/processed/${fileName}`;
   } catch (error) {
     console.error('Error getting video URL:', error);
     throw error;

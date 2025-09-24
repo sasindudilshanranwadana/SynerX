@@ -13,6 +13,8 @@ function Auth() {
   const [showPassword, setShowPassword] = React.useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = React.useState(false);
   const [captchaToken, setCaptchaToken] = React.useState<string | null>(null);
+  const [emailSent, setEmailSent] = React.useState(false);
+  const [userEmail, setUserEmail] = React.useState('');
   const [notification, setNotification] = React.useState<{
     type: 'success' | 'error' | 'info';
     message: string;
@@ -28,6 +30,10 @@ function Auth() {
 
   React.useEffect(() => {
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+      if (event === 'SIGNED_UP') {
+        // User has signed up but email not confirmed yet
+        console.log('User signed up, waiting for email confirmation');
+      }
       if (event === 'SIGNED_IN' && session) {
         showNotification('success', 'Welcome! You have successfully signed in to your account.');
         setTimeout(() => navigate('/dashboard'), 2000);
@@ -39,7 +45,7 @@ function Auth() {
     const refreshToken = searchParams.get('refresh_token');
     
     if (accessToken && refreshToken) {
-      navigate('/confirmation-success');
+      navigate('/dashboard');
     }
 
     return () => subscription.unsubscribe();
@@ -50,6 +56,30 @@ function Auth() {
     setTimeout(() => setNotification(null), 5000);
   };
 
+  const resendConfirmationEmail = async () => {
+    if (!userEmail) {
+      showNotification('error', 'No email address found. Please try signing up again.');
+      return;
+    }
+
+    setLoading(true);
+    try {
+      const { error } = await supabase.auth.resend({
+        type: 'signup',
+        email: userEmail,
+        options: {
+          emailRedirectTo: `${window.location.origin}/dashboard`
+        }
+      });
+
+      if (error) throw error;
+      showNotification('success', 'Confirmation email has been resent. Please check your inbox.');
+    } catch (error: any) {
+      showNotification('error', error.message);
+    } finally {
+      setLoading(false);
+    }
+  };
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     
@@ -76,12 +106,14 @@ function Auth() {
           email: formData.email,
           password: formData.password,
           options: {
-            emailRedirectTo: `${window.location.origin}/confirmation-success`
+            emailRedirectTo: `${window.location.origin}/dashboard`
           }
         });
 
         if (error) throw error;
 
+        setUserEmail(formData.email);
+        setEmailSent(true);
         showNotification('success', 
           'Account created successfully! We\'ve sent a confirmation email to your inbox. Please check your email and click the confirmation link to activate your account.'
         );
@@ -122,10 +154,90 @@ function Auth() {
     });
   };
 
+  // If email confirmation is pending, show confirmation screen
+  if (emailSent) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-[#0B1121] relative overflow-hidden">
+        {/* Neural grid background */}
+        <div className="absolute inset-0 neural-grid opacity-10"></div>
+        
+        {/* Animated circles */}
+        <div className="absolute inset-0">
+          <div className="absolute top-1/4 left-1/4 w-64 h-64 bg-primary-500/10 rounded-full blur-3xl animate-pulse"></div>
+          <div className="absolute bottom-1/4 right-1/4 w-64 h-64 bg-primary-500/10 rounded-full blur-3xl animate-pulse animation-delay-2000"></div>
+        </div>
+
+        {/* Notification */}
+        {notification && (
+          <div className={`fixed top-4 right-4 z-50 px-6 py-4 rounded-lg shadow-lg flex items-center space-x-3 max-w-md ${
+            notification.type === 'success' ? 'bg-green-500' : 
+            notification.type === 'error' ? 'bg-red-500' : 'bg-blue-500'
+          }`}>
+            {notification.type === 'success' ? (
+              <CheckCircle className="w-5 h-5 flex-shrink-0" />
+            ) : (
+              <AlertCircle className="w-5 h-5 flex-shrink-0" />
+            )}
+            <span className="text-white text-sm">{notification.message}</span>
+          </div>
+        )}
+
+        <div className="bg-[#151F32]/50 p-8 rounded-2xl border border-[#1E293B] backdrop-blur-sm max-w-md w-full mx-4 relative">
+          <div className="text-center mb-6">
+            <div className="mx-auto w-16 h-16 bg-primary-500/10 rounded-full flex items-center justify-center mb-4">
+              <CheckCircle className="w-8 h-8 text-primary-500" />
+            </div>
+            
+            <h1 className="text-2xl font-bold text-white mb-2">
+              Check Your Email
+            </h1>
+            
+            <p className="text-gray-300 mb-4 leading-relaxed">
+              We've sent a confirmation email to:
+            </p>
+            
+            <div className="bg-[#1E293B] rounded-lg p-3 mb-4">
+              <p className="text-primary-400 font-medium">{userEmail}</p>
+            </div>
+            
+            <p className="text-gray-400 text-sm mb-6">
+              Click the confirmation link in the email to activate your account. 
+              The link will expire in 24 hours for security.
+            </p>
+          </div>
+
+          <div className="space-y-4">
+            <button
+              onClick={resendConfirmationEmail}
+              disabled={loading}
+              className="w-full py-3 px-4 bg-primary-500 hover:bg-primary-600 disabled:bg-gray-600 disabled:cursor-not-allowed text-white font-medium rounded-lg transition-all duration-200"
+            >
+              {loading ? 'Sending...' : 'Resend Confirmation Email'}
+            </button>
+            
+            <button
+              onClick={() => {
+                setEmailSent(false);
+                setUserEmail('');
+                setIsSignUp(false);
+              }}
+              className="w-full py-3 px-4 bg-[#1E293B] hover:bg-[#2D3B4E] text-gray-300 font-medium rounded-lg transition-all duration-200"
+            >
+              Back to Sign In
+            </button>
+          </div>
+          
+          <div className="mt-6 text-center">
+            <p className="text-gray-400 text-sm">
+              Didn't receive the email? Check your spam folder or try resending.
+            </p>
+          </div>
+        </div>
+      </div>
+    );
+  }
   return (
     <div className="min-h-screen flex items-center justify-center bg-[#0B1121] relative overflow-hidden">
-      <ServerStatusIndicator />
-
       {/* Neural grid background */}
       <div className="absolute inset-0 neural-grid opacity-10"></div>
       
@@ -155,7 +267,7 @@ function Auth() {
         <div className="hidden md:flex flex-col items-center justify-center p-8 relative overflow-hidden bg-[#151F32]/50 rounded-2xl border border-[#1E293B]">
           <div className="absolute inset-0 neural-grid opacity-20"></div>
           <img
-            src="https://github.com/sasindudilshanranwadana/SynerX/blob/web/public/m6-motorway-trim-result.gif?raw=true"
+            src="https://iqehkneolpesaqznkqjm.supabase.co/storage/v1/object/sign/assets/m6-motorway-trim-result.gif?token=eyJraWQiOiJzdG9yYWdlLXVybC1zaWduaW5nLWtleV83YmM1YjM5OS00ZDQwLTRiMDktOGE3Yi1kOWMxNzlkNjcyM2UiLCJhbGciOiJIUzI1NiJ9.eyJ1cmwiOiJhc3NldHMvbTYtbW90b3J3YXktdHJpbS1yZXN1bHQuZ2lmIiwiaWF0IjoxNzU4NzMwMDYyLCJleHAiOjMxNTUzNTg3MzAwNjJ9.pKZVb8o3SVRrZ_N5WGWNcrRI59hyZ-tcNongThzTQs4"
             alt="AI Traffic Analysis"
             className="rounded-xl shadow-2xl relative z-10 animate-float object-cover h-[400px] w-full"
           />

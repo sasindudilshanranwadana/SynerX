@@ -8,8 +8,8 @@ import Header from '../components/Header';
 import Sidebar from '../components/Sidebar';
 import ServerStatusIndicator from '../components/ServerStatusIndicator';
 import { 
-  processVideoWithDatabase, 
-  startRunPodProcessing, 
+  createVideoMetadataRecord,
+  startRunPodProcessingDirect,
   clearCompletedRunPodJobs, 
   shutdownAllRunPodJobs, 
   shutdownSpecificRunPodJob 
@@ -310,25 +310,25 @@ function UploadPage() {
   };
 
   const shutdownAny = async () => {
-    if (!confirm('Are you sure you want to shutdown the current processing job? This action cannot be undone.')) return;
+    if (!confirm('Are you sure you want to delete the current processing job? This action cannot be undone.')) return;
     try {
       await shutdownAllRunPodJobs();
-      showNotification('Processing jobs shutdown successfully', 'success');
+      showNotification('Processing jobs deleted successfully', 'success');
     } catch (error) {
       const errorMsg = getErrorMessage(error);
-      console.error('Error shutting down jobs:', errorMsg);
+      console.error('Error deleting jobs:', errorMsg);
       showNotification(errorMsg, 'error');
     }
   };
 
-  const shutdownJob = async (jobId: string) => {
-    if (!confirm(`Are you sure you want to shutdown job ${jobId}? This action cannot be undone.`)) return;
+  const deleteJob = async (jobId: string) => {
+    if (!confirm(`Are you sure you want to delete job ${jobId}? This action cannot be undone.`)) return;
     try {
       await shutdownSpecificRunPodJob(jobId);
-      showNotification(`Job ${jobId} shutdown successfully`, 'success');
+      showNotification(`Job ${jobId} deleted successfully`, 'success');
     } catch (error) {
       const errorMsg = getErrorMessage(error);
-      console.error('Error shutting down job:', errorMsg);
+      console.error('Error deleting job:', errorMsg);
       showNotification(errorMsg, 'error');
     }
   };
@@ -377,27 +377,23 @@ function UploadPage() {
         }
 
         const videoName = file.name.replace(/\.[^/.]+$/, ''); // Remove extension
-        const { video } = await processVideoWithDatabase(file, videoName);
+        
+        // Upload directly to RunPod backend and start processing
+        const result = await startRunPodProcessingDirect(file, videoName);
+        
+        // Create video metadata record in database
+        const video = await createVideoMetadataRecord(file, videoName, result.original_url);
         
         setUploadedVideos(prev => [video, ...prev]);
         
-        // Start RunPod processing
-        try {
-          const result = await startRunPodProcessing(video);
-          setUploadStatus(`Queued job ${result.job_id} (pos ${result.queue_position})`);
-          showNotification(`Successfully uploaded "${file.name}" and added to processing queue`, 'success');
-        } catch (runpodError) {
-          const errorMsg = getErrorMessage(runpodError);
-          console.error('RunPod processing error:', errorMsg);
-          setUploadStatus(`Upload successful, but processing failed: ${errorMsg}`);
-          showNotification(`Uploaded "${file.name}" but failed to start processing: ${errorMsg}`, 'warning');
-        }
+        setUploadStatus(`Queued job ${result.job_id} (pos ${result.queue_position})`);
+        showNotification(`Successfully uploaded "${file.name}" and added to processing queue`, 'success');
       }
     } catch (error: any) {
       const errorMsg = getErrorMessage(error);
-      console.error('Upload error:', errorMsg);
-      showNotification(`Upload failed: ${errorMsg}`, 'error');
-      setUploadStatus(`Upload failed: ${errorMsg}`);
+      console.error('Processing error:', errorMsg);
+      showNotification(`Processing failed: ${errorMsg}`, 'error');
+      setUploadStatus(`Processing failed: ${errorMsg}`);
     } finally {
       setUploading(false);
     }
@@ -622,10 +618,10 @@ function UploadPage() {
                           <td className="py-3 px-4">
                             <div className="flex items-center gap-2">
                               <button
-                                onClick={() => shutdownJob(job.job_id)}
+                                onClick={() => deleteJob(job.job_id)}
                                 className="px-2 py-1 text-xs bg-red-500 hover:bg-red-600 text-white rounded transition-colors"
                               >
-                                Shutdown
+                                Delete
                               </button>
                               {job.status === 'processing' && (
                                 <button
