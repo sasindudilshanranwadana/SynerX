@@ -1,5 +1,5 @@
 import { supabase } from './supabase';
-import { Video, TrackingResult, VehicleCount, VideoUploadData, TrackingResultInsert, VehicleCountInsert } from './types';
+import { Video, TrackingResult, VehicleCount, VideoUploadData, TrackingResultInsert, VehicleCountInsert, ProcessingJob, ProcessingJobInsert } from './types';
 
 // Video Operations
 export const insertVideo = async (videoData: VideoUploadData): Promise<Video> => {
@@ -255,6 +255,120 @@ export const deleteVehicleCount = async (id: number): Promise<void> => {
   }
 };
 
+// Processing Jobs Operations
+export const insertProcessingJob = async (jobData: ProcessingJobInsert): Promise<ProcessingJob> => {
+  try {
+    const { data, error } = await supabase
+      .from('processing_jobs')
+      .insert([jobData])
+      .select()
+      .single();
+
+    if (error) throw error;
+    return data;
+  } catch (error) {
+    console.error('Error inserting processing job:', error);
+    throw error;
+  }
+};
+
+export const updateProcessingJob = async (jobId: string, updates: Partial<ProcessingJob>): Promise<ProcessingJob> => {
+  try {
+    const { data, error } = await supabase
+      .from('processing_jobs')
+      .update(updates)
+      .eq('job_id', jobId)
+      .select()
+      .single();
+
+    if (error) throw error;
+    return data;
+  } catch (error) {
+    console.error('Error updating processing job:', error);
+    throw error;
+  }
+};
+
+export const getProcessingJobByJobId = async (jobId: string): Promise<ProcessingJob | null> => {
+  try {
+    const { data, error } = await supabase
+      .from('processing_jobs')
+      .select('*')
+      .eq('job_id', jobId)
+      .single();
+
+    if (error) {
+      if (error.code === 'PGRST116') return null; // No rows returned
+      throw error;
+    }
+    return data;
+  } catch (error) {
+    console.error('Error fetching processing job:', error);
+    throw error;
+  }
+};
+
+export const getProcessingJobsByVideoId = async (videoId: number): Promise<ProcessingJob[]> => {
+  try {
+    const { data, error } = await supabase
+      .from('processing_jobs')
+      .select('*')
+      .eq('video_id', videoId)
+      .order('created_at', { ascending: false });
+
+    if (error) throw error;
+    return data || [];
+  } catch (error) {
+    console.error('Error fetching processing jobs by video:', error);
+    throw error;
+  }
+};
+
+export const getAllProcessingJobs = async (): Promise<ProcessingJob[]> => {
+  try {
+    const { data, error } = await supabase
+      .from('processing_jobs')
+      .select('*')
+      .order('created_at', { ascending: false });
+
+    if (error) throw error;
+    return data || [];
+  } catch (error) {
+    console.error('Error fetching all processing jobs:', error);
+    throw error;
+  }
+};
+
+export const getProcessingJobsByStatus = async (status: ProcessingJob['status']): Promise<ProcessingJob[]> => {
+  try {
+    const { data, error } = await supabase
+      .from('processing_jobs')
+      .select('*')
+      .eq('status', status)
+      .order('created_at', { ascending: false });
+
+    if (error) throw error;
+    return data || [];
+  } catch (error) {
+    console.error('Error fetching processing jobs by status:', error);
+    throw error;
+  }
+};
+
+export const deleteProcessingJob = async (jobId: string): Promise<void> => {
+  try {
+    const { error } = await supabase
+      .from('processing_jobs')
+      .delete()
+      .eq('job_id', jobId);
+
+    if (error) throw error;
+  } catch (error) {
+    console.error('Error deleting processing job:', error);
+    throw error;
+  }
+};
+
 // Analytics and Statistics
 export const getVideoAnalytics = async (videoId: number) => {
   try {
@@ -367,6 +481,16 @@ export const subscribeToTrackingResults = (callback: (payload: any) => void) => 
     .channel('tracking_results_changes')
     .on('postgres_changes', 
       { event: '*', schema: 'public', table: 'tracking_results' }, 
+      callback
+    )
+    .subscribe();
+};
+
+export const subscribeToProcessingJobs = (callback: (payload: any) => void) => {
+  return supabase
+    .channel('processing_jobs_changes')
+    .on('postgres_changes', 
+      { event: '*', schema: 'public', table: 'processing_jobs' }, 
       callback
     )
     .subscribe();

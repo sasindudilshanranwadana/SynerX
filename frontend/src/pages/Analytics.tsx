@@ -1,5 +1,5 @@
 import React from 'react';
-import { Activity, Download, RefreshCw } from 'lucide-react';
+import { Activity, Download, RefreshCw, Calendar, Filter } from 'lucide-react';
 import Header from '../components/Header';
 import Sidebar from '../components/Sidebar';
 import ServerStatusIndicator from '../components/ServerStatusIndicator';
@@ -7,6 +7,7 @@ import { format, parseISO } from 'date-fns';
 import { generatePDFReport } from '../lib/api';
 import { TrackingResult } from '../lib/types';
 import { getStoredTheme } from '../lib/theme';
+import { getAllTrackingResults } from '../lib/database';
 
 const RUNPOD_API_BASE = import.meta.env.VITE_RUNPOD_URL || 'http://localhost:8000';
 
@@ -34,8 +35,11 @@ function Analytics() {
   const [analysisData, setAnalysisData] = React.useState<AnalysisData | null>(null);
   const [error, setError] = React.useState<string | null>(null);
   const [loading, setLoading] = React.useState(true);
-  const [selectedJobId, setSelectedJobId] = React.useState<string>('');
-  const [availableJobs, setAvailableJobs] = React.useState<Array<{id: string, filename: string}>>([]);
+  
+  // Date filter states
+  const [dateFilter, setDateFilter] = React.useState<'all' | '7days' | '30days' | '90days' | 'custom'>('all');
+  const [customStartDate, setCustomStartDate] = React.useState('');
+  const [customEndDate, setCustomEndDate] = React.useState('');
   
   // Filter states
   const [weatherFilter, setWeatherFilter] = React.useState('');
@@ -50,8 +54,143 @@ function Analytics() {
     weatherConditions: 0
   });
 
+  // Client-side analysis calculation
+  const calculateClientSideAnalysis = (trackingResults: TrackingResult[]): AnalysisData => {
+    // Weather analysis
+    const weatherGroups = trackingResults.reduce((acc, result) => {
+      const weather = result.weather_condition || 'unknown';
+      if (!acc[weather]) {
+        acc[weather] = { compliant: 0, total: 0, reactionTimes: [] };
+      }
+      acc[weather].total++;
+      if (result.compliance === 1) {
+        acc[weather].compliant++;
+        if (result.reaction_time) {
+          acc[weather].reactionTimes.push(result.reaction_time);
+        }
+      }
+      return acc;
+    }, {} as Record<string, { compliant: number; total: number; reactionTimes: number[] }>);
+
+    const weather_compliance = Object.entries(weatherGroups).reduce((acc, [weather, data]) => {
+      acc[weather] = {
+        mean: data.total > 0 ? data.compliant / data.total : 0,
+        count: data.total
+      };
+      return acc;
+    }, {} as Record<string, { mean: number; count: number }>);
+
+    const weather_reaction_time = Object.entries(weatherGroups).reduce((acc, [weather, data]) => {
+      acc[weather] = {
+        mean: data.reactionTimes.length > 0 
+          ? data.reactionTimes.reduce((sum, time) => sum + time, 0) / data.reactionTimes.length 
+          : 0,
+        count: data.reactionTimes.length
+      };
+      return acc;
+    }, {} as Record<string, { mean: number; count: number }>);
+
+    // Vehicle type analysis
+    const vehicleGroups = trackingResults.reduce((acc, result) => {
+      const vehicle = result.vehicle_type || 'unknown';
+      if (!acc[vehicle]) {
+        acc[vehicle] = { compliant: 0, total: 0 };
+      }
+      acc[vehicle].total++;
+      if (result.compliance === 1) {
+        acc[vehicle].compliant++;
+      }
+      return acc;
+    }, {} as Record<string, { compliant: number; total: number }>);
+
+    const vehicle_type_compliance = Object.entries(vehicleGroups).reduce((acc, [vehicle, data]) => {
+      acc[vehicle] = {
+        mean: data.total > 0 ? data.compliant / data.total : 0,
+        count: data.total
+      };
+      return acc;
+    }, {} as Record<string, { mean: number; count: number }>);
+
+    // Hourly analysis
+    const hourlyGroups = trackingResults.reduce((acc, result) => {
+      if (!result.date) return acc;
+      const hour = new Date(result.date).getHours().toString();
+      if (!acc[hour]) {
+        acc[hour] = { compliant: 0, total: 0 };
+      }
+      acc[hour].total++;
+      if (result.compliance === 1) {
+        acc[hour].compliant++;
+      }
+      return acc;
+    }, {} as Record<string, { compliant: number; total: number }>);
+
+    const hour_compliance = Object.entries(hourlyGroups).reduce((acc, [hour, data]) => {
+      acc[hour] = {
+        mean: data.total > 0 ? data.compliant / data.total : 0,
+        count: data.total
+      };
+      return acc;
+    }, {} as Record<string, { mean: number; count: number }>);
+
+    // Generate recommendations
+    const recommendations: Array<{
+      category: string;
+      type: string;
+      message: string;
+      suggestion: string;
+    }> = [];
+
+    // Weather recommendations
+    const worstWeather = Object.entries(weather_compliance)
+      .sort(([,a], [,b]) => a.mean - b.mean)[0];
+    if (worstWeather && worstWeather[1].mean < 0.8) {
+      recommendations.push({
+        category: 'weather',
+        type: 'warning',
+        message: `${worstWeather[0]} weather shows lowest compliance rate at ${(worstWeather[1].mean * 100).toFixed(1)}%`,
+        suggestion: 'Consider enhanced warning systems during adverse weather conditions'
+      });
+    }
+
+    // Vehicle type recommendations
+    const worstVehicle = Object.entries(vehicle_type_compliance)
+      .sort(([,a], [,b]) => a.mean - b.mean)[0];
+    if (worstVehicle && worstVehicle[1].mean < 0.8) {
+      recommendations.push({
+        category: 'vehicle_type',
+        type: 'critical',
+        message: `${worstVehicle[0]} vehicles show lowest compliance rate at ${(worstVehicle[1].mean * 100).toFixed(1)}%`,
+        suggestion: 'Target awareness campaigns for specific vehicle types with lower compliance'
+      });
+    }
+
+    // Time-based recommendations
+    const worstHour = Object.entries(hour_compliance)
+      .sort(([,a], [,b]) => a.mean - b.mean)[0];
+    if (worstHour && worstHour[1].mean < 0.8) {
+      recommendations.push({
+        category: 'time',
+        type: 'info',
+        message: `Hour ${worstHour[0]}:00 shows lowest compliance rate at ${(worstHour[1].mean * 100).toFixed(1)}%`,
+        suggestion: 'Consider increased monitoring during peak violation hours'
+      });
+    }
+
+    return {
+      weather_analysis: {
+        weather_compliance,
+        weather_reaction_time
+      },
+      basic_correlations: {
+        vehicle_type_compliance,
+        hour_compliance
+      },
+      recommendations
+    };
+  };
   React.useEffect(() => {
-    loadAvailableJobs();
+    loadAllAnalytics();
     
     const handleThemeChange = () => {
       setIsDark(getStoredTheme() === 'dark');
@@ -61,53 +200,104 @@ function Analytics() {
     return () => window.removeEventListener('themeChanged', handleThemeChange);
   }, []);
 
-  const loadAvailableJobs = async () => {
-    try {
-      setLoading(true);
-      const response = await fetch(`${RUNPOD_API_BASE}/jobs/completed`);
-      const jobsData = await response.json();
-      
-      if (jobsData.status === 'success') {
-        setAvailableJobs(jobsData.jobs.map((job: any) => ({
-          id: job.job_id,
-          filename: job.file_name
-        })));
-      }
-    } catch (err: any) {
-      // Silently handle error - don't show error message to user
-    } finally {
-      setLoading(false);
+  React.useEffect(() => {
+    if (dateFilter !== 'all') {
+      loadAllAnalytics();
+    }
+  }, [dateFilter, customStartDate, customEndDate]);
+
+  const getDateRange = () => {
+    const now = new Date();
+    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    
+    switch (dateFilter) {
+      case '7days':
+        const sevenDaysAgo = new Date(today);
+        sevenDaysAgo.setDate(today.getDate() - 7);
+        return { start: sevenDaysAgo, end: now };
+      case '30days':
+        const thirtyDaysAgo = new Date(today);
+        thirtyDaysAgo.setDate(today.getDate() - 30);
+        return { start: thirtyDaysAgo, end: now };
+      case '90days':
+        const ninetyDaysAgo = new Date(today);
+        ninetyDaysAgo.setDate(today.getDate() - 90);
+        return { start: ninetyDaysAgo, end: now };
+      case 'custom':
+        if (customStartDate && customEndDate) {
+          return { 
+            start: new Date(customStartDate), 
+            end: new Date(customEndDate + 'T23:59:59') 
+          };
+        }
+        return null;
+      default:
+        return null;
     }
   };
 
-  const loadJobAnalytics = async (jobId: string) => {
-    if (!jobId) return;
+  const filterDataByDate = (data: TrackingResult[]) => {
+    const dateRange = getDateRange();
+    if (!dateRange) return data;
     
+    return data.filter(item => {
+      if (!item.date) return false;
+      const itemDate = new Date(item.date);
+      return itemDate >= dateRange.start && itemDate <= dateRange.end;
+    });
+  };
+
+  const loadAllAnalytics = async () => {
     try {
       setLoading(true);
       
-      // Load analytics data
-      const analyticsResponse = await fetch(`${RUNPOD_API_BASE}/jobs/${jobId}/analytics`);
-      const analyticsData = await analyticsResponse.json();
-      
-      // Load correlation analysis
-      const correlationResponse = await fetch(`${RUNPOD_API_BASE}/correlation-analysis/`);
-      const correlationData = await correlationResponse.json();
-      
-      if (analyticsData.status === 'success') {
-        setData(analyticsData.tracking_results || []);
+      // Try to get all analytics from RunPod backend first
+      try {
+        const response = await fetch(`${RUNPOD_API_BASE}/analytics/all`);
+        const analyticsData = await response.json();
         
-        if (correlationData.status === 'success') {
-          setAnalysisData(correlationData.analysis);
-          updateStats(correlationData.data_points, analyticsData.tracking_results || []);
+        if (analyticsData.status === 'success' && analyticsData.tracking_results) {
+          let filteredData = analyticsData.tracking_results;
+          
+          // Apply date filter
+          filteredData = filterDataByDate(filteredData);
+          
+          setData(filteredData);
+          
+          // Load correlation analysis
+          const correlationResponse = await fetch(`${RUNPOD_API_BASE}/correlation-analysis/`);
+          const correlationData = await correlationResponse.json();
+          
+          if (correlationData.status === 'success') {
+            setAnalysisData(correlationData.analysis);
+            updateStats(filteredData.length, filteredData, correlationData.analysis);
+          }
+          
+          setError(null);
+          return;
         }
-        
-        setError(null);
-      } else {
-        setError('No analytics data available for this job');
-        setData([]);
-        setAnalysisData(null);
+      } catch (backendError) {
+        console.log('Backend not available, falling back to database');
       }
+      
+      // Fallback: Get all data from database
+      const allTrackingResults = await getAllTrackingResults();
+      let filteredData = filterDataByDate(allTrackingResults);
+      
+      setData(filteredData);
+      
+      // Calculate client-side analysis if we have data
+      if (filteredData.length > 0) {
+        const clientAnalysis = calculateClientSideAnalysis(filteredData);
+        setAnalysisData(clientAnalysis);
+        updateStats(filteredData.length, filteredData, clientAnalysis);
+      } else {
+        setAnalysisData(null);
+        updateStats(0, [], null);
+      }
+      
+      setError(null);
+      
     } catch (err: any) {
       setError('Unable to load analytics data. Please try again.');
       setData([]);
@@ -117,14 +307,7 @@ function Analytics() {
     }
   };
 
-  const handleJobSelection = (jobId: string) => {
-    setSelectedJobId(jobId);
-    if (jobId) {
-      loadJobAnalytics(jobId);
-    }
-  };
-
-  const updateStats = (dataPoints: number, trackingData: TrackingResult[]) => {
+  const updateStats = (dataPoints: number, trackingData: TrackingResult[], analysis: AnalysisData | null) => {
     const totalVehicles = trackingData.length;
     const compliantVehicles = trackingData.filter(d => d.compliance === 1).length;
     const overallCompliance = totalVehicles > 0 ? (compliantVehicles / totalVehicles) * 100 : 0;
@@ -147,23 +330,55 @@ function Analytics() {
   };
 
   const applyFilters = async () => {
-    if (!selectedJobId) return;
+    if (data.length === 0) return;
     
     try {
-      let url = `${RUNPOD_API_BASE}/tracking-data/filter/?limit=50`;
+      // Apply filters to existing data
+      let filteredData = [...data];
       
-      if (weatherFilter) url += `&weather_condition=${weatherFilter}`;
-      if (vehicleFilter) url += `&vehicle_type=${vehicleFilter}`;
-      if (complianceFilter !== '') url += `&compliance=${complianceFilter}`;
-
-      const response = await fetch(url);
-      const filterData = await response.json();
-
-      if (filterData.status === 'success') {
-        setData(filterData.data);
+      if (weatherFilter) {
+        filteredData = filteredData.filter(d => d.weather_condition === weatherFilter);
+      }
+      if (vehicleFilter) {
+        filteredData = filteredData.filter(d => d.vehicle_type === vehicleFilter);
+      }
+      if (complianceFilter !== '') {
+        filteredData = filteredData.filter(d => d.compliance === parseInt(complianceFilter));
+      }
+      
+      setData(filteredData);
+      
+      // Recalculate analysis with filtered data
+      if (filteredData.length > 0) {
+        const clientAnalysis = calculateClientSideAnalysis(filteredData);
+        setAnalysisData(clientAnalysis);
+        updateStats(filteredData.length, filteredData, clientAnalysis);
+      } else {
+        setAnalysisData(null);
+        updateStats(0, [], null);
       }
     } catch (err: any) {
       setError('Unable to apply filters. Please try again.');
+    }
+  };
+
+  const resetFilters = () => {
+    setWeatherFilter('');
+    setVehicleFilter('');
+    setComplianceFilter('');
+    setDateFilter('all');
+    setCustomStartDate('');
+    setCustomEndDate('');
+    loadAllAnalytics();
+  };
+
+  const getDateFilterLabel = () => {
+    switch (dateFilter) {
+      case '7days': return 'Last 7 Days';
+      case '30days': return 'Last 30 Days';
+      case '90days': return 'Last 90 Days';
+      case 'custom': return 'Custom Range';
+      default: return 'All Time';
     }
   };
 
@@ -220,9 +435,11 @@ function Analytics() {
         <div className="max-w-7xl mx-auto">
           {/* Header */}
           <div className="mb-8">
-            <h1 className="text-2xl lg:text-3xl font-bold mb-2">Road Safety Analytics Dashboard</h1>
+            <h1 className="text-2xl lg:text-3xl font-bold mb-2">
+              Road Safety Analytics Dashboard
+            </h1>
             <p className={isDark ? 'text-gray-400' : 'text-gray-600'}>
-              Select a completed job to analyze traffic patterns and generate reports
+              Analyze traffic patterns and generate comprehensive safety reports
             </p>
           </div>
 
@@ -262,7 +479,7 @@ function Analytics() {
             </div>
           </div>
 
-          {/* Job Selection */}
+          {/* Date Range and Data Controls */}
           <div className={`p-8 rounded-xl mb-8 ${
             isDark 
               ? 'bg-[#151F32]' 
@@ -270,45 +487,95 @@ function Analytics() {
           }`}>
             <div className="flex items-center gap-4 mb-6">
               <div className="p-3 bg-primary-500/10 rounded-lg">
-                <Activity className="w-6 h-6 text-primary-500" />
+                <Calendar className="w-6 h-6 text-primary-500" />
               </div>
               <div>
-                <h2 className="text-xl font-semibold">Job Analytics</h2>
+                <h2 className="text-xl font-semibold">Data Analysis Controls</h2>
                 <p className={isDark ? 'text-gray-400' : 'text-gray-600'}>
-                  {selectedJobId 
-                    ? `Analyzing job: ${selectedJobId}` 
-                    : 'Select a completed job to view analytics'
-                  }
+                  Filter and analyze traffic data by date range and conditions
                 </p>
               </div>
             </div>
 
-            <div className="flex gap-4">
-              <select
-                value={selectedJobId}
-                onChange={(e) => handleJobSelection(e.target.value)}
-                className={`px-4 py-2 rounded-lg border ${
-                  isDark 
-                    ? 'bg-[#1E293B] border-[#334155] text-white' 
-                    : 'bg-white border-gray-300 text-gray-900'
-                } focus:outline-none focus:border-primary-400`}
-                disabled={loading}
-              >
-                <option value="">Select a job...</option>
-                {availableJobs.map(job => (
-                  <option key={job.id} value={job.id}>
-                    {job.filename} ({job.id})
-                  </option>
-                ))}
-              </select>
+            {/* Date Range Filter */}
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+              <div>
+                <label className={`block text-sm font-medium mb-2 ${isDark ? 'text-gray-300' : 'text-gray-700'}`}>
+                  Date Range:
+                </label>
+                <select
+                  value={dateFilter}
+                  onChange={(e) => setDateFilter(e.target.value as any)}
+                  className={`w-full px-3 py-2 rounded-lg border ${
+                    isDark 
+                      ? 'bg-[#1E293B] border-[#334155] text-white' 
+                      : 'bg-white border-gray-300 text-gray-900'
+                  }`}
+                >
+                  <option value="all">All Time</option>
+                  <option value="7days">Last 7 Days</option>
+                  <option value="30days">Last 30 Days</option>
+                  <option value="90days">Last 90 Days</option>
+                  <option value="custom">Custom Range</option>
+                </select>
+              </div>
+              
+              {dateFilter === 'custom' && (
+                <>
+                  <div>
+                    <label className={`block text-sm font-medium mb-2 ${isDark ? 'text-gray-300' : 'text-gray-700'}`}>
+                      Start Date:
+                    </label>
+                    <input
+                      type="date"
+                      value={customStartDate}
+                      onChange={(e) => setCustomStartDate(e.target.value)}
+                      className={`w-full px-3 py-2 rounded-lg border ${
+                        isDark 
+                          ? 'bg-[#1E293B] border-[#334155] text-white' 
+                          : 'bg-white border-gray-300 text-gray-900'
+                      }`}
+                    />
+                  </div>
+                  <div>
+                    <label className={`block text-sm font-medium mb-2 ${isDark ? 'text-gray-300' : 'text-gray-700'}`}>
+                      End Date:
+                    </label>
+                    <input
+                      type="date"
+                      value={customEndDate}
+                      onChange={(e) => setCustomEndDate(e.target.value)}
+                      className={`w-full px-3 py-2 rounded-lg border ${
+                        isDark 
+                          ? 'bg-[#1E293B] border-[#334155] text-white' 
+                          : 'bg-white border-gray-300 text-gray-900'
+                      }`}
+                    />
+                  </div>
+                </>
+              )}
+            </div>
 
+            <div className="flex flex-wrap gap-4">
               <button
-                onClick={loadAvailableJobs}
+                onClick={loadAllAnalytics}
                 className="flex items-center gap-2 px-4 py-2 bg-blue-500 hover:bg-blue-600 rounded-lg transition-colors"
                 disabled={loading}
               >
                 <RefreshCw className="w-5 h-5" />
-                {loading ? 'Loading...' : 'Refresh Jobs'}
+                {loading ? 'Loading...' : 'Refresh Data'}
+              </button>
+
+              <button
+                onClick={resetFilters}
+                className={`px-4 py-2 rounded-lg border ${
+                  isDark 
+                    ? 'bg-[#1E293B] border-[#334155] text-white' 
+                    : 'bg-white border-gray-300 text-gray-900'
+                } hover:bg-opacity-80 transition-colors`}
+                disabled={loading}
+              >
+                Reset All Filters
               </button>
 
               {data.length > 0 && (
@@ -329,7 +596,7 @@ function Analytics() {
                   disabled={loading}
                 >
                   <Download className="w-5 h-5" />
-                  Download Report
+                  Generate Report
                 </button>
               )}
             </div>
@@ -361,7 +628,10 @@ function Analytics() {
                   ? 'bg-[#151F32]' 
                   : 'bg-white shadow-lg border border-gray-200'
               }`}>
-                <h2 className="text-lg font-semibold mb-4">🔍 Data Filters</h2>
+                <div className="flex items-center gap-2 mb-4">
+                  <Filter className="w-5 h-5 text-primary-500" />
+                  <h2 className="text-lg font-semibold">Advanced Filters</h2>
+                </div>
                 <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
                   <div>
                     <label className={`block text-sm font-medium mb-2 ${isDark ? 'text-gray-300' : 'text-gray-700'}`}>
@@ -506,14 +776,18 @@ function Analytics() {
                   : 'bg-white shadow-lg border border-gray-200'
               }`}>
                 <h2 className="text-lg font-semibold mb-6">🔥 Correlation Heatmap</h2>
-                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                <div className="space-y-8">
                   <div>
                     <h3 className="text-md font-medium mb-4">Weather vs Vehicle Type Heatmap</h3>
-                    <div id="weatherVehicleHeatmap" className="min-h-[200px] border rounded-lg p-4"></div>
+                    <div className="overflow-x-auto">
+                      <div id="weatherVehicleHeatmap" className="min-h-[200px] min-w-[400px] border rounded-lg p-4"></div>
+                    </div>
                   </div>
                   <div>
                     <h3 className="text-md font-medium mb-4">Time vs Weather Heatmap</h3>
-                    <div id="timeWeatherHeatmap" className="min-h-[200px] border rounded-lg p-4"></div>
+                    <div className="overflow-x-auto">
+                      <div id="timeWeatherHeatmap" className="min-h-[200px] min-w-[600px] border rounded-lg p-4"></div>
+                    </div>
                   </div>
                 </div>
               </div>
@@ -605,7 +879,9 @@ function Analytics() {
             }`}>
               <Activity className={`w-12 h-12 mx-auto mb-4 ${isDark ? 'text-gray-400' : 'text-gray-500'}`} />
               <h3 className="text-xl font-semibold mb-2">No Data Available</h3>
-              <p className={isDark ? 'text-gray-400' : 'text-gray-600'}>Select a completed job to view analytics</p>
+              <p className={isDark ? 'text-gray-400' : 'text-gray-600'}>
+                No tracking data found for the selected date range. Try adjusting your filters or upload some videos for analysis.
+              </p>
             </div>
           )}
         </div>
@@ -868,13 +1144,13 @@ function ChartRenderer({ analysisData, isDark }: { analysisData: AnalysisData; i
       // Create heatmap grid
       const grid = document.createElement('div');
       grid.className = 'grid gap-1';
-      grid.style.gridTemplateColumns = `repeat(${weatherTypes.length + 1}, 1fr)`;
+      grid.style.gridTemplateColumns = `repeat(${weatherTypes.length + 1}, minmax(80px, 1fr))`;
 
       // Header row
       grid.appendChild(document.createElement('div')); // Empty corner
       weatherTypes.forEach(weather => {
         const cell = document.createElement('div');
-        cell.className = `text-xs font-medium p-2 text-center ${isDark ? 'text-gray-300' : 'text-gray-700'}`;
+        cell.className = `text-xs font-medium p-2 text-center break-words ${isDark ? 'text-gray-300' : 'text-gray-700'}`;
         cell.textContent = weather;
         grid.appendChild(cell);
       });
@@ -883,7 +1159,7 @@ function ChartRenderer({ analysisData, isDark }: { analysisData: AnalysisData; i
       vehicleTypes.forEach(vehicle => {
         // Row label
         const label = document.createElement('div');
-        label.className = `text-xs font-medium p-2 ${isDark ? 'text-gray-300' : 'text-gray-700'}`;
+        label.className = `text-xs font-medium p-2 break-words ${isDark ? 'text-gray-300' : 'text-gray-700'}`;
         label.textContent = vehicle;
         grid.appendChild(label);
 
@@ -894,7 +1170,7 @@ function ChartRenderer({ analysisData, isDark }: { analysisData: AnalysisData; i
           const correlation = (weatherCompliance + vehicleCompliance) / 2;
 
           const cell = document.createElement('div');
-          cell.className = 'text-xs p-2 text-center text-white rounded';
+          cell.className = 'text-xs p-2 text-center text-white rounded min-w-[60px]';
           cell.style.backgroundColor = `rgba(52, 152, 219, ${correlation})`;
           cell.textContent = `${(correlation * 100).toFixed(0)}%`;
           cell.title = `Weather: ${weather}, Vehicle: ${vehicle}, Correlation: ${(correlation * 100).toFixed(1)}%`;
@@ -916,13 +1192,13 @@ function ChartRenderer({ analysisData, isDark }: { analysisData: AnalysisData; i
       // Create heatmap grid
       const grid = document.createElement('div');
       grid.className = 'grid gap-1';
-      grid.style.gridTemplateColumns = `repeat(${hours.length + 1}, 1fr)`;
+      grid.style.gridTemplateColumns = `repeat(${Math.min(hours.length + 1, 13)}, minmax(50px, 1fr))`;
 
       // Header row
       grid.appendChild(document.createElement('div')); // Empty corner
-      hours.forEach(hour => {
+      hours.slice(0, 12).forEach(hour => {
         const cell = document.createElement('div');
-        cell.className = `text-xs font-medium p-2 text-center ${isDark ? 'text-gray-300' : 'text-gray-700'}`;
+        cell.className = `text-xs font-medium p-1 text-center ${isDark ? 'text-gray-300' : 'text-gray-700'}`;
         cell.textContent = `${hour}:00`;
         grid.appendChild(cell);
       });
@@ -931,18 +1207,18 @@ function ChartRenderer({ analysisData, isDark }: { analysisData: AnalysisData; i
       weatherTypes.forEach(weather => {
         // Row label
         const label = document.createElement('div');
-        label.className = `text-xs font-medium p-2 ${isDark ? 'text-gray-300' : 'text-gray-700'}`;
+        label.className = `text-xs font-medium p-1 break-words ${isDark ? 'text-gray-300' : 'text-gray-700'}`;
         label.textContent = weather;
         grid.appendChild(label);
 
         // Data cells
-        hours.forEach(hour => {
+        hours.slice(0, 12).forEach(hour => {
           const hourCompliance = analysisData.basic_correlations.hour_compliance[hour].mean;
           const weatherCompliance = analysisData.weather_analysis.weather_compliance[weather].mean;
           const correlation = (hourCompliance + weatherCompliance) / 2;
 
           const cell = document.createElement('div');
-          cell.className = 'text-xs p-2 text-center text-white rounded';
+          cell.className = 'text-xs p-1 text-center text-white rounded min-w-[40px]';
           cell.style.backgroundColor = `rgba(231, 76, 60, ${correlation})`;
           cell.textContent = `${(correlation * 100).toFixed(0)}%`;
           cell.title = `Hour: ${hour}:00, Weather: ${weather}, Correlation: ${(correlation * 100).toFixed(1)}%`;

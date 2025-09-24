@@ -33,7 +33,32 @@ interface NotificationState {
 const getErrorMessage = (error: any): string => {
   if (!error) return 'An unexpected error occurred';
   
-  return 'Unable to load video data. Please try again.';
+  const errorMessage = error.message || error.toString();
+  
+  // Network errors
+  if (errorMessage.includes('Failed to fetch') || errorMessage.includes('NetworkError')) {
+    return 'Unable to connect to the processing server. Please check your internet connection and try again.';
+  }
+  
+  if (errorMessage.includes('timeout') || errorMessage.includes('TIMEOUT')) {
+    return 'The request took too long to complete. Please try again.';
+  }
+  
+  // Server errors
+  if (errorMessage.includes('500') || errorMessage.includes('Internal Server Error')) {
+    return 'The processing server is experiencing issues. Please try again in a few minutes.';
+  }
+  
+  if (errorMessage.includes('404') || errorMessage.includes('Not Found')) {
+    return 'The requested service is not available. Please contact support if this continues.';
+  }
+  
+  if (errorMessage.includes('403') || errorMessage.includes('Forbidden')) {
+    return 'Access denied. Please check your permissions or contact support.';
+  }
+  
+  // Generic fallback with simplified message
+  return 'Something went wrong. Please try again or contact support if the problem continues.';
 };
 
 function Playback() {
@@ -75,12 +100,16 @@ function Playback() {
     
     window.addEventListener('themeChanged', handleThemeChange);
     
-    // Check RunPod connection and load jobs
-    checkRunPodConnection();
+    // Load playback data (health check + jobs)
+    loadPlaybackData();
+    
+    // Set up periodic refresh every 30 seconds
+    const interval = setInterval(loadPlaybackData, 30000);
     
     return () => {
       window.removeEventListener('themeChanged', handleThemeChange);
       clearNotificationTimeout();
+      clearInterval(interval);
     };
   }, []);
 
@@ -104,38 +133,75 @@ function Playback() {
     }, duration);
   };
 
-  const checkRunPodConnection = async () => {
+  const loadPlaybackData = async () => {
+    setLoading(true);
     setConnectionStatus('connecting');
     setRunpodConnected(false);
     setConnectionError('');
     
     try {
-      const response = await fetch(`${RUNPOD_API_BASE}/ws/jobs`, {
+      // First, check RunPod server health
+      const healthResponse = await fetch(`${RUNPOD_API_BASE}/`, {
         method: 'GET',
         headers: {
           'Content-Type': 'application/json',
         },
+        signal: AbortSignal.timeout(10000), // 10 second timeout
       });
       
-      if (response.ok) {
-        const data = await response.json();
+      if (!healthResponse.ok) {
+        throw new Error(`Server responded with status ${healthResponse.status}`);
+      }
+      
+      const healthData = await healthResponse.json();
+      
+      // Check if the response matches the expected health check message
+      if (healthData.message === "SynerX API is running!" && healthData.status === "ok") {
         setConnectionStatus('connected');
         setRunpodConnected(true);
-        // Get all jobs (not just completed ones)
-        setAvailableJobs(data.all_jobs || []);
+        setConnectionError('');
+        
+        // Now fetch jobs data
+        try {
+          const jobsResponse = await fetch(`${RUNPOD_API_BASE}/jobs/status`, {
+            method: 'GET',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            signal: AbortSignal.timeout(10000),
+          });
+          
+          if (jobsResponse.ok) {
+            const jobsData = await jobsResponse.json();
+            setAvailableJobs(jobsData.all_jobs || []);
+          } else {
+            console.warn('Failed to fetch jobs data, but server is healthy');
+            setAvailableJobs([]);
+          }
+        } catch (jobsError) {
+          console.warn('Error fetching jobs:', jobsError);
+          setAvailableJobs([]);
+        }
       } else {
-        throw new Error(`Server responded with status ${response.status}`);
+        setConnectionStatus('error');
+        setRunpodConnected(false);
+        setConnectionError('Server is not responding correctly');
+        setAvailableJobs([]);
       }
     } catch (error: any) {
       const errorMsg = getErrorMessage(error);
       setConnectionStatus('error');
-      setConnectionError('Unable to connect to server. Please try again.');
+      setRunpodConnected(false);
+      setConnectionError(errorMsg);
+      setAvailableJobs([]);
+    } finally {
+      setLoading(false);
     }
   };
 
   const openPlaybackModal = (job: RunPodJob) => {
-    if (!job.video_url) {
-      showNotification('No video URL available for playback', 'error');
+    if (!job.job_id) {
+      showNotification('No job ID available for playback', 'error');
       return;
     }
     
@@ -207,7 +273,11 @@ function Playback() {
   };
 
   const getVideoUrl = (): string => {
-    return selectedVideoForPlayback?.video_url || '';
+    if (!selectedVideoForPlayback?.job_id) return '';
+    
+    // Use the processed video from backend /processed folder
+    const runpodUrl = import.meta.env.VITE_RUNPOD_URL || 'http://localhost:8000';
+    return `${runpodUrl}/processed/${selectedVideoForPlayback.job_id}.mp4`;
   };
 
   const formatElapsed = (sec: number): string => {
@@ -296,7 +366,7 @@ function Playback() {
 
             <div className="flex justify-end mb-6">
               <button
-                onClick={checkRunPodConnection}
+                onClick={loadPlaybackData}
                 className="flex items-center gap-2 px-4 py-2 bg-blue-500 hover:bg-blue-600 rounded-lg transition-colors"
                 disabled={loading}
               >
@@ -353,7 +423,7 @@ function Playback() {
                           </td>
                           <td className="py-3 px-4">
                             <div className="flex items-center gap-2">
-                              {job.status === 'completed' && job.video_url && (
+                              {job.status === 'completed' && job.job_id && (
                                 <button
                                   onClick={() => openPlaybackModal(job)}
                                   className="px-3 py-1 text-xs bg-primary-500 hover:bg-primary-600 text-white rounded transition-colors"
@@ -377,7 +447,16 @@ function Playback() {
               </table>
               {availableJobs.length === 0 && (
                 <div className={`text-center py-8 ${isDark ? 'text-gray-400' : 'text-gray-600'}`}>
-                  {!runpodConnected ? 'Unable to connect to server.' : 'No uploads found. Upload a video to get started.'}
+                  {!runpodConnected ? (
+                    <div>
+                      <p className="mb-2">Unable to connect to server.</p>
+                      {connectionError && (
+                        <p className="text-sm text-red-400">{connectionError}</p>
+                      )}
+                    </div>
+                  ) : (
+                    'No uploads found. Upload a video to get started.'
+                  )}
                 </div>
               )}
               </div>

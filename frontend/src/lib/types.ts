@@ -77,6 +77,30 @@ export interface VehicleCountInsert {
   date: string;
 }
 
+// Enhanced Job Management Types for Database Integration
+export interface ProcessingJob {
+  id: number;
+  video_id: number;
+  job_id: string;
+  status: 'queued' | 'processing' | 'completed' | 'failed' | 'cancelled';
+  progress: number;
+  message?: string;
+  processing_start_time?: string;
+  processing_end_time?: string;
+  created_at?: string;
+  updated_at?: string;
+}
+
+export interface ProcessingJobInsert {
+  video_id: number;
+  job_id: string;
+  status: 'queued' | 'processing' | 'completed' | 'failed' | 'cancelled';
+  progress?: number;
+  message?: string;
+  processing_start_time?: string;
+  processing_end_time?: string;
+}
+
 // Job Management Types
 export interface Job {
   job_id: string;

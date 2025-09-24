@@ -300,7 +300,7 @@ function LandingPage() {
                 darkMode ? 'bg-primary-500/10' : 'bg-primary-600/10'
               } blur-3xl -z-10 animate-pulse-glow`}></div>
               <img 
-                src="https://github.com/sasindudilshanranwadana/SynerX/blob/web/public/m6-motorway-trim-result.gif?raw=true" 
+                src="https://iqehkneolpesaqznkqjm.supabase.co/storage/v1/object/sign/assets/m6-motorway-trim-result.gif?token=eyJraWQiOiJzdG9yYWdlLXVybC1zaWduaW5nLWtleV83YmM1YjM5OS00ZDQwLTRiMDktOGE3Yi1kOWMxNzlkNjcyM2UiLCJhbGciOiJIUzI1NiJ9.eyJ1cmwiOiJhc3NldHMvbTYtbW90b3J3YXktdHJpbS1yZXN1bHQuZ2lmIiwiaWF0IjoxNzU4NzMwMDYyLCJleHAiOjMxNTUzNTg3MzAwNjJ9.pKZVb8o3SVRrZ_N5WGWNcrRI59hyZ-tcNongThzTQs4" 
                 alt="Traffic Analysis with AI Detection" 
                 className="rounded-xl shadow-2xl relative z-10 animate-float"
               />
