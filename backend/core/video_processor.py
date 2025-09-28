@@ -21,6 +21,7 @@ from utils.device_manager import DeviceManager
 from utils.annotation_manager import AnnotationManager
 from utils.display_manager import DisplayManager
 from utils.vehicle_processor import VehicleProcessor
+from utils.video_streamer import video_streamer
 from typing import Callable, Optional
 
 class VideoProcessor:
@@ -229,6 +230,13 @@ class VideoProcessor:
         # Draw additional elements
         self.annotation_manager.draw_anchor_points(annotated, anchor_pts)
         self.annotation_manager.draw_stop_zone(annotated)
+        
+        # Send frame to video streamer for live streaming
+        if video_streamer.has_active_connections():
+            # Minimal logging for RunPod performance
+            if self.frame_idx % 500 == 0:
+                print(f"[VIDEO] 🎬 Sending frame {self.frame_idx} to video streamer")
+            video_streamer.update_frame(annotated)
         
         # Output frame
         sink.write_frame(annotated)

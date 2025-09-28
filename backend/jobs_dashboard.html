@@ -329,6 +329,9 @@
 
       // Live jobs updates via WebSocket
       let jobsWS = null;
+      let reconnectAttempts = 0;
+      const maxReconnectAttempts = 5;
+      
       function startJobsSocket() {
         try {
           if (jobsWS) {
@@ -336,12 +339,15 @@
             jobsWS = null;
           }
         } catch {}
+        
         const url = API_BASE.replace("http", "ws") + "/ws/jobs";
         jobsWS = new WebSocket(url);
+        
         jobsWS.onopen = () => {
-          document.getElementById("summary").textContent =
-            " | Live updates connected";
+          document.getElementById("summary").textContent = " | Live updates connected";
+          reconnectAttempts = 0; // Reset on successful connection
         };
+        
         jobsWS.onmessage = (evt) => {
           try {
             const payload = JSON.parse(evt.data);
@@ -352,16 +358,31 @@
                 payload.summary.queue_processor_running ? "Yes" : "No"
               }`;
               renderJobs(payload.all_jobs || []);
+            } else if (payload && payload.status === "error") {
+              console.error("WebSocket error:", payload.error);
+              document.getElementById("summary").textContent = " | Error: " + payload.error;
             }
-          } catch {}
+          } catch (e) {
+            console.error("Failed to parse WebSocket message:", e);
+          }
         };
-        jobsWS.onerror = () => {
-          document.getElementById("summary").textContent =
-            " | Live updates error";
+        
+        jobsWS.onerror = (error) => {
+          console.error("WebSocket error:", error);
+          document.getElementById("summary").textContent = " | Live updates error";
         };
-        jobsWS.onclose = () => {
-          document.getElementById("summary").textContent +=
-            " | Live updates closed";
+        
+        jobsWS.onclose = (event) => {
+          document.getElementById("summary").textContent += " | Live updates closed";
+          
+          // Auto-reconnect if not a clean close and we haven't exceeded max attempts
+          if (event.code !== 1000 && reconnectAttempts < maxReconnectAttempts) {
+            reconnectAttempts++;
+            console.log(`Attempting to reconnect (${reconnectAttempts}/${maxReconnectAttempts})...`);
+            setTimeout(() => {
+              startJobsSocket();
+            }, 2000 * reconnectAttempts); // Exponential backoff
+          }
         };
       }
 
@@ -462,41 +483,83 @@
       }
 
       let ws = null;
+      let streamReconnectAttempts = 0;
+      const maxStreamReconnectAttempts = 3;
+      let currentJobId = null;
+      let streamModal, streamImage, streamPlaceholder;
+      
       function openStream(jobId) {
-        const modal = document.getElementById("streamModal");
-        const img = document.getElementById("streamImage");
-        const ph = document.getElementById("streamPlaceholder");
-        img.style.display = "none";
-        ph.textContent = "Connecting...";
-        modal.style.display = "flex";
+        currentJobId = jobId;
+        streamModal = document.getElementById("streamModal");
+        streamImage = document.getElementById("streamImage");
+        streamPlaceholder = document.getElementById("streamPlaceholder");
+        streamImage.style.display = "none";
+        streamPlaceholder.textContent = "Connecting...";
+        streamModal.style.display = "flex";
+        
+        connectStreamWebSocket(jobId);
+      }
+      
+      function connectStreamWebSocket(jobId) {
         try {
           if (ws) {
             ws.close();
             ws = null;
           }
         } catch {}
-        const wsUrl =
-          API_BASE.replace("http", "ws") +
-          `/ws/video-stream/${encodeURIComponent(jobId)}`;
+        
+        const wsUrl = API_BASE.replace("http", "ws") + `/ws/video-stream/${encodeURIComponent(jobId)}`;
         ws = new WebSocket(wsUrl);
+        
         ws.onopen = () => {
-          ph.textContent = "Connected. Waiting for frames...";
+          streamPlaceholder.textContent = "Connected. Waiting for frames...";
+          streamReconnectAttempts = 0; // Reset on successful connection
+          console.log(`[STREAM] ✅ Connected to video stream for job ${jobId}`);
+          console.log(`[STREAM] WebSocket URL: ${wsUrl}`);
         };
+        
         ws.onmessage = (evt) => {
           try {
             const msg = JSON.parse(evt.data);
+            
             if (msg.type === "frame" && msg.frame_data) {
-              img.src = `data:image/jpeg;base64,${msg.frame_data}`;
-              img.style.display = "block";
-              ph.style.display = "none";
+              // Reduced logging for performance - only log every 50 frames
+              if (msg.frame_number % 50 === 0) {
+                console.log("[STREAM] 📨 Received frame:", msg.frame_number, "length:", msg.frame_data.length);
+              }
+              streamImage.src = `data:image/jpeg;base64,${msg.frame_data}`;
+              streamImage.style.display = "block";
+              streamPlaceholder.style.display = "none";
+            } else if (msg.type === "pong") {
+              // Handle ping/pong for connection health (no logging for performance)
             }
-          } catch {}
+          } catch (e) {
+            console.error("[STREAM] Failed to parse frame message:", e);
+          }
         };
-        ws.onerror = () => {
-          ph.textContent = "WebSocket error.";
+        
+        ws.onerror = (error) => {
+          console.error("[STREAM] ❌ WebSocket error:", error);
+          console.error("[STREAM] Error details:", {
+            type: error.type,
+            target: error.target,
+            url: wsUrl
+          });
+          streamPlaceholder.textContent = "WebSocket error. Attempting to reconnect...";
         };
-        ws.onclose = () => {
-          ph.textContent = "Disconnected.";
+        
+        ws.onclose = (event) => {
+          console.log(`[STREAM] WebSocket closed with code: ${event.code}`);
+          streamPlaceholder.textContent = "Disconnected.";
+          
+          // Auto-reconnect if not a clean close and we haven't exceeded max attempts
+          if (event.code !== 1000 && streamReconnectAttempts < maxStreamReconnectAttempts && currentJobId) {
+            streamReconnectAttempts++;
+            console.log(`[STREAM] Attempting to reconnect (${streamReconnectAttempts}/${maxStreamReconnectAttempts})...`);
+            setTimeout(() => {
+              connectStreamWebSocket(currentJobId);
+            }, 1000 * streamReconnectAttempts); // Linear backoff for video stream
+          }
         };
       }
 

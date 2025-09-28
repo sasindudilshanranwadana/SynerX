@@ -33,12 +33,16 @@ class VideoStreamer:
         self.frames_processed = 0
         self.frames_sent = 0
         self.connection_count = 0
+        self._pending_message = None
         
         print("[STREAM] VideoStreamer initialized - ready for WebSocket connections")
         
     async def connect(self, websocket: WebSocket, client_id: str):
         """Connect a new client to the video stream"""
+        print(f"[STREAM] 🔌 Attempting to connect client: {client_id}")
         await websocket.accept()
+        print(f"[STREAM] ✅ WebSocket accepted for client: {client_id}")
+        
         with self.connection_lock:
             self.active_connections[client_id] = websocket
             self.connection_count += 1
@@ -85,8 +89,8 @@ class VideoStreamer:
                 self.frame_queue.get_nowait()
             self.frame_queue.put_nowait(frame)
             
-            # Log every 100 frames for performance monitoring
-            if self.frames_processed % 100 == 0:
+            # Log every 200 frames for performance monitoring (minimal logging for RunPod)
+            if self.frames_processed % 200 == 0:
                 print(f"[STREAM] 📊 Processed {self.frames_processed} frames, sent {self.frames_sent} frames to {len(self.active_connections)} clients")
                     
         except Exception as e:
@@ -135,8 +139,11 @@ class VideoStreamer:
                 # Get frame immediately
                 try:
                     frame = self.frame_queue.get_nowait()
+                    # Minimal logging for RunPod performance
+                    if frame_count % 500 == 0:
+                        print(f"[STREAM] 🎬 Received frame {frame_count + 1} from queue")
                 except queue.Empty:
-                    time.sleep(0.001)  # 1ms sleep
+                    time.sleep(0.0001)  # 0.1ms sleep for faster processing
                     continue
                 
                 frame_count += 1
@@ -157,11 +164,11 @@ class VideoStreamer:
                             "frame_number": frame_count
                         }
                         
-                        # Broadcast immediately
-                        asyncio.run(self._broadcast_message(json.dumps(message)))
+                        # Store message for async broadcast (will be sent by the WebSocket handler)
+                        self._pending_message = json.dumps(message)
                         
-                        # Log every 50 frames for performance monitoring
-                        if self.frames_sent % 50 == 0:
+                        # Log every 500 frames for performance monitoring (minimal for RunPod)
+                        if self.frames_sent % 500 == 0:
                             print(f"[STREAM] 📡 Sent {self.frames_sent} frames to {len(self.active_connections)} clients")
                 
                 # No sleep for maximum speed
@@ -173,13 +180,13 @@ class VideoStreamer:
         print(f"[STREAM] 🔄 Streaming loop ended - processed {frame_count} frames")
                 
     def _fast_encode(self, frame: np.ndarray) -> str:
-        """Ultra-fast frame encoding"""
+        """High-quality frame encoding for RunPod performance"""
         try:
-            # Fastest possible encoding
+            # High-quality encoding optimized for RunPod's power
             encode_params = [
                 cv2.IMWRITE_JPEG_QUALITY, self.jpeg_quality,
-                cv2.IMWRITE_JPEG_OPTIMIZE, 0,
-                cv2.IMWRITE_JPEG_PROGRESSIVE, 0
+                cv2.IMWRITE_JPEG_OPTIMIZE, 1,  # Enable optimization for better quality
+                cv2.IMWRITE_JPEG_PROGRESSIVE, 1  # Progressive JPEG for better streaming
             ]
             _, buffer = cv2.imencode('.jpg', frame, encode_params)
             return base64.b64encode(buffer).decode('utf-8')

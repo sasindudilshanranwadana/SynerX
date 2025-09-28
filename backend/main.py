@@ -80,9 +80,16 @@ app = FastAPI(
 # Add middleware
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  
-    allow_credentials=False,  
-    allow_methods=["*"],
+    allow_origins=[
+        "http://localhost:3000",      # React dev server
+        "http://localhost:8000",      # current backend
+        "http://localhost:5500",      # Live server
+        "https://synerx.netlify.app", # production frontend
+        "https://yourdomain.com",     # Add production domain here
+        # Add more domains as needed
+    ],  
+    allow_credentials=True,  # Enable credentials for video streaming
+    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
     allow_headers=["*"],
 )
 
@@ -636,16 +643,34 @@ async def videos_page():
 @app.websocket("/ws/video-stream/{client_id}")
 async def websocket_video_stream(websocket: WebSocket, client_id: str):
     """WebSocket endpoint for real-time video streaming"""
+    print(f"[WS] 🎬 Video stream WebSocket connection attempt for client: {client_id}")
     try:
         await video_streamer.connect(websocket, client_id)
+        print(f"[WS] ✅ Video streamer connected for client: {client_id}")
         
         # Keep connection alive and handle messages
         while True:
             try:
-                # Wait for any message from client (ping/pong)
-                data = await websocket.receive_text()
-                message = {"type": "pong", "timestamp": time.time()}
-                await websocket.send_text(json.dumps(message))
+                # Check for pending messages from video streamer
+                if hasattr(video_streamer, '_pending_message') and video_streamer._pending_message:
+                    await websocket.send_text(video_streamer._pending_message)
+                    video_streamer._pending_message = None
+                
+                # Wait for any message from client (ping/pong) with timeout
+                data = await asyncio.wait_for(websocket.receive_text(), timeout=0.1)
+                try:
+                    message = json.loads(data)
+                    if message.get("type") == "ping":
+                        response = {"type": "pong", "timestamp": time.time()}
+                        await websocket.send_text(json.dumps(response))
+                except json.JSONDecodeError:
+                    # Handle non-JSON messages
+                    response = {"type": "pong", "timestamp": time.time()}
+                    await websocket.send_text(json.dumps(response))
+            except asyncio.TimeoutError:
+                # Send ping to keep connection alive
+                ping_message = {"type": "ping", "timestamp": time.time()}
+                await websocket.send_text(json.dumps(ping_message))
             except WebSocketDisconnect:
                 break
             except Exception as e:
@@ -711,7 +736,7 @@ async def websocket_jobs_status(websocket: WebSocket):
                     }
 
                 await websocket.send_text(json.dumps(payload))
-                await asyncio.sleep(1.0)
+                await asyncio.sleep(0.5)  # Faster updates for better responsiveness
             except WebSocketDisconnect:
                 break
             except Exception as e:
