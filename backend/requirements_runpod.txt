@@ -10,8 +10,8 @@ supabase>=2.0.0
 psycopg2-binary>=2.9.0
 
 # AI/ML
-torch>=2.0.0
-torchvision>=0.15.0
+torch>=2.8.0
+torchvision>=0.23.0
 ultralytics>=8.0.0
 supervision>=0.16.0
 
@@ -26,6 +26,11 @@ opencv-python-headless>=4.8.0  # Headless OpenCV for RunPod (no GUI dependencies
 # Data processing
 numpy>=1.24.0
 pandas>=2.0.0
+scipy>=1.15.0
+
+# Visualization
+seaborn>=0.13.0
+matplotlib>=3.10.0
 
 # HTTP requests
 requests>=2.31.0
@@ -36,6 +41,9 @@ boto3>=1.35.0  # For Cloudflare R2 uploads
 
 # Environment
 python-dotenv>=1.1.0
+
+# System monitoring
+psutil>=7.0.0
 
 # Optional: For better performance
 numba>=0.58.0  # JIT compilation
