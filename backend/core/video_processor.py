@@ -197,58 +197,65 @@ class VideoProcessor:
     
     def _process_frame(self, frame, sink):
         """Process a single frame"""
-        # Detection and tracking
-        detections = self._perform_detection_and_tracking(frame)
+        try:
+            # Detection and tracking
+            detections = self._perform_detection_and_tracking(frame)
 
-        # License plate blurring is temporarily disabled for performance
-        processed_frame = frame.copy()
-        
-        # Apply tracker ID offset for global uniqueness
-        detections.tracker_id = [tid + self.vehicle_processor.tracker_id_offset for tid in detections.tracker_id]
-        
-        # Get anchor points
-        anchor_pts = detections.get_anchors_coordinates(anchor=sv.Position.BOTTOM_CENTER)
-        anchor_pts = anchor_pts + np.array([0, Config.ANCHOR_Y_OFFSET])
-        
-        # Update class consistency
-        self.vehicle_tracker.update_class_consistency(detections)
-        
-        # Transform points for distance calculation
-        transformed_pts = self.transformer.transform(anchor_pts).astype(float)
-        
-        # Process detections
-        top_labels, bottom_labels = self.vehicle_processor.process_detections(
-            detections, anchor_pts, transformed_pts
-        )
-        
-        # Data is now collected during processing and saved at the end
-        # No need to save during processing for better performance
-        
-        # Annotate frame
-        annotated = self.annotation_manager.annotate_frame(processed_frame, detections, top_labels, bottom_labels)
-        
-        # Draw additional elements
-        self.annotation_manager.draw_anchor_points(annotated, anchor_pts)
-        self.annotation_manager.draw_stop_zone(annotated)
-        
-        # Send frame to video streamer for live streaming
-        if video_streamer.has_active_connections():
-            # Minimal logging for RunPod performance
-            if self.frame_idx % 500 == 0:
-                print(f"[VIDEO] 🎬 Sending frame {self.frame_idx} to video streamer")
-            video_streamer.update_frame(annotated)
-        
-        # Output frame
-        sink.write_frame(annotated)
-        
-        # Handle display
-        if not self.display_manager.handle_display(annotated, self.frame_idx):
+            # License plate blurring is temporarily disabled for performance
+            processed_frame = frame.copy()
+            
+            # Apply tracker ID offset for global uniqueness
+            detections.tracker_id = [tid + self.vehicle_processor.tracker_id_offset for tid in detections.tracker_id]
+            
+            # Get anchor points
+            anchor_pts = detections.get_anchors_coordinates(anchor=sv.Position.BOTTOM_CENTER)
+            anchor_pts = anchor_pts + np.array([0, Config.ANCHOR_Y_OFFSET])
+            
+            # Update class consistency
+            self.vehicle_tracker.update_class_consistency(detections)
+            
+            # Transform points for distance calculation
+            transformed_pts = self.transformer.transform(anchor_pts).astype(float)
+            
+            # Process detections
+            top_labels, bottom_labels = self.vehicle_processor.process_detections(
+                detections, anchor_pts, transformed_pts
+            )
+            
+            # Data is now collected during processing and saved at the end
+            # No need to save during processing for better performance
+            
+            # Annotate frame
+            annotated = self.annotation_manager.annotate_frame(processed_frame, detections, top_labels, bottom_labels)
+            
+            # Draw additional elements
+            self.annotation_manager.draw_anchor_points(annotated, anchor_pts)
+            self.annotation_manager.draw_stop_zone(annotated)
+            
+            # Send frame to video streamer for live streaming
+            if video_streamer.has_active_connections():
+                # Minimal logging for RunPod performance
+                if self.frame_idx % 500 == 0:
+                    print(f"[VIDEO] 🎬 Sending frame {self.frame_idx} to video streamer")
+                video_streamer.update_frame(annotated)
+            
+            # Output frame
+            sink.write_frame(annotated)
+            
+            # Handle display
+            if not self.display_manager.handle_display(annotated, self.frame_idx):
+                return False
+            
+            # Update FPS display
+            self.display_manager.update_fps_display(self.frame_idx)
+            
+            return True
+            
+        except Exception as e:
+            print(f"[ERROR] Frame {self.frame_idx} processing failed: {e}")
+            import traceback
+            traceback.print_exc()
             return False
-        
-        # Update FPS display
-        self.display_manager.update_fps_display(self.frame_idx)
-        
-        return True
     
     
     def _make_video_streamable(self):
@@ -261,6 +268,14 @@ class VideoProcessor:
             # Check if output file exists
             if not Path(self.output_video_path).exists():
                 print("[VIDEO] No output file to process for streaming")
+                return
+            
+            # Check file size
+            file_size = Path(self.output_video_path).stat().st_size
+            print(f"[VIDEO] Output file size: {file_size} bytes")
+            
+            if file_size == 0:
+                print("[VIDEO] Output file is empty, skipping FFmpeg conversion")
                 return
             
             # Create temporary file for streaming-compatible version
@@ -315,18 +330,37 @@ class VideoProcessor:
         # Process detections
         detections = sv.Detections.from_ultralytics(result)
         
-        # Version-compatible boolean indexing for confidence filtering
-        confidence_mask = detections.confidence > Config.DETECTION_CONFIDENCE
-        if len(confidence_mask) > 0:
-            detections = detections[confidence_mask]
+        # Debug: Print detection info (only for first few frames)
+        if self.frame_idx <= 5:
+            print(f"[DEBUG] Frame {self.frame_idx}: {len(detections)} detections")
+            if len(detections) > 0:
+                print(f"[DEBUG] Detection shapes: xyxy={detections.xyxy.shape if hasattr(detections, 'xyxy') else 'None'}, "
+                      f"confidence={detections.confidence.shape if hasattr(detections, 'confidence') and detections.confidence is not None else 'None'}, "
+                      f"class_id={detections.class_id.shape if hasattr(detections, 'class_id') else 'None'}")
         
-        # Version-compatible boolean indexing for polygon zone filtering
+        # Safe boolean indexing for confidence filtering
+        if len(detections) > 0 and hasattr(detections, 'confidence') and detections.confidence is not None:
+            try:
+                confidence_mask = detections.confidence > Config.DETECTION_CONFIDENCE
+                if len(confidence_mask) > 0 and len(confidence_mask) == len(detections):
+                    detections = detections[confidence_mask]
+                elif len(confidence_mask) == 0:
+                    detections = sv.Detections.empty()
+            except Exception as e:
+                print(f"[WARNING] Confidence filtering failed: {e}")
+                detections = sv.Detections.empty()
+        
+        # Safe boolean indexing for polygon zone filtering
         if len(detections) > 0:
-            zone_mask = self.polygon_zone.trigger(detections)
-            if len(zone_mask) > 0:
-                detections = detections[zone_mask].with_nms(threshold=Config.NMS_THRESHOLD)
-            else:
-                # Create empty detections if no detections in zone
+            try:
+                zone_mask = self.polygon_zone.trigger(detections)
+                if len(zone_mask) > 0 and len(zone_mask) == len(detections):
+                    detections = detections[zone_mask].with_nms(threshold=Config.NMS_THRESHOLD)
+                else:
+                    # Create empty detections if no detections in zone
+                    detections = sv.Detections.empty()
+            except Exception as e:
+                print(f"[WARNING] Zone filtering failed: {e}")
                 detections = sv.Detections.empty()
         else:
             # Create empty detections if no detections after confidence filtering
