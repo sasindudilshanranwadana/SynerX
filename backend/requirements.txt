@@ -1,21 +1,47 @@
-ultralytics==8.3.146
-supervision==0.25.1
-opencv-python==4.11.0.86
-pandas==2.2.3
-numpy==2.3.1
-scipy==1.15.3
-seaborn==0.13.2
-matplotlib==3.10.3
-fastapi==0.115.12
-uvicorn==0.34.2
-dash==2.17.1
-plotly==5.22.0
-supabase==2.16.0
-python-multipart==0.0.20
-python-dotenv==1.1.1
-boto3==1.35.93
-torch==2.7.1
-torchvision==0.22.1
-psutil==7.0.0
-requests==2.32.4
-pytest==8.4.1
+# Core AI/ML dependencies
+ultralytics>=8.3.0
+supervision>=0.25.0
+torch>=2.7.0
+torchvision>=0.22.0
+
+# Data processing
+pandas>=2.2.0
+numpy>=2.3.0
+scipy>=1.15.0
+
+# Visualization
+seaborn>=0.13.0
+matplotlib>=3.10.0
+dash>=2.17.0
+plotly>=5.22.0
+
+# Web framework
+fastapi>=0.115.0
+uvicorn[standard]>=0.34.0
+python-multipart>=0.0.20
+
+# Database
+supabase>=2.16.0
+psycopg2-binary>=2.9.0
+
+# Storage
+boto3>=1.35.0
+
+# Environment
+python-dotenv>=1.1.0
+
+# System monitoring
+psutil>=7.0.0
+
+# HTTP requests
+requests>=2.32.0
+
+# Testing
+pytest>=8.4.0
+
+# Optional: Image processing (will fallback to PIL if not available)
+opencv-python-headless>=4.11.0  # Headless OpenCV (no GUI dependencies)
+
+# GPU acceleration (install separately for RunPod)
+# cupy-cuda12x>=12.0.0  # Uncomment for RunPod GPU acceleration
+# cupy-cuda11x>=11.0.0  # Uncomment for older CUDA versions

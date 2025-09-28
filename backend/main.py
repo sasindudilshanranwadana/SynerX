@@ -639,6 +639,10 @@ async def root():
 async def videos_page():
     return FileResponse("videos_dashboard.html")
 
+@app.get("/jobs", include_in_schema=False)
+async def jobs_page():
+    return FileResponse("jobs_dashboard.html")
+
 # WebSocket endpoint
 @app.websocket("/ws/video-stream/{client_id}")
 async def websocket_video_stream(websocket: WebSocket, client_id: str):

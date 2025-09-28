@@ -344,6 +344,10 @@ class VideoProcessor:
         """Finalize processing and cleanup with video stats update"""
         print(f"[INFO] Finalizing processing at frame {self.frame_idx} for video {self.video_id}...")
         
+        # Clean up display manager (handles OpenCV GUI cleanup)
+        if self.display_manager:
+            self.display_manager.cleanup()
+        
         # Check if there's any data to save (regardless of cancellation)
         has_tracking_data = len(self.vehicle_processor.changed_records) > 0
         has_vehicle_counts = len(self.vehicle_processor.vehicle_type_counter) > 0

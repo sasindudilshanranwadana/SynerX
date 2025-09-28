@@ -66,5 +66,11 @@ class Config:
     STREAMING_MAX_FRAME_SIZE = (1280, 720)  # HD quality streaming (720p)
     STREAMING_QUEUE_SIZE = 8  # Large buffer for smooth streaming
     STREAMING_WORKERS = 6  # More workers for RunPod's multi-core performance
-    STREAMING_INTERPOLATION = cv2.INTER_LINEAR  # Better quality interpolation
+    
+    # Conditional interpolation based on environment
+    try:
+        import cv2
+        STREAMING_INTERPOLATION = cv2.INTER_LINEAR  # Better quality interpolation
+    except ImportError:
+        STREAMING_INTERPOLATION = None  # Will use alternative method
     

@@ -1,0 +1,41 @@
+# RunPod GPU-accelerated requirements
+# Core dependencies
+fastapi>=0.104.0
+uvicorn[standard]>=0.24.0
+python-multipart>=0.0.6
+websockets>=12.0
+
+# Database
+supabase>=2.0.0
+psycopg2-binary>=2.9.0
+
+# AI/ML
+torch>=2.0.0
+torchvision>=0.15.0
+ultralytics>=8.0.0
+supervision>=0.16.0
+
+# GPU acceleration for RunPod
+cupy-cuda12x>=12.0.0  # For CUDA 12.x
+# cupy-cuda11x>=11.0.0  # For CUDA 11.x (uncomment if needed)
+
+# Image processing
+Pillow>=10.0.0
+opencv-python-headless>=4.8.0  # Headless OpenCV for RunPod (no GUI dependencies)
+
+# Data processing
+numpy>=1.24.0
+pandas>=2.0.0
+
+# HTTP requests
+requests>=2.31.0
+httpx>=0.25.0
+
+# Storage (R2/S3)
+boto3>=1.35.0  # For Cloudflare R2 uploads
+
+# Environment
+python-dotenv>=1.1.0
+
+# Optional: For better performance
+numba>=0.58.0  # JIT compilation
