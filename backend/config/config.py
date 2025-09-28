@@ -59,13 +59,14 @@ class Config:
     LOCATION_LAT = -37.740585  # Latitude (Melbourne, Australia)
     LOCATION_LON = 144.731637  # Longitude (Melbourne, Australia)
     
-    # WebSocket Streaming Configuration - High Quality for RunPod (45-50 FPS)
-    # Performance settings for real-time video streaming
-    STREAMING_FRAME_SKIP = 1  # Send every frame for maximum responsiveness
-    STREAMING_JPEG_QUALITY = 90  # High quality JPEG encoding for RunPod's power
-    STREAMING_MAX_FRAME_SIZE = (1280, 720)  # HD quality streaming (720p)
-    STREAMING_QUEUE_SIZE = 8  # Large buffer for smooth streaming
-    STREAMING_WORKERS = 6  # More workers for RunPod's multi-core performance
+    # WebSocket Streaming Configuration - Smooth Playback (30 FPS)
+    # Performance settings for smooth real-time video streaming
+    STREAMING_FRAME_SKIP = 2  # Send every 2nd frame for smoother playback (30 FPS)
+    STREAMING_JPEG_QUALITY = 85  # Balanced quality for smooth streaming
+    STREAMING_MAX_FRAME_SIZE = (960, 540)  # 540p for smoother streaming
+    STREAMING_QUEUE_SIZE = 4  # Smaller buffer for more responsive streaming
+    STREAMING_WORKERS = 4  # Balanced workers for smooth performance
+    STREAMING_TARGET_FPS = 30  # Target 30 FPS for smooth playback
     
     # Conditional interpolation based on environment
     try:

@@ -56,6 +56,11 @@ class VideoStreamer:
         self.frame_skip = Config.STREAMING_FRAME_SKIP
         self.jpeg_quality = Config.STREAMING_JPEG_QUALITY
         self.max_frame_size = Config.STREAMING_MAX_FRAME_SIZE
+        self.target_fps = getattr(Config, 'STREAMING_TARGET_FPS', 30)
+        
+        # Frame rate limiting for smooth playback
+        self.last_frame_time = 0
+        self.frame_interval = 1.0 / self.target_fps  # Time between frames in seconds
         
         # Logging counters
         self.frames_processed = 0
@@ -197,30 +202,36 @@ class VideoStreamer:
                 
                 frame_count += 1
                 
-                # Send every frame for maximum responsiveness
-                if frame_count % self.frame_skip == 0:
+                # Frame rate limiting for smooth playback
+                current_time = time.time()
+                time_since_last_frame = current_time - self.last_frame_time
+                
+                # Only send frames at the target FPS rate
+                if time_since_last_frame >= self.frame_interval and frame_count % self.frame_skip == 0:
                     # Encode frame directly (no thread pool for speed)
                     encoded_frame = self._fast_encode(frame)
                     
                     if encoded_frame:
                         self.frames_sent += 1
+                        self.last_frame_time = current_time
                         
                         # Prepare message
                         message = {
                             "type": "frame",
                             "frame_data": encoded_frame,
-                            "timestamp": time.time(),
+                            "timestamp": current_time,
                             "frame_number": frame_count
                         }
                         
                         # Store message for async broadcast (will be sent by the WebSocket handler)
                         self._pending_message = json.dumps(message)
                         
-                        # Log every 500 frames for performance monitoring (minimal for RunPod)
-                        if self.frames_sent % 500 == 0:
+                        # Log every 100 frames for performance monitoring (reduced for smoothness)
+                        if self.frames_sent % 100 == 0:
                             print(f"[STREAM] 📡 Sent {self.frames_sent} frames to {len(self.active_connections)} clients")
                 
-                # No sleep for maximum speed
+                # Small sleep for smooth frame rate
+                time.sleep(0.001)  # 1ms sleep for smooth playback
                 
             except Exception as e:
                 print(f"[STREAM] ❌ Error in streaming loop: {e}")

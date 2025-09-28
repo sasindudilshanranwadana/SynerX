@@ -231,7 +231,7 @@
             <img
               id="streamImage"
               alt="stream"
-              style="max-width: 100%; height: auto; display: none"
+              style="max-width: 100%; height: auto; display: none; image-rendering: smooth; image-rendering: -webkit-optimize-contrast; image-rendering: crisp-edges;"
             />
             <div id="streamPlaceholder" class="muted">Connecting...</div>
           </div>
@@ -538,6 +538,14 @@
               if (msg.frame_number % 50 === 0) {
                 console.log("[STREAM] 📨 Received frame:", msg.frame_number, "length:", msg.frame_data.length);
               }
+              
+              // Smooth frame transition
+              streamImage.style.opacity = "0";
+              streamImage.onload = () => {
+                streamImage.style.opacity = "1";
+                streamImage.style.transition = "opacity 0.1s ease-in-out";
+              };
+              
               streamImage.src = `data:image/jpeg;base64,${msg.frame_data}`;
               streamImage.style.display = "block";
               streamPlaceholder.style.display = "none";
