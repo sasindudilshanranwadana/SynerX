@@ -68,8 +68,6 @@ class VideoStreamer:
     async def connect(self, websocket: WebSocket, client_id: str):
         """Connect a new client to the video stream"""
         print(f"[STREAM] 🔌 Attempting to connect client: {client_id}")
-        await websocket.accept()
-        print(f"[STREAM] ✅ WebSocket accepted for client: {client_id}")
         
         with self.connection_lock:
             self.active_connections[client_id] = websocket

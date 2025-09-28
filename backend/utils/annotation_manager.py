@@ -49,10 +49,19 @@ class AnnotationManager:
             
             if len(detections) > 0:
                 try:
-                    annotated = self.annotators['trace'].annotate(scene=annotated, detections=detections)
+                    # Check if tracker_id array is properly shaped before trace annotation
+                    if hasattr(detections, 'tracker_id') and detections.tracker_id is not None:
+                        if len(detections.tracker_id) == len(detections):
+                            annotated = self.annotators['trace'].annotate(scene=annotated, detections=detections)
+                        else:
+                            # Skip trace annotation if tracker_id shape doesn't match
+                            pass
+                    else:
+                        # Skip trace annotation if no tracker_id
+                        pass
                 except Exception as e:
-                    print(f"[WARNING] Trace annotation failed: {e}")
                     # Continue without trace annotation
+                    pass
                 
                 try:
                     annotated = self.annotators['box'].annotate(annotated, detections)

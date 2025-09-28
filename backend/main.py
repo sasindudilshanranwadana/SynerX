@@ -648,7 +648,9 @@ async def jobs_page():
 async def websocket_video_stream(websocket: WebSocket, client_id: str):
     """WebSocket endpoint for real-time video streaming"""
     print(f"[WS] 🎬 Video stream WebSocket connection attempt for client: {client_id}")
+    
     try:
+        await websocket.accept()
         await video_streamer.connect(websocket, client_id)
         print(f"[WS] ✅ Video streamer connected for client: {client_id}")
         
@@ -657,36 +659,50 @@ async def websocket_video_stream(websocket: WebSocket, client_id: str):
             try:
                 # Check for pending messages from video streamer
                 if hasattr(video_streamer, '_pending_message') and video_streamer._pending_message:
-                    await websocket.send_text(video_streamer._pending_message)
-                    video_streamer._pending_message = None
+                    try:
+                        await websocket.send_text(video_streamer._pending_message)
+                        video_streamer._pending_message = None
+                    except Exception as e:
+                        print(f"[WS] Error sending message to {client_id}: {e}")
+                        break
                 
                 # Wait for any message from client (ping/pong) with timeout
-                data = await asyncio.wait_for(websocket.receive_text(), timeout=0.1)
                 try:
-                    message = json.loads(data)
-                    if message.get("type") == "ping":
+                    data = await asyncio.wait_for(websocket.receive_text(), timeout=0.1)
+                    try:
+                        message = json.loads(data)
+                        if message.get("type") == "ping":
+                            response = {"type": "pong", "timestamp": time.time()}
+                            await websocket.send_text(json.dumps(response))
+                    except json.JSONDecodeError:
+                        # Handle non-JSON messages
                         response = {"type": "pong", "timestamp": time.time()}
                         await websocket.send_text(json.dumps(response))
-                except json.JSONDecodeError:
-                    # Handle non-JSON messages
-                    response = {"type": "pong", "timestamp": time.time()}
-                    await websocket.send_text(json.dumps(response))
-            except asyncio.TimeoutError:
-                # Send ping to keep connection alive
-                ping_message = {"type": "ping", "timestamp": time.time()}
-                await websocket.send_text(json.dumps(ping_message))
+                except asyncio.TimeoutError:
+                    # Send ping to keep connection alive
+                    try:
+                        ping_message = {"type": "ping", "timestamp": time.time()}
+                        await websocket.send_text(json.dumps(ping_message))
+                    except Exception as e:
+                        print(f"[WS] Error sending ping to {client_id}: {e}")
+                        break
+                        
             except WebSocketDisconnect:
+                print(f"[WS] Client {client_id} disconnected normally")
                 break
             except Exception as e:
                 print(f"[WS] Error handling client {client_id}: {e}")
                 break
                 
     except WebSocketDisconnect:
-        print(f"[WS] Client {client_id} disconnected")
+        print(f"[WS] Client {client_id} disconnected during connection")
     except Exception as e:
         print(f"[WS] Error with client {client_id}: {e}")
     finally:
-        await video_streamer.disconnect(client_id)
+        try:
+            await video_streamer.disconnect(client_id)
+        except Exception as e:
+            print(f"[WS] Error disconnecting client {client_id}: {e}")
 
 # WebSocket endpoint for live jobs status updates
 @app.websocket("/ws/jobs")

@@ -508,7 +508,18 @@
           }
         } catch {}
         
-        const wsUrl = API_BASE.replace("http", "ws") + `/ws/video-stream/${encodeURIComponent(jobId)}`;
+        // Construct WebSocket URL - handle both relative and absolute URLs
+        let wsUrl;
+        if (API_BASE === "") {
+          // Relative URL - use current protocol
+          const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+          wsUrl = `${protocol}//${window.location.host}/ws/video-stream/${encodeURIComponent(jobId)}`;
+        } else {
+          // Absolute URL
+          wsUrl = API_BASE.replace("http", "ws") + `/ws/video-stream/${encodeURIComponent(jobId)}`;
+        }
+        
+        console.log(`[STREAM] 🔌 Connecting to: ${wsUrl}`);
         ws = new WebSocket(wsUrl);
         
         ws.onopen = () => {
@@ -543,7 +554,8 @@
           console.error("[STREAM] Error details:", {
             type: error.type,
             target: error.target,
-            url: wsUrl
+            url: wsUrl,
+            readyState: ws.readyState
           });
           streamPlaceholder.textContent = "WebSocket error. Attempting to reconnect...";
         };
