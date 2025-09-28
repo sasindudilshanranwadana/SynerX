@@ -13,6 +13,7 @@ plotly==5.22.0
 supabase==2.16.0
 python-multipart==0.0.20
 python-dotenv==1.1.1
+boto3==1.35.93
 torch==2.7.1
 torchvision==0.22.1
 psutil==7.0.0

@@ -180,6 +180,7 @@
                 <th>Progress</th>
                 <th>Message</th>
                 <th>Elapsed</th>
+                <th>Video</th>
                 <th>Actions</th>
               </tr>
             </thead>
@@ -233,6 +234,61 @@
               style="max-width: 100%; height: auto; display: none"
             />
             <div id="streamPlaceholder" class="muted">Connecting...</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Video Player Modal -->
+      <div
+        id="videoModal"
+        style="
+          display: none;
+          position: fixed;
+          inset: 0;
+          background: rgba(0, 0, 0, 0.8);
+          align-items: center;
+          justify-content: center;
+          z-index: 1000;
+        "
+      >
+        <div
+          style="
+            background: #0b1220;
+            border: 1px solid #1f2937;
+            border-radius: 12px;
+            padding: 20px;
+            width: min(90vw, 1200px);
+            max-height: 90vh;
+          "
+        >
+          <div
+            class="row"
+            style="justify-content: space-between; margin-bottom: 16px"
+          >
+            <strong>🎥 Processed Video (R2 Stream)</strong>
+            <div class="actions">
+              <button class="secondary" onclick="copyVideoUrl()">📋 Copy URL</button>
+              <button class="secondary" onclick="openVideoUrl()">🌐 Open</button>
+              <button class="danger" onclick="closeVideo()">✕ Close</button>
+            </div>
+          </div>
+          <div style="text-align: center;">
+            <video
+              id="videoPlayer"
+              controls
+              style="
+                max-width: 100%;
+                max-height: 70vh;
+                border-radius: 8px;
+                box-shadow: 0 4px 20px rgba(0,0,0,0.5);
+              "
+            >
+              Your browser does not support the video tag.
+            </video>
+          </div>
+          <div style="margin-top: 16px; padding: 12px; background: #1f2937; border-radius: 8px;">
+            <div class="muted" style="font-size: 12px; margin-bottom: 8px;">Streaming URL:</div>
+            <div id="videoUrl" style="font-family: monospace; font-size: 12px; word-break: break-all; color: #94a3b8;"></div>
           </div>
         </div>
       </div>
@@ -328,6 +384,10 @@
             Math.min(100, Math.round(j.progress || 0))
           );
           const elapsed = formatElapsed(j.elapsed_time || 0);
+          // Check if video has R2 streaming URL
+          const videoUrl = j.result?.processed_url || j.processed_url;
+          const hasVideo = videoUrl && j.status === "completed";
+          
           tr.innerHTML = `
             <td style="font-family:monospace;">${j.job_id}</td>
             <td title="${j.file_name}">${truncate(j.file_name, 36)}</td>
@@ -342,6 +402,15 @@
             40
           )}</td>
             <td class="muted">${elapsed}</td>
+            <td>
+              ${
+                hasVideo
+                  ? `<button onclick="playVideo('${videoUrl}')" style="background: #059669; font-size: 12px; padding: 4px 8px;">🎥 Play</button>`
+                  : j.status === "completed"
+                  ? `<span class="muted">No video</span>`
+                  : `<span class="muted">-</span>`
+              }
+            </td>
             <td class="actions">
               <button class="danger" onclick="shutdownJob('${
                 j.job_id
@@ -440,6 +509,50 @@
             ws = null;
           }
         } catch {}
+      }
+
+      // Video player functions
+      let currentVideoUrl = '';
+      
+      function playVideo(videoUrl) {
+        currentVideoUrl = videoUrl;
+        const modal = document.getElementById("videoModal");
+        const videoPlayer = document.getElementById("videoPlayer");
+        const urlDisplay = document.getElementById("videoUrl");
+        
+        videoPlayer.src = videoUrl;
+        urlDisplay.textContent = videoUrl;
+        modal.style.display = "flex";
+      }
+      
+      function closeVideo() {
+        const modal = document.getElementById("videoModal");
+        const videoPlayer = document.getElementById("videoPlayer");
+        
+        videoPlayer.pause();
+        videoPlayer.src = '';
+        modal.style.display = "none";
+        currentVideoUrl = '';
+      }
+      
+      function copyVideoUrl() {
+        if (currentVideoUrl) {
+          navigator.clipboard.writeText(currentVideoUrl).then(() => {
+            // Show brief success message
+            const btn = event.target;
+            const originalText = btn.textContent;
+            btn.textContent = '✅ Copied!';
+            setTimeout(() => {
+              btn.textContent = originalText;
+            }, 2000);
+          });
+        }
+      }
+      
+      function openVideoUrl() {
+        if (currentVideoUrl) {
+          window.open(currentVideoUrl, '_blank');
+        }
       }
 
       // Robust JSON fetch helper to avoid "Unexpected end of JSON input"

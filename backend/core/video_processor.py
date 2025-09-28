@@ -152,6 +152,7 @@ class VideoProcessor:
     def process_video(self):
         """Main video processing loop"""
         try:
+            # Use supervision VideoSink with streaming-compatible settings
             with sv.VideoSink(self.output_video_path, self.video_info) as sink:
                 for frame in self.frame_gen:
                     # Check for shutdown request
@@ -189,6 +190,8 @@ class VideoProcessor:
         except Exception as e:
             print(f"[ERROR] {e}")
         finally:
+            # Post-process video for streaming compatibility
+            self._make_video_streamable()
             self._finalize_processing()
     
     def _process_frame(self, frame, sink):
@@ -238,6 +241,59 @@ class VideoProcessor:
         self.display_manager.update_fps_display(self.frame_idx)
         
         return True
+    
+    
+    def _make_video_streamable(self):
+        """Post-process video to make it streaming-compatible using FFmpeg"""
+        try:
+            import subprocess
+            import tempfile
+            from pathlib import Path
+            
+            # Check if output file exists
+            if not Path(self.output_video_path).exists():
+                print("[VIDEO] No output file to process for streaming")
+                return
+            
+            # Create temporary file for streaming-compatible version
+            temp_path = str(Path(self.output_video_path).with_suffix('.tmp.mp4'))
+            
+            print("[VIDEO] Converting to streaming-compatible format...")
+            
+            # FFmpeg command to make video streaming-compatible
+            cmd = [
+                "ffmpeg",
+                "-y",  # Overwrite output
+                "-i", self.output_video_path,  # Input file
+                "-c:v", "libx264",  # H.264 codec
+                "-preset", "fast",   # Fast encoding
+                "-crf", "23",        # Good quality
+                "-pix_fmt", "yuv420p",  # Compatible pixel format
+                "-movflags", "+faststart",  # Enable fast start for streaming
+                "-profile:v", "baseline",   # Baseline profile for compatibility
+                "-level", "3.0",     # Level 3.0 for broad compatibility
+                "-c:a", "aac",       # Audio codec
+                "-b:a", "128k",      # Audio bitrate
+                temp_path
+            ]
+            
+            result = subprocess.run(cmd, capture_output=True, text=True)
+            
+            if result.returncode == 0:
+                # Replace original with streaming-compatible version
+                import shutil
+                shutil.move(temp_path, self.output_video_path)
+                print("[VIDEO] ✅ Video converted to streaming-compatible format")
+            else:
+                print(f"[ERROR] FFmpeg conversion failed: {result.stderr}")
+                # Clean up temp file
+                if Path(temp_path).exists():
+                    Path(temp_path).unlink()
+                    
+        except FileNotFoundError:
+            print("[WARNING] FFmpeg not found. Video may not be streaming-compatible.")
+        except Exception as e:
+            print(f"[ERROR] Failed to make video streamable: {e}")
     
     def _perform_detection_and_tracking(self, frame):
         """Perform object detection and tracking on frame"""
