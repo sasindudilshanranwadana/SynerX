@@ -32,17 +32,52 @@ class AnnotationManager:
     
     def annotate_frame(self, frame, detections, top_labels, bottom_labels):
         """Annotate frame with detections and labels"""
-        # Ensure label lists match detection count
-        top_labels += [""] * (len(detections) - len(top_labels))
-        bottom_labels += [""] * (len(detections) - len(bottom_labels))
-        
-        # Apply annotations
-        annotated = self.annotators['trace'].annotate(scene=frame.copy(), detections=detections)
-        annotated = self.annotators['box'].annotate(annotated, detections)
-        annotated = self.annotators['label_top'].annotate(annotated, detections, top_labels)
-        annotated = self.annotators['label_bottom'].annotate(annotated, detections, bottom_labels)
-        
-        return annotated
+        try:
+            # Ensure label lists match detection count
+            top_labels += [""] * (len(detections) - len(top_labels))
+            bottom_labels += [""] * (len(detections) - len(bottom_labels))
+            
+            # Safety check for tracker_id array shape
+            if hasattr(detections, 'tracker_id') and detections.tracker_id is not None:
+                if len(detections.tracker_id) != len(detections):
+                    print(f"[WARNING] Tracker ID length mismatch: {len(detections.tracker_id)} vs {len(detections)}")
+                    # Create empty detections if there's a mismatch
+                    detections = sv.Detections.empty()
+            
+            # Apply annotations with safety checks
+            annotated = frame.copy()
+            
+            if len(detections) > 0:
+                try:
+                    annotated = self.annotators['trace'].annotate(scene=annotated, detections=detections)
+                except Exception as e:
+                    print(f"[WARNING] Trace annotation failed: {e}")
+                    # Continue without trace annotation
+                
+                try:
+                    annotated = self.annotators['box'].annotate(annotated, detections)
+                except Exception as e:
+                    print(f"[WARNING] Box annotation failed: {e}")
+                    # Continue without box annotation
+                
+                try:
+                    annotated = self.annotators['label_top'].annotate(annotated, detections, top_labels)
+                except Exception as e:
+                    print(f"[WARNING] Top label annotation failed: {e}")
+                    # Continue without top labels
+                
+                try:
+                    annotated = self.annotators['label_bottom'].annotate(annotated, detections, bottom_labels)
+                except Exception as e:
+                    print(f"[WARNING] Bottom label annotation failed: {e}")
+                    # Continue without bottom labels
+            
+            return annotated
+            
+        except Exception as e:
+            print(f"[ERROR] Annotation failed: {e}")
+            # Return original frame if annotation fails
+            return frame
     
     def draw_anchor_points(self, frame, anchor_pts):
         """Draw anchor points if enabled"""

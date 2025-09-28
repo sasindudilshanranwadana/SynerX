@@ -204,50 +204,97 @@ class VideoProcessor:
             # License plate blurring is temporarily disabled for performance
             processed_frame = frame.copy()
             
-            # Apply tracker ID offset for global uniqueness
-            detections.tracker_id = [tid + self.vehicle_processor.tracker_id_offset for tid in detections.tracker_id]
+            # Apply tracker ID offset for global uniqueness with safety check
+            if hasattr(detections, 'tracker_id') and detections.tracker_id is not None and len(detections.tracker_id) > 0:
+                try:
+                    detections.tracker_id = [tid + self.vehicle_processor.tracker_id_offset for tid in detections.tracker_id]
+                except Exception as e:
+                    print(f"[WARNING] Tracker ID offset failed: {e}")
+                    # Create empty detections if tracker ID processing fails
+                    detections = sv.Detections.empty()
             
-            # Get anchor points
-            anchor_pts = detections.get_anchors_coordinates(anchor=sv.Position.BOTTOM_CENTER)
-            anchor_pts = anchor_pts + np.array([0, Config.ANCHOR_Y_OFFSET])
+            # Get anchor points with safety check
+            try:
+                anchor_pts = detections.get_anchors_coordinates(anchor=sv.Position.BOTTOM_CENTER)
+                anchor_pts = anchor_pts + np.array([0, Config.ANCHOR_Y_OFFSET])
+            except Exception as e:
+                print(f"[WARNING] Anchor points calculation failed: {e}")
+                anchor_pts = np.array([])
             
-            # Update class consistency
-            self.vehicle_tracker.update_class_consistency(detections)
+            # Update class consistency with safety check
+            try:
+                self.vehicle_tracker.update_class_consistency(detections)
+            except Exception as e:
+                print(f"[WARNING] Class consistency update failed: {e}")
             
-            # Transform points for distance calculation
-            transformed_pts = self.transformer.transform(anchor_pts).astype(float)
+            # Transform points for distance calculation with safety check
+            try:
+                transformed_pts = self.transformer.transform(anchor_pts).astype(float)
+            except Exception as e:
+                print(f"[WARNING] Point transformation failed: {e}")
+                transformed_pts = np.array([])
             
-            # Process detections
-            top_labels, bottom_labels = self.vehicle_processor.process_detections(
-                detections, anchor_pts, transformed_pts
-            )
+            # Process detections with safety check
+            try:
+                top_labels, bottom_labels = self.vehicle_processor.process_detections(
+                    detections, anchor_pts, transformed_pts
+                )
+            except Exception as e:
+                print(f"[WARNING] Detection processing failed: {e}")
+                top_labels, bottom_labels = [], []
             
             # Data is now collected during processing and saved at the end
             # No need to save during processing for better performance
             
-            # Annotate frame
-            annotated = self.annotation_manager.annotate_frame(processed_frame, detections, top_labels, bottom_labels)
+            # Annotate frame with safety check
+            try:
+                annotated = self.annotation_manager.annotate_frame(processed_frame, detections, top_labels, bottom_labels)
+            except Exception as e:
+                print(f"[WARNING] Frame annotation failed: {e}")
+                annotated = processed_frame
             
-            # Draw additional elements
-            self.annotation_manager.draw_anchor_points(annotated, anchor_pts)
-            self.annotation_manager.draw_stop_zone(annotated)
+            # Draw additional elements with safety checks
+            try:
+                self.annotation_manager.draw_anchor_points(annotated, anchor_pts)
+            except Exception as e:
+                print(f"[WARNING] Anchor points drawing failed: {e}")
             
-            # Send frame to video streamer for live streaming
-            if video_streamer.has_active_connections():
-                # Minimal logging for RunPod performance
-                if self.frame_idx % 500 == 0:
-                    print(f"[VIDEO] 🎬 Sending frame {self.frame_idx} to video streamer")
-                video_streamer.update_frame(annotated)
+            try:
+                self.annotation_manager.draw_stop_zone(annotated)
+            except Exception as e:
+                print(f"[WARNING] Stop zone drawing failed: {e}")
             
-            # Output frame
-            sink.write_frame(annotated)
+            # Send frame to video streamer for live streaming with safety check
+            try:
+                if video_streamer.has_active_connections():
+                    # Minimal logging for RunPod performance
+                    if self.frame_idx % 500 == 0:
+                        print(f"[VIDEO] 🎬 Sending frame {self.frame_idx} to video streamer")
+                    video_streamer.update_frame(annotated)
+            except Exception as e:
+                print(f"[WARNING] Video streaming failed: {e}")
             
-            # Handle display
-            if not self.display_manager.handle_display(annotated, self.frame_idx):
-                return False
+            # Output frame with safety check
+            try:
+                sink.write_frame(annotated)
+            except Exception as e:
+                print(f"[WARNING] Frame output failed: {e}")
+                # Continue processing even if output fails
             
-            # Update FPS display
-            self.display_manager.update_fps_display(self.frame_idx)
+            # Handle display with safety check
+            try:
+                if not self.display_manager.handle_display(annotated, self.frame_idx):
+                    return False
+            except Exception as e:
+                print(f"[WARNING] Display handling failed: {e}")
+                # Continue processing even if display fails
+            
+            # Update FPS display with safety check
+            try:
+                self.display_manager.update_fps_display(self.frame_idx)
+            except Exception as e:
+                print(f"[WARNING] FPS display update failed: {e}")
+                # Continue processing even if FPS display fails
             
             return True
             
