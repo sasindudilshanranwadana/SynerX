@@ -409,14 +409,57 @@ class SupabaseManager:
             return {}
 
     def delete_video_record(self, video_id: int) -> bool:
-        """Delete a video row by id."""
+        """Delete a video row by id and also delete the video file from R2 storage."""
         try:
+            # First get the video data to find the processed_url
+            # Use direct table query instead of RPC to get URLs
+            video_result = self.client.table("videos").select("id, processed_url").eq("id", video_id).execute()
+            if not video_result.data or len(video_result.data) == 0:
+                print(f"❌ Video {video_id} not found in database")
+                return False
+            
+            video_data = video_result.data[0]
+            
+            # Delete from R2 storage if processed_url exists
+            if R2_AVAILABLE:
+                r2_client = get_r2_client()
+                print(f"[DEBUG] Video data: {video_data}")
+                
+                # Only delete processed video (original is stored locally in temp)
+                if video_data.get('processed_url'):
+                    processed_filename = self._extract_filename_from_url(video_data['processed_url'])
+                    if processed_filename:
+                        print(f"[DEBUG] Attempting to delete processed video: {processed_filename}")
+                        result = r2_client.delete_video(processed_filename)
+                        print(f"🗑️ Deleted processed video from R2: {processed_filename} (result: {result})")
+                    else:
+                        print(f"[DEBUG] Could not extract filename from processed_url: {video_data['processed_url']}")
+                else:
+                    print(f"[DEBUG] No processed_url found for video {video_id}")
+            else:
+                print("[DEBUG] R2 not available, skipping R2 deletion")
+            
+            # Delete from database
             self.client.table("videos").delete().eq("id", video_id).execute()
-            print(f"🗑️ Deleted video record {video_id}")
+            print(f"🗑️ Deleted video record {video_id} from database")
             return True
+            
         except Exception as e:
             print(f"[ERROR] Failed to delete video {video_id}: {e}")
             return False
+    
+    def _extract_filename_from_url(self, url: str) -> str:
+        """Extract filename from R2 URL"""
+        try:
+            if not url:
+                return None
+            # Extract filename from URL like: https://pub-xxx.r2.dev/filename.mp4
+            filename = url.split('/')[-1]
+            print(f"[DEBUG] Extracted filename from URL '{url}': '{filename}'")
+            return filename
+        except Exception as e:
+            print(f"[DEBUG] Error extracting filename from URL '{url}': {e}")
+            return None
     
 
     def upload_video_to_storage(self, file_path: str, file_name: str = None) -> str:

@@ -141,6 +141,25 @@ def init_job_router(background_jobs, job_lock, job_queue, queue_lock, queue_proc
                             
                 except Exception as e:
                     print(f"[WARNING] Failed to clean up files for cancelled job {active_job}: {e}")
+                    # Try to clean up later with a delay
+                    import threading
+                    import time
+                    def delayed_cleanup():
+                        time.sleep(2)  # Wait 2 seconds
+                        try:
+                            if upload_file.exists():
+                                upload_file.unlink()
+                                print(f"[DELAYED] Cleaned up upload file: {upload_file}")
+                            if processing_file.exists():
+                                processing_file.unlink()
+                                print(f"[DELAYED] Cleaned up processing file: {processing_file}")
+                            if output_file.exists():
+                                output_file.unlink()
+                                print(f"[DELAYED] Cleaned up output file: {output_file}")
+                        except Exception as delayed_e:
+                            print(f"[WARNING] Delayed cleanup also failed: {delayed_e}")
+                    
+                    threading.Thread(target=delayed_cleanup, daemon=True).start()
                 
                 print(f"[SHUTDOWN] Cancelled {job_status} job: {active_job}")
                 
@@ -251,6 +270,25 @@ def init_job_router(background_jobs, job_lock, job_queue, queue_lock, queue_proc
                             
                 except Exception as e:
                     print(f"[WARNING] Failed to clean up files for cancelled job {job_id}: {e}")
+                    # Try to clean up later with a delay
+                    import threading
+                    import time
+                    def delayed_cleanup():
+                        time.sleep(2)  # Wait 2 seconds
+                        try:
+                            if upload_file.exists():
+                                upload_file.unlink()
+                                print(f"[DELAYED] Cleaned up upload file: {upload_file}")
+                            if processing_file.exists():
+                                processing_file.unlink()
+                                print(f"[DELAYED] Cleaned up processing file: {processing_file}")
+                            if output_file.exists():
+                                output_file.unlink()
+                                print(f"[DELAYED] Cleaned up output file: {output_file}")
+                        except Exception as delayed_e:
+                            print(f"[WARNING] Delayed cleanup also failed: {delayed_e}")
+                    
+                    threading.Thread(target=delayed_cleanup, daemon=True).start()
                 
                 print(f"[SHUTDOWN] Cancelled {job_status} job: {job_id}")
                 
