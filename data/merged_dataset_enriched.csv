@@ -1,0 +1,4 @@
+timestamp,speed,stopped,reaction_time,weather,visibility,temp
+2025-05-01 14:00:00,45,0,1.4,Clear,10.0,12.4
+2025-05-01 14:05:00,35,1,1.1,Clear,10.0,12.4
+2025-05-01 14:10:00,30,1,2.0,Clear,10.0,12.4
