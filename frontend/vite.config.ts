@@ -22,6 +22,9 @@ export default defineConfig(({ mode }) => {
       '/api': {
         target: env.VITE_RUNPOD_URL || 'http://localhost:8000',
         changeOrigin: true,
+        timeout: 300000,
+        proxyTimeout: 300000,
+        secure: false,
         rewrite: (path) => path.replace(/^\/api/, ''),
       },
     },

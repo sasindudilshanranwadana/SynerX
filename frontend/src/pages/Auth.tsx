@@ -264,21 +264,21 @@ function Auth() {
 
       <div className="w-full max-w-6xl grid grid-cols-1 md:grid-cols-2 gap-8 p-4 relative">
         {/* Left Column - Illustration */}
-        <div className="hidden md:flex flex-col items-center justify-center p-8 relative overflow-hidden bg-[#151F32]/50 rounded-2xl border border-[#1E293B]">
+        <div className="hidden md:flex flex-col items-center justify-center p-6 lg:p-8 relative overflow-hidden bg-[#151F32]/50 rounded-2xl border border-[#1E293B]">
           <div className="absolute inset-0 neural-grid opacity-20"></div>
           <img
             src="https://iqehkneolpesaqznkqjm.supabase.co/storage/v1/object/sign/assets/m6-motorway-trim-result.gif?token=eyJraWQiOiJzdG9yYWdlLXVybC1zaWduaW5nLWtleV83YmM1YjM5OS00ZDQwLTRiMDktOGE3Yi1kOWMxNzlkNjcyM2UiLCJhbGciOiJIUzI1NiJ9.eyJ1cmwiOiJhc3NldHMvbTYtbW90b3J3YXktdHJpbS1yZXN1bHQuZ2lmIiwiaWF0IjoxNzU4NzMwMDYyLCJleHAiOjMxNTUzNTg3MzAwNjJ9.pKZVb8o3SVRrZ_N5WGWNcrRI59hyZ-tcNongThzTQs4"
             alt="AI Traffic Analysis"
-            className="rounded-xl shadow-2xl relative z-10 animate-float object-cover h-[400px] w-full"
+            className="rounded-xl shadow-2xl relative z-10 animate-float object-cover h-[300px] lg:h-[400px] w-full max-w-full"
           />
-          <div className="mt-8 text-center relative z-10 text-gray-300">
-            <h2 className="text-2xl font-bold mb-4">Project 49</h2>
-            <p className="text-gray-400">Road-User Behaviour Analysis Using AI & Computer Vision</p>
+          <div className="mt-6 lg:mt-8 text-center relative z-10 text-gray-300">
+            <h2 className="text-xl lg:text-2xl font-bold mb-2 lg:mb-4">Project 49</h2>
+            <p className="text-sm lg:text-base text-gray-400">Road-User Behaviour Analysis Using AI & Computer Vision</p>
           </div>
         </div>
 
         {/* Right Column - Auth Form */}
-        <div className="bg-[#151F32]/50 p-8 rounded-2xl border border-[#1E293B] backdrop-blur-sm">
+        <div className="bg-[#151F32]/50 p-6 sm:p-8 rounded-2xl border border-[#1E293B] backdrop-blur-sm">
           <div className="flex justify-between items-center mb-8">
             <Link to="/" className="flex items-center text-gray-300 hover:text-white transition-colors">
               <ArrowLeft className="w-5 h-5 mr-2" />
@@ -286,17 +286,17 @@ function Auth() {
             </Link>
           </div>
 
-          <h1 className="text-3xl font-bold mb-2 text-white">
+          <h1 className="text-2xl sm:text-3xl font-bold mb-2 text-white">
             {isSignUp ? 'Create Account' : 'Welcome Back'}
           </h1>
-          <p className="text-gray-400 mb-8">
+          <p className="text-sm sm:text-base text-gray-400 mb-6 sm:mb-8">
             {isSignUp 
               ? 'Join Project 49 to access advanced traffic analysis tools' 
               : 'Sign in to your account to continue'
             }
           </p>
 
-          <form onSubmit={handleSubmit} className="space-y-6">
+          <form onSubmit={handleSubmit} className="space-y-4 sm:space-y-6">
             <div>
               <label className="block text-sm font-medium text-gray-300 mb-2">
                 Email Address
@@ -307,7 +307,7 @@ function Auth() {
                 value={formData.email}
                 onChange={handleInputChange}
                 required
-                className="w-full px-4 py-3 bg-[#1E293B] border border-[#334155] rounded-lg text-white placeholder-gray-400 focus:outline-none focus:border-primary-400 focus:ring-2 focus:ring-primary-400/20 transition-all"
+                className="w-full px-3 sm:px-4 py-2 sm:py-3 bg-[#1E293B] border border-[#334155] rounded-lg text-white placeholder-gray-400 focus:outline-none focus:border-primary-400 focus:ring-2 focus:ring-primary-400/20 transition-all text-sm sm:text-base"
                 placeholder="Enter your email address"
               />
             </div>
@@ -324,7 +324,7 @@ function Auth() {
                   onChange={handleInputChange}
                   required
                   minLength={6}
-                  className="w-full px-4 py-3 bg-[#1E293B] border border-[#334155] rounded-lg text-white placeholder-gray-400 focus:outline-none focus:border-primary-400 focus:ring-2 focus:ring-primary-400/20 transition-all pr-12"
+                  className="w-full px-3 sm:px-4 py-2 sm:py-3 bg-[#1E293B] border border-[#334155] rounded-lg text-white placeholder-gray-400 focus:outline-none focus:border-primary-400 focus:ring-2 focus:ring-primary-400/20 transition-all pr-10 sm:pr-12 text-sm sm:text-base"
                   placeholder="Enter your password"
                 />
                 <button
@@ -350,7 +350,7 @@ function Auth() {
                     onChange={handleInputChange}
                     required
                     minLength={6}
-                    className="w-full px-4 py-3 bg-[#1E293B] border border-[#334155] rounded-lg text-white placeholder-gray-400 focus:outline-none focus:border-primary-400 focus:ring-2 focus:ring-primary-400/20 transition-all pr-12"
+                    className="w-full px-3 sm:px-4 py-2 sm:py-3 bg-[#1E293B] border border-[#334155] rounded-lg text-white placeholder-gray-400 focus:outline-none focus:border-primary-400 focus:ring-2 focus:ring-primary-400/20 transition-all pr-10 sm:pr-12 text-sm sm:text-base"
                     placeholder="Confirm your password"
                   />
                   <button
@@ -377,7 +377,7 @@ function Auth() {
             <button
               type="submit"
               disabled={loading || !captchaToken}
-              className="w-full py-3 px-4 bg-primary-500 hover:bg-primary-600 disabled:bg-gray-600 disabled:cursor-not-allowed text-white font-medium rounded-lg transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-primary-400/20"
+              className="w-full py-2 sm:py-3 px-4 bg-primary-500 hover:bg-primary-600 disabled:bg-gray-600 disabled:cursor-not-allowed text-white font-medium rounded-lg transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-primary-400/20 text-sm sm:text-base"
             >
               {loading ? (
                 <div className="flex items-center justify-center">
@@ -399,7 +399,7 @@ function Auth() {
                   recaptchaRef.current?.reset();
                   setCaptchaToken(null);
                 }}
-                className="text-primary-400 hover:text-primary-300 transition-colors"
+                className="text-sm sm:text-base text-primary-400 hover:text-primary-300 transition-colors"
               >
                 {isSignUp 
                   ? 'Already have an account? Sign in here' 
