@@ -139,7 +139,7 @@ function Settings() {
         <div className="max-w-2xl mx-auto">
           {/* Header */}
           <div className="mb-8">
-            <h1 className="text-3xl font-bold mb-2">Settings</h1>
+            <h1 className="text-2xl sm:text-3xl font-bold mb-2">Settings</h1>
             <p className={`${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>
               Manage your account and preferences
             </p>
@@ -147,8 +147,8 @@ function Settings() {
 
           <form onSubmit={handleSubmit} className="space-y-6">
             {/* Profile Settings */}
-            <div className={`${darkMode ? 'bg-[#151F32]' : 'bg-white'} rounded-xl p-6 ${darkMode ? '' : 'shadow-lg border border-gray-200'}`}>
-              <h2 className="text-xl font-semibold mb-6 flex items-center gap-2">
+            <div className={`${darkMode ? 'bg-[#151F32]' : 'bg-white'} rounded-xl p-4 sm:p-6 ${darkMode ? '' : 'shadow-lg border border-gray-200'}`}>
+              <h2 className="text-lg sm:text-xl font-semibold mb-4 sm:mb-6 flex items-center gap-2">
                 <User className="w-5 h-5" />
                 Profile Information
               </h2>
@@ -161,7 +161,7 @@ function Settings() {
                     type="text"
                     value={formData.displayName}
                     onChange={(e) => setFormData({ ...formData, displayName: e.target.value })}
-                    className={`w-full px-4 py-3 ${
+                    className={`w-full px-3 sm:px-4 py-2 sm:py-3 text-sm sm:text-base ${
                       darkMode 
                         ? 'bg-[#1E293B] border-[#2D3B4E] text-white' 
                         : 'bg-gray-50 border-gray-300 text-gray-900'
@@ -179,7 +179,7 @@ function Settings() {
                       type="email"
                       value={formData.email}
                       onChange={(e) => setFormData({ ...formData, email: e.target.value })}
-                      className={`w-full pl-12 pr-4 py-3 ${
+                      className={`w-full pl-10 sm:pl-12 pr-3 sm:pr-4 py-2 sm:py-3 text-sm sm:text-base ${
                         darkMode 
                           ? 'bg-[#1E293B] border-[#2D3B4E] text-white' 
                           : 'bg-gray-50 border-gray-300 text-gray-900'
@@ -192,14 +192,14 @@ function Settings() {
             </div>
 
             {/* Appearance */}
-            <div className={`${darkMode ? 'bg-[#151F32]' : 'bg-white'} rounded-xl p-6 ${darkMode ? '' : 'shadow-lg border border-gray-200'}`}>
-              <h2 className="text-xl font-semibold mb-6 flex items-center gap-2">
+            <div className={`${darkMode ? 'bg-[#151F32]' : 'bg-white'} rounded-xl p-4 sm:p-6 ${darkMode ? '' : 'shadow-lg border border-gray-200'}`}>
+              <h2 className="text-lg sm:text-xl font-semibold mb-4 sm:mb-6 flex items-center gap-2">
                 {darkMode ? <Moon className="w-5 h-5" /> : <Sun className="w-5 h-5" />}
                 Appearance
               </h2>
               <div className={`flex items-center justify-between p-4 ${darkMode ? 'bg-[#1E293B]' : 'bg-gray-50'} rounded-lg`}>
                 <div>
-                  <h3 className="font-medium">Dark Mode</h3>
+                  <h3 className="font-medium text-sm sm:text-base">Dark Mode</h3>
                   <p className={`text-sm ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>
                     Use dark theme for better viewing experience
                   </p>
@@ -221,15 +221,15 @@ function Settings() {
             </div>
 
             {/* Password Reset */}
-            <div className={`${darkMode ? 'bg-[#151F32]' : 'bg-white'} rounded-xl p-6 ${darkMode ? '' : 'shadow-lg border border-gray-200'}`}>
-              <h2 className="text-xl font-semibold mb-6 flex items-center gap-2">
+            <div className={`${darkMode ? 'bg-[#151F32]' : 'bg-white'} rounded-xl p-4 sm:p-6 ${darkMode ? '' : 'shadow-lg border border-gray-200'}`}>
+              <h2 className="text-lg sm:text-xl font-semibold mb-4 sm:mb-6 flex items-center gap-2">
                 <Key className="w-5 h-5" />
                 Password
               </h2>
               <div className={`p-4 ${darkMode ? 'bg-[#1E293B]' : 'bg-gray-50'} rounded-lg`}>
-                <div className="flex items-center justify-between">
+                <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 sm:gap-0">
                   <div>
-                    <h3 className="font-medium">Reset Password</h3>
+                    <h3 className="font-medium text-sm sm:text-base">Reset Password</h3>
                     <p className={`text-sm ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>
                       Send a password reset email to your registered email address
                     </p>
@@ -238,7 +238,7 @@ function Settings() {
                     type="button"
                     onClick={handlePasswordReset}
                     disabled={loading}
-                    className="bg-red-500 hover:bg-red-600 disabled:bg-gray-600 disabled:cursor-not-allowed text-white px-4 py-2 rounded-lg transition-colors text-sm font-medium"
+                    className="bg-red-500 hover:bg-red-600 disabled:bg-gray-600 disabled:cursor-not-allowed text-white px-3 sm:px-4 py-2 rounded-lg transition-colors text-xs sm:text-sm font-medium whitespace-nowrap"
                   >
                     {loading ? 'Sending...' : 'Reset Password'}
                   </button>
@@ -247,11 +247,11 @@ function Settings() {
             </div>
 
             {/* Save Button */}
-            <div className="flex justify-end">
+            <div className="flex justify-center sm:justify-end">
               <button
                 type="submit"
                 disabled={loading}
-                className="bg-primary-500 hover:bg-primary-600 disabled:bg-gray-600 disabled:cursor-not-allowed text-white px-8 py-3 rounded-lg transition-colors flex items-center gap-2 font-medium"
+                className="bg-primary-500 hover:bg-primary-600 disabled:bg-gray-600 disabled:cursor-not-allowed text-white px-6 sm:px-8 py-2 sm:py-3 rounded-lg transition-colors flex items-center gap-2 font-medium text-sm sm:text-base"
               >
                 <Save className="w-5 h-5" />
                 {loading ? 'Saving...' : 'Save Changes'}

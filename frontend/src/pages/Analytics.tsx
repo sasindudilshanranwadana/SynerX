@@ -3,6 +3,8 @@ import { Activity, Download, RefreshCw, Calendar, Filter } from 'lucide-react';
 import Header from '../components/Header';
 import Sidebar from '../components/Sidebar';
 import ServerStatusIndicator from '../components/ServerStatusIndicator';
+import jsPDF from 'jspdf';
+import 'jspdf-autotable';
 import { format, parseISO } from 'date-fns';
 import { generatePDFReport } from '../lib/api';
 import { TrackingResult } from '../lib/types';
@@ -11,21 +13,29 @@ import { getAllTrackingResults } from '../lib/database';
 
 const RUNPOD_API_BASE = import.meta.env.VITE_RUNPOD_URL || 'http://localhost:8000';
 
+import { fetchTrackingResults, fetchVehicleCounts, generateDetailedReport, downloadCSV } from '../lib/api';
+
 interface AnalysisData {
-  weather_analysis: {
-    weather_compliance: { [key: string]: { mean: number; count: number } };
-    weather_reaction_time: { [key: string]: { mean: number; count: number } };
-  };
-  basic_correlations: {
-    vehicle_type_compliance: { [key: string]: { mean: number; count: number } };
-    hour_compliance: { [key: string]: { mean: number; count: number } };
-  };
+  weather_analysis: WeatherAnalysis;
+  basic_correlations: BasicCorrelations;
   recommendations: Array<{
     category: string;
     type: string;
     message: string;
     suggestion: string;
   }>;
+}
+
+interface WeatherAnalysis {
+  weather_compliance: { [key: string]: { mean: number; count: number } };
+  weather_reaction_time: { [key: string]: { mean: number; count: number } };
+}
+
+interface BasicCorrelations {
+  speed_compliance_correlation: number;
+  weather_compliance_correlation: number;
+  vehicle_type_compliance: { [key: string]: { mean: number; count: number } };
+  hour_compliance: { [key: string]: { mean: number; count: number } };
 }
 
 function Analytics() {
@@ -35,6 +45,7 @@ function Analytics() {
   const [analysisData, setAnalysisData] = React.useState<AnalysisData | null>(null);
   const [error, setError] = React.useState<string | null>(null);
   const [loading, setLoading] = React.useState(true);
+  const [generatingReport, setGeneratingReport] = React.useState(false);
   
   // Date filter states
   const [dateFilter, setDateFilter] = React.useState<'all' | '7days' | '30days' | '90days' | 'custom'>('all');
@@ -183,12 +194,15 @@ function Analytics() {
         weather_reaction_time
       },
       basic_correlations: {
+        speed_compliance_correlation: 0,
+        weather_compliance_correlation: 0,
         vehicle_type_compliance,
         hour_compliance
       },
       recommendations
     };
   };
+  
   React.useEffect(() => {
     loadAllAnalytics();
     
@@ -292,16 +306,18 @@ function Analytics() {
         setAnalysisData(clientAnalysis);
         updateStats(filteredData.length, filteredData, clientAnalysis);
       } else {
+        setData([]);
         setAnalysisData(null);
         updateStats(0, [], null);
       }
       
       setError(null);
-      
-    } catch (err: any) {
-      setError('Unable to load analytics data. Please try again.');
+    } catch (error: any) {
+      console.error('Error loading analytics:', error);
+      setError('Failed to load analytics data. Please try again.');
       setData([]);
       setAnalysisData(null);
+      updateStats(0, [], null);
     } finally {
       setLoading(false);
     }
@@ -411,6 +427,52 @@ function Analytics() {
       time: '⏰',
     };
     return icons[category] || '💡';
+  };
+
+  const generateReport = async () => {
+    try {
+      setGeneratingReport(true);
+      
+      const trackingData = data;
+      const metrics = {
+        totalVehicles: stats.totalVehicles,
+        complianceRate: stats.overallCompliance,
+        avgReactionTime: stats.avgReactionTime,
+        violations: stats.totalVehicles - Math.round(stats.totalVehicles * stats.overallCompliance / 100),
+        peakViolationHour: 'N/A',
+        vehicleTypeStats: data.length > 0 ? [
+          {
+            type: 'car',
+            total: data.filter(d => d.vehicle_type === 'car').length,
+            compliant: data.filter(d => d.vehicle_type === 'car' && d.compliance === 1).length,
+            violations: data.filter(d => d.vehicle_type === 'car' && d.compliance === 0).length,
+            avgReactionTime: data.filter(d => d.vehicle_type === 'car' && d.reaction_time).reduce((sum, d) => sum + (d.reaction_time || 0), 0) / Math.max(1, data.filter(d => d.vehicle_type === 'car' && d.reaction_time).length)
+          },
+          {
+            type: 'truck',
+            total: data.filter(d => d.vehicle_type === 'truck').length,
+            compliant: data.filter(d => d.vehicle_type === 'truck' && d.compliance === 1).length,
+            violations: data.filter(d => d.vehicle_type === 'truck' && d.compliance === 0).length,
+            avgReactionTime: data.filter(d => d.vehicle_type === 'truck' && d.reaction_time).reduce((sum, d) => sum + (d.reaction_time || 0), 0) / Math.max(1, data.filter(d => d.vehicle_type === 'truck' && d.reaction_time).length)
+          }
+        ].filter(stat => stat.total > 0) : []
+      };
+      
+      console.log('Generating PDF report with metrics:', metrics);
+      const doc = await generatePDFReport(trackingData, metrics);
+      
+      // Generate filename with current date
+      const currentDate = new Date().toISOString().split('T')[0];
+      const filename = `Project49_Traffic_Analysis_Report_${currentDate}.pdf`;
+      
+      // Download the PDF
+      doc.save(filename);
+    } catch (error) {
+      console.error('Error generating report:', error);
+      setError(`Failed to generate PDF report: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    } finally {
+      setGeneratingReport(false);
+    }
   };
 
   return (
@@ -580,23 +642,12 @@ function Analytics() {
 
               {data.length > 0 && (
                 <button
-                  onClick={() => {
-                    const metrics = {
-                      totalVehicles: stats.totalVehicles,
-                      complianceRate: stats.overallCompliance,
-                      avgReactionTime: stats.avgReactionTime,
-                      violations: stats.totalVehicles - Math.round(stats.totalVehicles * stats.overallCompliance / 100),
-                      peakViolationHour: 'N/A',
-                      vehicleTypeStats: []
-                    };
-                    const report = generatePDFReport(data, metrics);
-                    report.save('traffic-analysis-report.pdf');
-                  }}
+                  onClick={generateReport}
                   className="flex items-center gap-2 px-4 py-2 bg-green-500 hover:bg-green-600 rounded-lg transition-colors"
-                  disabled={loading}
+                  disabled={loading || generatingReport}
                 >
                   <Download className="w-5 h-5" />
-                  Generate Report
+                  {generatingReport ? 'Generating...' : 'Generate Report'}
                 </button>
               )}
             </div>

@@ -35,20 +35,20 @@ function Header({ title, onToggleSidebar, isSidebarOpen }: HeaderProps) {
   }, []);
 
   return (
-    <div className={`lg:hidden fixed top-0 left-0 right-0 z-50 p-4 border-b ${
+    <div className={`lg:hidden fixed top-0 left-0 right-0 z-50 px-4 py-3 border-b ${
       isDark 
         ? 'bg-[#151F32] border-[#1E293B]' 
         : 'bg-white border-gray-200'
     }`}>
       <div className="flex items-center justify-between">
-        <button onClick={onToggleSidebar} className="p-2">
+        <button onClick={onToggleSidebar} className="p-1 sm:p-2">
           {isSidebarOpen ? <X className="w-6 h-6" /> : <Menu className="w-6 h-6" />}
         </button>
-        <span className="text-xl font-bold">{title}</span>
+        <span className="text-lg sm:text-xl font-bold truncate px-4">{title}</span>
         <img
           src={user?.user_metadata?.avatar_url || `https://ui-avatars.com/api/?name=${user?.email || 'User'}&background=0B1121&color=fff`}
           alt="Profile"
-          className="w-8 h-8 rounded-full border-2 border-primary-500"
+          className="w-8 h-8 sm:w-10 sm:h-10 rounded-full border-2 border-primary-500 flex-shrink-0"
         />
       </div>
     </div>

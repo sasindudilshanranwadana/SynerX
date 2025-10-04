@@ -180,7 +180,8 @@ function UploadPage() {
       console.error('Error closing existing WebSocket:', e);
     }
     
-    const wsUrl = RUNPOD_API_BASE.replace(/^http/, 'ws') + '/ws/jobs';
+    const runpodUrl = import.meta.env.VITE_RUNPOD_URL || 'http://localhost:8000';
+    const wsUrl = runpodUrl.replace(/^http/, 'ws') + '/ws/jobs';
     jobsWSRef.current = new WebSocket(wsUrl);
     
     jobsWSRef.current.onopen = () => {
@@ -256,7 +257,8 @@ function UploadPage() {
       console.error('Error closing existing stream WebSocket:', e);
     }
     
-    const wsUrl = RUNPOD_API_BASE.replace(/^http/, 'ws') + `/ws/video-stream/${encodeURIComponent(jobId)}`;
+    const runpodUrl = import.meta.env.VITE_RUNPOD_URL || 'http://localhost:8000';
+    const wsUrl = runpodUrl.replace(/^http/, 'ws') + `/ws/video-stream/${encodeURIComponent(jobId)}`;
     streamWSRef.current = new WebSocket(wsUrl);
     
     streamWSRef.current.onopen = () => {
@@ -454,7 +456,7 @@ function UploadPage() {
       <main className="lg:ml-64 p-4 lg:p-8 mt-16 lg:mt-0">
         <div className="max-w-6xl mx-auto">
           <div className="mb-8">
-            <h1 className="text-2xl font-bold mb-2">Upload Video for Analysis</h1>
+            <h1 className="text-xl sm:text-2xl font-bold mb-2">Upload Video for Analysis</h1>
             <p className={isDark ? 'text-gray-400' : 'text-gray-600'}>
               Supported formats: MP4, MOV, AVI, MKV, WebM
             </p>
@@ -462,7 +464,7 @@ function UploadPage() {
 
           {/* Upload Section */}
           <div 
-            className={`border-2 border-dashed rounded-xl p-12 mb-8 text-center transition-colors ${
+            className={`border-2 border-dashed rounded-xl p-6 sm:p-8 md:p-12 mb-8 text-center transition-colors ${
               isDragging 
                 ? 'border-primary-500 bg-primary-500/10' 
                 : uploading
@@ -496,21 +498,21 @@ function UploadPage() {
             ) : isDragging ? (
               <>
                 <FileVideo className="w-12 h-12 mx-auto mb-4 text-primary-500" />
-                <h3 className="text-xl font-semibold mb-2 text-primary-500">Drop your videos here</h3>
+                <h3 className="text-lg sm:text-xl font-semibold mb-2 text-primary-500">Drop your videos here</h3>
                 <p className={`mb-4 ${isDark ? 'text-gray-400' : 'text-gray-600'}`}>Release to upload your video files</p>
               </>
             ) : (
               <>
                 <FileVideo className={`w-12 h-12 mx-auto mb-4 ${isDark ? 'text-gray-400' : 'text-gray-500'}`} />
-                <h3 className="text-xl font-semibold mb-2">Upload Videos for Analysis</h3>
+                <h3 className="text-lg sm:text-xl font-semibold mb-2">Upload Videos for Analysis</h3>
                 <p className={`mb-4 ${isDark ? 'text-gray-400' : 'text-gray-600'}`}>Drag and drop your video files here, or click to browse</p>
               </>
             )}
             
-            <div className="flex items-center justify-center gap-4">
+            <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
               <button
                 onClick={() => fileInputRef.current?.click()}
-                className={`px-6 py-2 rounded-lg transition-colors ${
+                className={`px-4 sm:px-6 py-2 rounded-lg transition-colors text-sm sm:text-base ${
                   uploading || !runpodConnected
                     ? 'bg-gray-600 cursor-not-allowed opacity-50' 
                     : 'bg-primary-500 hover:bg-primary-600 text-white'
@@ -520,10 +522,18 @@ function UploadPage() {
               >
                 {uploading ? 'Uploading...' : !runpodConnected ? 'Server Disconnected' : 'Upload & Queue'}
               </button>
-              {uploadStatus && (
-                <span className={`text-sm ${isDark ? 'text-gray-400' : 'text-gray-600'}`}>
-                  {uploadStatus}
-                </span>
+              {uploading && (
+                <div className="flex items-center gap-2">
+                  <div className={`w-24 sm:w-32 bg-gray-200 rounded-full h-2 ${isDark ? 'bg-gray-700' : 'bg-gray-200'}`}>
+                    <div 
+                      className="bg-primary-500 h-2 rounded-full transition-all duration-300" 
+                      style={{ width: '45%' }}
+                    ></div>
+                  </div>
+                  <span className={`text-sm font-medium ${isDark ? 'text-gray-300' : 'text-gray-700'}`}>
+                    45%
+                  </span>
+                </div>
               )}
             </div>
           </div>
@@ -534,53 +544,54 @@ function UploadPage() {
               ? 'bg-[#151F32]' 
               : 'bg-white shadow-lg border border-gray-200'
           }`}>
-            <div className="flex items-center justify-between mb-6">
-              <div className="flex items-center gap-4">
-                <h2 className="text-xl font-semibold">Jobs</h2>
-                <span className={`text-sm ${isDark ? 'text-gray-400' : 'text-gray-600'}`}>
+            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between mb-6 gap-4 sm:gap-0">
+              <div className="flex flex-col sm:flex-row items-start sm:items-center gap-2 sm:gap-4">
+                <h2 className="text-lg sm:text-xl font-semibold">Jobs</h2>
+                <span className={`text-xs sm:text-sm ${isDark ? 'text-gray-400' : 'text-gray-600'}`}>
                   Total: {jobsSummary.total_jobs} | Queue: {jobsSummary.queue_length} | Running: {jobsSummary.queue_processor_running ? 'Yes' : 'No'}
                 </span>
               </div>
-              <div className="flex items-center gap-2">
-                <span className={`text-sm ${isDark ? 'text-gray-400' : 'text-gray-600'}`}>
+              <div className="flex flex-col sm:flex-row items-start sm:items-center gap-2">
+                <span className={`text-xs sm:text-sm ${isDark ? 'text-gray-400' : 'text-gray-600'}`}>
                   Auto-refresh: <span className="text-green-400">On</span>
                 </span>
-                <button
-                  onClick={startJobsSocket}
-                  className={`p-2 rounded-lg transition-colors ${
-                    isDark 
-                      ? 'bg-[#1E293B] hover:bg-[#2D3B4E] text-gray-300' 
-                      : 'bg-gray-100 hover:bg-gray-200 text-gray-700'
-                  }`}
-                  title="Refresh"
-                >
-                  <RefreshCw className="w-4 h-4" />
-                </button>
-                <button
-                  onClick={clearCompleted}
-                  className={`px-3 py-2 text-sm rounded-lg transition-colors ${
-                    isDark 
-                      ? 'bg-[#1E293B] hover:bg-[#2D3B4E] text-gray-300' 
-                      : 'bg-gray-100 hover:bg-gray-200 text-gray-700'
-                  }`}
-                >
-                  Clear Completed
-                </button>
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={startJobsSocket}
+                    className={`p-2 rounded-lg transition-colors ${
+                      isDark 
+                        ? 'bg-[#1E293B] hover:bg-[#2D3B4E] text-gray-300' 
+                        : 'bg-gray-100 hover:bg-gray-200 text-gray-700'
+                    }`}
+                    title="Refresh"
+                  >
+                    <RefreshCw className="w-4 h-4" />
+                  </button>
+                  <button
+                    onClick={clearCompleted}
+                    className={`px-2 sm:px-3 py-2 text-xs sm:text-sm rounded-lg transition-colors ${
+                      isDark 
+                        ? 'bg-[#1E293B] hover:bg-[#2D3B4E] text-gray-300' 
+                        : 'bg-gray-100 hover:bg-gray-200 text-gray-700'
+                    }`}
+                  >
+                    Clear Completed
+                  </button>
+                </div>
               </div>
             </div>
 
             {/* Jobs Table */}
             <div className="overflow-x-auto">
-              <table className="w-full">
+              <table className="w-full min-w-[600px]">
                 <thead>
                   <tr className={`border-b ${isDark ? 'border-gray-700' : 'border-gray-200'}`}>
-                    <th className={`text-left py-3 px-4 font-medium ${isDark ? 'text-gray-300' : 'text-gray-700'}`}>Job ID</th>
-                    <th className={`text-left py-3 px-4 font-medium ${isDark ? 'text-gray-300' : 'text-gray-700'}`}>File</th>
-                    <th className={`text-left py-3 px-4 font-medium ${isDark ? 'text-gray-300' : 'text-gray-700'}`}>Status</th>
-                    <th className={`text-left py-3 px-4 font-medium ${isDark ? 'text-gray-300' : 'text-gray-700'}`}>Progress</th>
-                    <th className={`text-left py-3 px-4 font-medium ${isDark ? 'text-gray-300' : 'text-gray-700'}`}>Message</th>
-                    <th className={`text-left py-3 px-4 font-medium ${isDark ? 'text-gray-300' : 'text-gray-700'}`}>Elapsed</th>
-                    <th className={`text-left py-3 px-4 font-medium ${isDark ? 'text-gray-300' : 'text-gray-700'}`}>Actions</th>
+                    <th className={`text-left py-2 sm:py-3 px-2 sm:px-4 font-medium text-xs sm:text-sm ${isDark ? 'text-gray-300' : 'text-gray-700'}`}>Job ID</th>
+                    <th className={`text-left py-2 sm:py-3 px-2 sm:px-4 font-medium text-xs sm:text-sm ${isDark ? 'text-gray-300' : 'text-gray-700'}`}>File</th>
+                    <th className={`text-left py-2 sm:py-3 px-2 sm:px-4 font-medium text-xs sm:text-sm ${isDark ? 'text-gray-300' : 'text-gray-700'}`}>Status</th>
+                    <th className={`text-left py-2 sm:py-3 px-2 sm:px-4 font-medium text-xs sm:text-sm ${isDark ? 'text-gray-300' : 'text-gray-700'}`}>Progress</th>
+                    <th className={`text-left py-2 sm:py-3 px-2 sm:px-4 font-medium text-xs sm:text-sm ${isDark ? 'text-gray-300' : 'text-gray-700'}`}>Message</th>
+                    <th className={`text-left py-2 sm:py-3 px-2 sm:px-4 font-medium text-xs sm:text-sm ${isDark ? 'text-gray-300' : 'text-gray-700'}`}>Elapsed</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -590,18 +601,18 @@ function UploadPage() {
                       const progress = Math.max(0, Math.min(100, Math.round(job.progress || 0)));
                       return (
                         <tr key={job.job_id} className={`border-b ${isDark ? 'border-gray-700' : 'border-gray-200'}`}>
-                          <td className={`py-3 px-4 font-mono text-sm ${isDark ? 'text-gray-300' : 'text-gray-700'}`}>
+                          <td className={`py-2 sm:py-3 px-2 sm:px-4 font-mono text-xs sm:text-sm ${isDark ? 'text-gray-300' : 'text-gray-700'}`}>
                             {job.job_id}
                           </td>
-                          <td className={`py-3 px-4 ${isDark ? 'text-gray-300' : 'text-gray-700'}`} title={job.file_name}>
+                          <td className={`py-2 sm:py-3 px-2 sm:px-4 text-xs sm:text-sm ${isDark ? 'text-gray-300' : 'text-gray-700'}`} title={job.file_name}>
                             {truncate(job.file_name, 36)}
                           </td>
-                          <td className="py-3 px-4">
+                          <td className="py-2 sm:py-3 px-2 sm:px-4">
                             <span className={`px-2 py-1 rounded-full text-xs font-medium ${getPillClass(job.status)}`}>
                               {job.status}
                             </span>
                           </td>
-                          <td className="py-3 px-4">
+                          <td className="py-2 sm:py-3 px-2 sm:px-4">
                             <div className={`w-full bg-gray-200 rounded-full h-2 ${isDark ? 'bg-gray-700' : 'bg-gray-200'}`}>
                               <div 
                                 className="bg-primary-500 h-2 rounded-full transition-all duration-300" 
@@ -609,29 +620,11 @@ function UploadPage() {
                               ></div>
                             </div>
                           </td>
-                          <td className={`py-3 px-4 text-sm ${isDark ? 'text-gray-400' : 'text-gray-600'}`} title={job.message || ''}>
+                          <td className={`py-2 sm:py-3 px-2 sm:px-4 text-xs sm:text-sm ${isDark ? 'text-gray-400' : 'text-gray-600'}`} title={job.message || ''}>
                             {truncate(job.message || '', 40)}
                           </td>
-                          <td className={`py-3 px-4 text-sm ${isDark ? 'text-gray-400' : 'text-gray-600'}`}>
+                          <td className={`py-2 sm:py-3 px-2 sm:px-4 text-xs sm:text-sm ${isDark ? 'text-gray-400' : 'text-gray-600'}`}>
                             {formatElapsed(job.elapsed_time)}
-                          </td>
-                          <td className="py-3 px-4">
-                            <div className="flex items-center gap-2">
-                              <button
-                                onClick={() => deleteJob(job.job_id)}
-                                className="px-2 py-1 text-xs bg-red-500 hover:bg-red-600 text-white rounded transition-colors"
-                              >
-                                Delete
-                              </button>
-                              {job.status === 'processing' && (
-                                <button
-                                  onClick={() => openStream(job.job_id)}
-                                  className="px-2 py-1 text-xs bg-primary-500 hover:bg-primary-600 text-white rounded transition-colors"
-                                >
-                                  Stream
-                                </button>
-                              )}
-                            </div>
                           </td>
                         </tr>
                       );
@@ -639,7 +632,7 @@ function UploadPage() {
                 </tbody>
               </table>
               {jobs.length === 0 && (
-                <div className={`text-center py-8 ${isDark ? 'text-gray-400' : 'text-gray-600'}`}>
+                <div className={`text-center py-6 sm:py-8 text-sm sm:text-base ${isDark ? 'text-gray-400' : 'text-gray-600'}`}>
                   No jobs found. Upload a video to get started.
                 </div>
               )}
@@ -648,14 +641,14 @@ function UploadPage() {
 
           {/* Stream Modal */}
           {streamModalOpen && (
-            <div className="fixed inset-0 bg-black bg-opacity-60 flex items-center justify-center z-50">
-              <div className={`rounded-xl p-4 w-full max-w-4xl mx-4 ${
+            <div className="fixed inset-0 bg-black bg-opacity-60 flex items-center justify-center z-50 p-4">
+              <div className={`rounded-xl p-4 sm:p-6 w-full max-w-4xl ${
                 isDark 
                   ? 'bg-[#151F32] border border-[#1E293B]' 
                   : 'bg-white border border-gray-200'
               }`}>
                 <div className="flex items-center justify-between mb-4">
-                  <h3 className="text-lg font-semibold">Live Stream - Job {currentStreamJobId}</h3>
+                  <h3 className="text-base sm:text-lg font-semibold truncate pr-4">Live Stream - Job {currentStreamJobId}</h3>
                   <button
                     onClick={closeStream}
                     className={`p-2 rounded-lg transition-colors ${
@@ -667,15 +660,15 @@ function UploadPage() {
                     <X className="w-5 h-5" />
                   </button>
                 </div>
-                <div className="bg-black rounded-lg flex items-center justify-center min-h-[360px]">
+                <div className="bg-black rounded-lg flex items-center justify-center min-h-[200px] sm:min-h-[300px] md:min-h-[360px]">
                   {streamFrame ? (
                     <img
                       src={`data:image/jpeg;base64,${streamFrame}`}
                       alt="Live stream"
-                      className="max-w-full h-auto rounded"
+                      className="max-w-full max-h-full h-auto rounded object-contain"
                     />
                   ) : (
-                    <div className={`text-center ${isDark ? 'text-gray-400' : 'text-gray-600'}`}>
+                    <div className={`text-center text-sm sm:text-base ${isDark ? 'text-gray-400' : 'text-gray-600'}`}>
                       {streamStatus}
                     </div>
                   )}
@@ -691,29 +684,29 @@ function UploadPage() {
                 ? 'bg-[#151F32]' 
                 : 'bg-white shadow-lg border border-gray-200'
             }`}>
-              <h2 className="text-xl font-semibold mb-4">Recently Uploaded Videos</h2>
+              <h2 className="text-lg sm:text-xl font-semibold mb-4">Recently Uploaded Videos</h2>
               <div className="space-y-3">
                 {uploadedVideos.map((video) => (
                   <div key={video.id} className={`flex items-center justify-between p-4 rounded-lg ${
                     isDark ? 'bg-[#1E293B]' : 'bg-gray-50'
                   }`}>
-                    <div className="flex items-center gap-3">
+                    <div className="flex items-center gap-3 min-w-0 flex-1">
                       <FileVideo className="w-5 h-5 text-primary-500" />
-                      <div>
-                        <h3 className="font-medium">{video.video_name}</h3>
-                        <p className={`text-sm ${isDark ? 'text-gray-400' : 'text-gray-600'}`}>
+                      <div className="min-w-0 flex-1">
+                        <h3 className="font-medium text-sm sm:text-base truncate">{video.video_name}</h3>
+                        <p className={`text-xs sm:text-sm ${isDark ? 'text-gray-400' : 'text-gray-600'}`}>
                           {video.original_filename} • {video.file_size ? `${(video.file_size / 1024 / 1024).toFixed(1)} MB` : 'Unknown size'}
                         </p>
                       </div>
                     </div>
-                    <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-2 flex-shrink-0">
                       <span className={`px-3 py-1 rounded-full text-xs font-medium ${
                         video.status === 'uploaded' ? 'bg-blue-500/10 text-blue-400' :
                         video.status === 'processing' ? 'bg-yellow-500/10 text-yellow-400' :
                         video.status === 'completed' ? 'bg-green-500/10 text-green-400' :
                         video.status === 'failed' ? 'bg-red-500/10 text-red-400' :
                         isDark ? 'bg-gray-500/10 text-gray-400' : 'bg-gray-500/10 text-gray-600'
-                      }`}>
+                      } whitespace-nowrap`}>
                         {video.status?.charAt(0).toUpperCase() + video.status?.slice(1) || 'Unknown'}
                       </span>
                     </div>

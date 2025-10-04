@@ -12,8 +12,6 @@ import {
   Database, Brain, Menu, X
 } from 'lucide-react';
 
-const RUNPOD_API_BASE = import.meta.env.VITE_RUNPOD_URL || 'http://localhost:8000';
-
 interface SystemStatus {
   name: string;
   status: 'Operational' | 'Degraded' | 'Down';
@@ -88,7 +86,8 @@ function Dashboard() {
   const loadSystemStatus = async () => {
     try {
       // Check RunPod API health
-      const healthResponse = await fetch(`${RUNPOD_API_BASE}/`, {
+      const apiBase = import.meta.env.DEV ? '/api' : (import.meta.env.VITE_RUNPOD_URL || 'http://localhost:8000');
+      const healthResponse = await fetch(`${apiBase}/`, {
         method: 'GET',
         headers: { 'Content-Type': 'application/json' },
         signal: AbortSignal.timeout(10000)
@@ -96,14 +95,8 @@ function Dashboard() {
       
       const runpodHealthy = healthResponse.ok;
       
-      // Check jobs endpoint for processing status
-      const jobsResponse = await fetch(`${RUNPOD_API_BASE}/jobs/status`, {
-        method: 'GET',
-        headers: { 'Content-Type': 'application/json' },
-        signal: AbortSignal.timeout(10000)
-      });
-      
-      const processingHealthy = true; // Always show as operational
+      // Use general RunPod health for video processing status
+      const processingHealthy = runpodHealthy;
       
       // Check database connection
       const dbHealthy = await checkDatabaseConnection();
@@ -117,7 +110,7 @@ function Dashboard() {
         },
         { 
           name: 'Video Processing', 
-          status: 'Operational', 
+          status: processingHealthy ? 'Operational' : 'Down', 
           icon: <Activity className="w-5 h-5" />,
           lastChecked: new Date().toLocaleTimeString()
         },
@@ -132,7 +125,7 @@ function Dashboard() {
       console.error('Error checking system status:', error);
       setSystemStatus(prev => prev.map(item => ({ 
         ...item, 
-        status: item.name === 'Video Processing' ? 'Operational' as const : 'Down' as const 
+        status: 'Down' as const 
       })));
     }
   };
@@ -149,18 +142,23 @@ function Dashboard() {
   const loadRecentActivity = async () => {
     try {
       // Try to get recent activity from RunPod backend
-      const response = await fetch(`${RUNPOD_API_BASE}/recent-activity`, {
-        method: 'GET',
-        headers: { 'Content-Type': 'application/json' },
-        signal: AbortSignal.timeout(10000)
-      });
-      
-      if (response.ok) {
-        const data = await response.json();
-        if (data.activities && Array.isArray(data.activities)) {
-          setRecentActivity(data.activities);
-          return;
+      try {
+        const apiBase = import.meta.env.DEV ? '/api' : (import.meta.env.VITE_RUNPOD_URL || 'http://localhost:8000');
+        const response = await fetch(`${apiBase}/recent-activity`, {
+          method: 'GET',
+          headers: { 'Content-Type': 'application/json' },
+          signal: AbortSignal.timeout(10000)
+        });
+        
+        if (response.ok) {
+          const data = await response.json();
+          if (data.activities && Array.isArray(data.activities)) {
+            setRecentActivity(data.activities);
+            return;
+          }
         }
+      } catch (backendError) {
+        console.log('Backend recent activity not available, using database fallback');
       }
       
       // Fallback: Get recent activity from database
@@ -233,23 +231,28 @@ function Dashboard() {
   const loadAnalytics = async () => {
     try {
       // Try to get analytics from RunPod backend first
-      const response = await fetch(`${RUNPOD_API_BASE}/analytics/summary`, {
-        method: 'GET',
-        headers: { 'Content-Type': 'application/json' },
-        signal: AbortSignal.timeout(10000)
-      });
-      
-      if (response.ok) {
-        const data = await response.json();
-        if (data.stats) {
-          setStats({
-            videosProcessed: data.stats.videosProcessed || 0,
-            violations: data.stats.violations || 0,
-            complianceRate: data.stats.complianceRate || 0,
-            avgReactionTime: data.stats.avgReactionTime || 0
-          });
-          return;
+      try {
+        const apiBase = import.meta.env.DEV ? '/api' : (import.meta.env.VITE_RUNPOD_URL || 'http://localhost:8000');
+        const response = await fetch(`${apiBase}/analytics/summary`, {
+          method: 'GET',
+          headers: { 'Content-Type': 'application/json' },
+          signal: AbortSignal.timeout(10000)
+        });
+        
+        if (response.ok) {
+          const data = await response.json();
+          if (data.stats) {
+            setStats({
+              videosProcessed: data.stats.videosProcessed || 0,
+              violations: data.stats.violations || 0,
+              complianceRate: data.stats.complianceRate || 0,
+              avgReactionTime: data.stats.avgReactionTime || 0
+            });
+            return;
+          }
         }
+      } catch (backendError) {
+        console.log('Backend analytics not available, using database fallback');
       }
       
       // Fallback: Get analytics from database
@@ -408,14 +411,14 @@ function Dashboard() {
       <main className="lg:ml-64 p-4 lg:p-8 mt-16 lg:mt-0">
         {/* Header */}
         <div className="mb-8">
-          <h1 className="text-2xl lg:text-3xl font-bold mb-2">Welcome back, {user?.user_metadata?.full_name?.split(' ')[0] || 'User'}</h1>
+          <h1 className="text-xl sm:text-2xl lg:text-3xl font-bold mb-2">Welcome back, {user?.user_metadata?.full_name?.split(' ')[0] || 'User'}</h1>
           <p className={`text-sm lg:text-base ${
             isDark ? 'text-gray-400' : 'text-gray-600'
           }`}>Here's what's happening with your monitoring system</p>
         </div>
 
         {/* Stats Grid */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 lg:gap-6 mb-8">
+        <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4 lg:gap-6 mb-8">
           {loading ? (
             Array(4).fill(null).map((_, index) => (
               <div key={index} className={`p-6 rounded-xl animate-pulse border ${
@@ -439,15 +442,15 @@ function Dashboard() {
                   ? 'bg-[#151F32] border-[#1E293B]' 
                   : 'bg-white border-gray-200 shadow-lg'
               }`}>
-                <div className="flex items-center justify-between mb-4">
+                <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between mb-4 gap-2 sm:gap-0">
                   <div className="p-2 lg:p-3 bg-primary-500/10 rounded-lg text-primary-500">
                     <Camera className="w-6 h-6" />
                   </div>
-                  <span className="text-xs lg:text-sm px-2 lg:px-3 py-1 rounded-full bg-blue-500/10 text-blue-400">
+                  <span className="text-xs px-2 py-1 rounded-full bg-blue-500/10 text-blue-400 whitespace-nowrap">
                     Active
                   </span>
                 </div>
-                <h3 className="text-2xl lg:text-3xl font-bold mb-1">{stats.videosProcessed}</h3>
+                <h3 className="text-xl sm:text-2xl lg:text-3xl font-bold mb-1">{stats.videosProcessed}</h3>
                 <p className={`text-sm ${
                   isDark ? 'text-gray-400' : 'text-gray-600'
                 }`}>Videos Processed</p>
@@ -458,15 +461,15 @@ function Dashboard() {
                   ? 'bg-[#151F32] border-[#1E293B]' 
                   : 'bg-white border-gray-200 shadow-lg'
               }`}>
-                <div className="flex items-center justify-between mb-4">
+                <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between mb-4 gap-2 sm:gap-0">
                   <div className="p-2 lg:p-3 bg-primary-500/10 rounded-lg text-primary-500">
                     <Activity className="w-6 h-6" />
                   </div>
-                  <span className="text-xs lg:text-sm px-2 lg:px-3 py-1 rounded-full bg-orange-500/10 text-orange-400">
+                  <span className="text-xs px-2 py-1 rounded-full bg-orange-500/10 text-orange-400 whitespace-nowrap">
                     Alert
                   </span>
                 </div>
-                <h3 className="text-2xl lg:text-3xl font-bold mb-1">{stats.violations}</h3>
+                <h3 className="text-xl sm:text-2xl lg:text-3xl font-bold mb-1">{stats.violations}</h3>
                 <p className={`text-sm ${
                   isDark ? 'text-gray-400' : 'text-gray-600'
                 }`}>Violations Detected</p>
@@ -477,15 +480,15 @@ function Dashboard() {
                   ? 'bg-[#151F32] border-[#1E293B]' 
                   : 'bg-white border-gray-200 shadow-lg'
               }`}>
-                <div className="flex items-center justify-between mb-4">
+                <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between mb-4 gap-2 sm:gap-0">
                   <div className="p-2 lg:p-3 bg-primary-500/10 rounded-lg text-primary-500">
                     <Activity className="w-6 h-6" />
                   </div>
-                  <span className="text-xs lg:text-sm px-2 lg:px-3 py-1 rounded-full bg-green-500/10 text-green-400">
+                  <span className="text-xs px-2 py-1 rounded-full bg-green-500/10 text-green-400 whitespace-nowrap">
                     Stable
                   </span>
                 </div>
-                <h3 className="text-2xl lg:text-3xl font-bold mb-1">{stats.complianceRate.toFixed(1)}%</h3>
+                <h3 className="text-xl sm:text-2xl lg:text-3xl font-bold mb-1">{stats.complianceRate.toFixed(1)}%</h3>
                 <p className={`text-sm ${
                   isDark ? 'text-gray-400' : 'text-gray-600'
                 }`}>Compliance Rate</p>
@@ -496,15 +499,15 @@ function Dashboard() {
                   ? 'bg-[#151F32] border-[#1E293B]' 
                   : 'bg-white border-gray-200 shadow-lg'
               }`}>
-                <div className="flex items-center justify-between mb-4">
+                <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between mb-4 gap-2 sm:gap-0">
                   <div className="p-2 lg:p-3 bg-primary-500/10 rounded-lg text-primary-500">
                     <Clock className="w-6 h-6" />
                   </div>
-                  <span className="text-xs lg:text-sm px-2 lg:px-3 py-1 rounded-full bg-blue-500/10 text-blue-400">
+                  <span className="text-xs px-2 py-1 rounded-full bg-blue-500/10 text-blue-400 whitespace-nowrap">
                     per vehicle
                   </span>
                 </div>
-                <h3 className="text-2xl lg:text-3xl font-bold mb-1">{stats.avgReactionTime.toFixed(2)}s</h3>
+                <h3 className="text-xl sm:text-2xl lg:text-3xl font-bold mb-1">{stats.avgReactionTime.toFixed(2)}s</h3>
                 <p className={`text-sm ${
                   isDark ? 'text-gray-400' : 'text-gray-600'
                 }`}>Avg. Reaction Time</p>
@@ -514,7 +517,7 @@ function Dashboard() {
         </div>
 
         {/* System Status and Recent Activity */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 lg:gap-6">
+        <div className="grid grid-cols-1 xl:grid-cols-2 gap-4 lg:gap-6">
           {/* System Status */}
           <div className={`p-4 lg:p-6 rounded-xl border ${
             isDark 
@@ -523,7 +526,7 @@ function Dashboard() {
           }`}>
             <h2 className="text-lg lg:text-xl font-semibold mb-4 lg:mb-6">System Status</h2>
             <div className="space-y-3 lg:space-y-4">
-              <div className="flex justify-between items-center mb-4">
+              <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-4 gap-2 sm:gap-0">
                 <span className={`text-sm ${isDark ? 'text-gray-400' : 'text-gray-600'}`}>
                   Last updated: {new Date().toLocaleTimeString()}
                 </span>
@@ -532,13 +535,13 @@ function Dashboard() {
                 <div key={index} className={`flex items-center justify-between p-3 lg:p-4 rounded-lg ${
                   isDark ? 'bg-[#1E293B]' : 'bg-gray-50'
                 }`}>
-                  <div className="flex items-center gap-3">
+                  <div className="flex items-center gap-2 sm:gap-3 min-w-0 flex-1">
                     <div className="text-primary-500">
                       {item.icon}
                     </div>
-                    <span className="text-sm lg:text-base">{item.name}</span>
+                    <span className="text-sm lg:text-base truncate">{item.name}</span>
                   </div>
-                  <div className="text-right">
+                  <div className="text-right flex-shrink-0">
                     <span className={`text-sm lg:text-base ${getStatusColor(item.status)}`}>{item.status}</span>
                     {item.lastChecked && <div className={`text-xs ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>{item.lastChecked}</div>}
                   </div>
@@ -560,7 +563,7 @@ function Dashboard() {
                   isDark ? 'bg-[#1E293B]' : 'bg-gray-50'
                 }`}>
                   <div className={`w-2 h-2 rounded-full flex-shrink-0 ${getActivityColor(activity.type)}`}></div>
-                  <div className="min-w-0">
+                  <div className="min-w-0 flex-1">
                     <p className="text-sm lg:text-base truncate">{activity.event}</p>
                     <p className={`text-xs mt-1 ${
                       isDark ? 'text-gray-400' : 'text-gray-600'

@@ -2,7 +2,7 @@ import React from 'react';
 import { Link } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
 import { getStoredTheme, toggleTheme } from '../lib/theme';
-import { Activity, AlertTriangle, BarChart3, Brain, FileText, Github, Grid, Linkedin, Lock, Mail, Moon, Shield, Sun, Twitter, Camera, Database, Code, Users, BarChart as ChartBar, Eye } from 'lucide-react';
+import { Activity, AlertTriangle, BarChart3, Brain, FileText, Github, Grid2x2 as Grid, Linkedin, Lock, Mail, Moon, Shield, Sun, Twitter, Camera, Database, Code, Users, BarChart as ChartBar, Eye } from 'lucide-react';
 
 function LandingPage() {
   const [darkMode, setDarkMode] = React.useState(() => getStoredTheme() === 'dark');
@@ -227,7 +227,7 @@ function LandingPage() {
       </nav>
 
       {/* Hero Section */}
-      <section className="relative pt-32 pb-24 neural-background">
+      <section className="relative pt-20 sm:pt-24 md:pt-32 pb-16 sm:pb-20 md:pb-24 neural-background">
         <div className="absolute inset-0 grid-pattern opacity-20"></div>
         <div className="absolute inset-0 neural-grid"></div>
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 text-center relative">
@@ -236,20 +236,20 @@ function LandingPage() {
           }`}>
             AI-Powered Road Safety Analysis
           </div>
-          <h1 className="text-5xl md:text-6xl font-bold mb-6 animate-float">
+          <h1 className="text-3xl sm:text-4xl md:text-5xl lg:text-6xl font-bold mb-4 sm:mb-6 animate-float">
             Project 49
           </h1>
-          <h2 className={`text-2xl md:text-3xl font-semibold mb-6 animate-float animation-delay-2000 ${darkMode ? 'text-primary-400' : 'text-primary-600'}`}>
+          <h2 className={`text-lg sm:text-xl md:text-2xl lg:text-3xl font-semibold mb-4 sm:mb-6 animate-float animation-delay-2000 ${darkMode ? 'text-primary-400' : 'text-primary-600'}`}>
             Road-User Behaviour Analysis Using AI & Computer Vision
           </h2>
-          <p className={`text-xl mb-10 max-w-3xl mx-auto animate-float animation-delay-4000 ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>
+          <p className={`text-base sm:text-lg md:text-xl mb-6 sm:mb-8 md:mb-10 max-w-3xl mx-auto animate-float animation-delay-4000 ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>
             Enhancing road safety through intelligent video analytics at level crossings
           </p>
           <div className="flex justify-center">
             {isLoggedIn ? (
               <Link
                 to="/dashboard"
-                className={`px-8 py-3 rounded-lg text-lg font-medium transition-all duration-300 animate-glow ${
+                className={`px-6 sm:px-8 py-2 sm:py-3 rounded-lg text-base sm:text-lg font-medium transition-all duration-300 animate-glow ${
                   darkMode 
                     ? 'bg-primary-500 hover:bg-primary-600 text-white' 
                     : 'bg-primary-600 hover:bg-primary-700 text-white'
@@ -260,7 +260,7 @@ function LandingPage() {
             ) : (
               <Link
                 to="/auth"
-                className={`px-8 py-3 rounded-lg text-lg font-medium transition-all duration-300 animate-glow ${
+                className={`px-6 sm:px-8 py-2 sm:py-3 rounded-lg text-base sm:text-lg font-medium transition-all duration-300 animate-glow ${
                   darkMode 
                     ? 'bg-primary-500 hover:bg-primary-600 text-white' 
                     : 'bg-primary-600 hover:bg-primary-700 text-white'
@@ -274,22 +274,22 @@ function LandingPage() {
       </section>
 
       {/* About Section */}
-      <section id="about" className="py-24">
+      <section id="about" className="py-12 sm:py-16 md:py-20 lg:py-24">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="grid md:grid-cols-2 gap-12 items-center">
+          <div className="grid md:grid-cols-2 gap-8 md:gap-12 items-center">
             <div>
               <div className={`inline-block px-4 py-1 rounded-full text-sm font-medium mb-6 animate-float ${
                 darkMode ? 'bg-primary-500/10 text-primary-400' : 'bg-primary-600/10 text-primary-600'
               }`}>
                 About the Project
               </div>
-              <h2 className="text-3xl font-bold mb-6 animate-float animation-delay-2000">Revolutionizing Road Safety with AI</h2>
-              <p className={`mb-6 animate-float animation-delay-4000 ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>
+              <h2 className="text-2xl sm:text-3xl font-bold mb-4 sm:mb-6 animate-float animation-delay-2000">Revolutionizing Road Safety with AI</h2>
+              <p className={`mb-4 sm:mb-6 text-sm sm:text-base animate-float animation-delay-4000 ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>
                 Project 49 addresses the critical need for effective analysis of driver behavior at level crossings. 
                 Working with key stakeholders like VicRoads, Department of Transport, and V/Line, we're developing 
                 an innovative solution that provides meaningful insights from real-world traffic footage.
               </p>
-              <p className={`animate-float animation-delay-4000 ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>
+              <p className={`text-sm sm:text-base animate-float animation-delay-4000 ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>
                 Our system processes traffic camera footage to detect vehicles, measure speed profiles, assess compliance 
                 behavior, and visualize data through an interactive dashboard, enabling data-driven decisions for road 
                 safety improvements.
@@ -302,29 +302,33 @@ function LandingPage() {
               <img 
                 src="https://iqehkneolpesaqznkqjm.supabase.co/storage/v1/object/sign/assets/m6-motorway-trim-result.gif?token=eyJraWQiOiJzdG9yYWdlLXVybC1zaWduaW5nLWtleV83YmM1YjM5OS00ZDQwLTRiMDktOGE3Yi1kOWMxNzlkNjcyM2UiLCJhbGciOiJIUzI1NiJ9.eyJ1cmwiOiJhc3NldHMvbTYtbW90b3J3YXktdHJpbS1yZXN1bHQuZ2lmIiwiaWF0IjoxNzU4NzMwMDYyLCJleHAiOjMxNTUzNTg3MzAwNjJ9.pKZVb8o3SVRrZ_N5WGWNcrRI59hyZ-tcNongThzTQs4" 
                 alt="Traffic Analysis with AI Detection" 
-                className="rounded-xl shadow-2xl relative z-10 animate-float"
+                className="rounded-xl shadow-2xl relative z-10 animate-float object-cover h-[250px] sm:h-[300px] md:h-[400px] w-full max-w-full"
               />
+              <div className="mt-4 sm:mt-6 md:mt-8 text-center relative z-10 text-gray-300">
+                <h2 className="text-xl sm:text-2xl font-bold mb-2 sm:mb-4">Project 49</h2>
+                <p className="text-sm sm:text-base text-gray-400">Road-User Behaviour Analysis Using AI & Computer Vision</p>
+              </div>
             </div>
           </div>
         </div>
       </section>
 
       {/* Objectives Section */}
-      <section id="objectives" className={`py-24 ${darkMode ? 'bg-neural-800/50' : 'bg-gray-100'}`}>
+      <section id="objectives" className={`py-12 sm:py-16 md:py-20 lg:py-24 ${darkMode ? 'bg-neural-800/50' : 'bg-gray-100'}`}>
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="text-center mb-16">
+          <div className="text-center mb-8 sm:mb-12 md:mb-16">
             <div className={`inline-block px-4 py-1 rounded-full text-sm font-medium mb-6 animate-float ${
               darkMode ? 'bg-primary-500/10 text-primary-400' : 'bg-primary-600/10 text-primary-600'
             }`}>
               Project Goals
             </div>
-            <h2 className="text-3xl font-bold animate-float animation-delay-2000">Key Objectives</h2>
+            <h2 className="text-2xl sm:text-3xl font-bold animate-float animation-delay-2000">Key Objectives</h2>
           </div>
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-8">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 sm:gap-8">
             {objectives.map((objective, index) => (
               <div
                 key={index}
-                className={`p-6 rounded-xl transition-all duration-300 hover:scale-105 animate-float ${
+                className={`p-4 sm:p-6 rounded-xl transition-all duration-300 hover:scale-105 animate-float ${
                   darkMode 
                     ? 'bg-neural-800/50 hover:bg-neural-700/50' 
                     : 'bg-white hover:bg-gray-50 shadow-lg'
@@ -336,8 +340,8 @@ function LandingPage() {
                 }`}>
                   {objective.icon}
                 </div>
-                <h3 className="text-xl font-semibold mb-2">{objective.title}</h3>
-                <p className={darkMode ? 'text-gray-400' : 'text-gray-600'}>{objective.description}</p>
+                <h3 className="text-lg sm:text-xl font-semibold mb-2">{objective.title}</h3>
+                <p className={`text-sm sm:text-base ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>{objective.description}</p>
               </div>
             ))}
           </div>
@@ -345,21 +349,21 @@ function LandingPage() {
       </section>
 
       {/* Features Section */}
-      <section id="features" className="py-24 neural-background">
+      <section id="features" className="py-12 sm:py-16 md:py-20 lg:py-24 neural-background">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="text-center mb-16">
+          <div className="text-center mb-8 sm:mb-12 md:mb-16">
             <div className={`inline-block px-4 py-1 rounded-full text-sm font-medium mb-6 animate-float ${
               darkMode ? 'bg-primary-500/10 text-primary-400' : 'bg-primary-600/10 text-primary-600'
             }`}>
               System Features
             </div>
-            <h2 className="text-3xl font-bold animate-float animation-delay-2000">Technical Capabilities</h2>
+            <h2 className="text-2xl sm:text-3xl font-bold animate-float animation-delay-2000">Technical Capabilities</h2>
           </div>
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6 sm:gap-8">
             {features.map((feature, index) => (
               <div
                 key={index}
-                className={`p-6 rounded-xl transition-all duration-300 hover:scale-105 animate-float ${
+                className={`p-4 sm:p-6 rounded-xl transition-all duration-300 hover:scale-105 animate-float ${
                   darkMode 
                     ? 'bg-neural-800/50 hover:bg-neural-700/50' 
                     : 'bg-white hover:bg-gray-50 shadow-lg'
@@ -371,8 +375,8 @@ function LandingPage() {
                 }`}>
                   {feature.icon}
                 </div>
-                <h3 className="text-xl font-semibold mb-2">{feature.title}</h3>
-                <p className={darkMode ? 'text-gray-400' : 'text-gray-600'}>{feature.description}</p>
+                <h3 className="text-lg sm:text-xl font-semibold mb-2">{feature.title}</h3>
+                <p className={`text-sm sm:text-base ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>{feature.description}</p>
               </div>
             ))}
           </div>
@@ -380,45 +384,45 @@ function LandingPage() {
       </section>
 
       {/* Team Section */}
-      <section id="team" className={`py-24 ${darkMode ? 'bg-neural-800/50' : 'bg-gray-100'}`}>
+      <section id="team" className={`py-12 sm:py-16 md:py-20 lg:py-24 ${darkMode ? 'bg-neural-800/50' : 'bg-gray-100'}`}>
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="text-center mb-16">
+          <div className="text-center mb-8 sm:mb-12 md:mb-16">
             <div className={`inline-block px-4 py-1 rounded-full text-sm font-medium mb-6 animate-float ${
               darkMode ? 'bg-primary-500/10 text-primary-400' : 'bg-primary-600/10 text-primary-600'
             }`}>
               Meet SynerX
             </div>
-            <h2 className="text-3xl font-bold animate-float animation-delay-2000">Our Team</h2>
+            <h2 className="text-2xl sm:text-3xl font-bold animate-float animation-delay-2000">Our Team</h2>
           </div>
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6 sm:gap-8">
             {teamMembers.map((member, index) => (
               <div 
                 key={index} 
-                className={`text-center p-6 rounded-xl transition-all duration-300 hover:scale-105 animate-float ${
+                className={`text-center p-4 sm:p-6 rounded-xl transition-all duration-300 hover:scale-105 animate-float ${
                   darkMode 
                     ? 'bg-neural-800/50 hover:bg-neural-700/50' 
                     : 'bg-white hover:bg-gray-50 shadow-lg'
                 }`}
                 style={{ animationDelay: `${index * 200}ms` }}
               >
-                <div className="relative mx-auto w-32 h-32 mb-4">
+                <div className="relative mx-auto w-24 h-24 sm:w-32 sm:h-32 mb-4">
                   <div className={`absolute inset-0 rounded-full blur-xl animate-pulse-glow ${
                     darkMode ? 'bg-primary-500/20' : 'bg-primary-600/20'
                   }`}></div>
                   <div className={`w-full h-full rounded-full bg-gradient-to-br ${
                     darkMode ? 'from-neural-700 to-neural-800' : 'from-gray-100 to-gray-200'
-                  } flex items-center justify-center text-3xl font-bold relative z-10`}>
+                  } flex items-center justify-center text-2xl sm:text-3xl font-bold relative z-10`}>
                     {member.name.charAt(0)}
                   </div>
                   <div className={`absolute inset-0 rounded-full ring-2 animate-glow ${
                     darkMode ? 'ring-primary-500' : 'ring-primary-600'
                   }`}></div>
                 </div>
-                <h3 className="text-lg font-semibold">{member.name}</h3>
+                <h3 className="text-base sm:text-lg font-semibold">{member.name}</h3>
                 <p className={`text-sm mb-2 ${darkMode ? 'text-primary-400' : 'text-primary-600'}`}>
                   {member.id}
                 </p>
-                <p className={`text-sm mb-4 ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>
+                <p className={`text-xs sm:text-sm mb-4 ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>
                   {member.role}
                 </p>
                 <div className="flex justify-center">
@@ -438,21 +442,21 @@ function LandingPage() {
       </section>
 
       {/* Timeline Section */}
-      <section id="timeline" className="py-24 neural-background">
+      <section id="timeline" className="py-12 sm:py-16 md:py-20 lg:py-24 neural-background">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="text-center mb-16">
+          <div className="text-center mb-8 sm:mb-12 md:mb-16">
             <div className={`inline-block px-4 py-1 rounded-full text-sm font-medium mb-6 animate-float ${
               darkMode ? 'bg-primary-500/10 text-primary-400' : 'bg-primary-600/10 text-primary-600'
             }`}>
               Development Progress
             </div>
-            <h2 className="text-3xl font-bold animate-float animation-delay-2000">Project Timeline</h2>
+            <h2 className="text-2xl sm:text-3xl font-bold animate-float animation-delay-2000">Project Timeline</h2>
           </div>
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-8">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 sm:gap-8">
             {timeline.map((item, index) => (
               <div
                 key={index}
-                className={`p-6 rounded-xl transition-all duration-300 hover:scale-105 animate-float ${
+                className={`p-4 sm:p-6 rounded-xl transition-all duration-300 hover:scale-105 animate-float ${
                   darkMode 
                     ? 'bg-neural-800/50 hover:bg-neural-700/50' 
                     : 'bg-white hover:bg-gray-50 shadow-lg'
@@ -464,7 +468,7 @@ function LandingPage() {
                 }`}>
                   {item.quarter}
                 </div>
-                <h3 className="text-xl font-semibold mb-2">{item.title}</h3>
+                <h3 className="text-lg sm:text-xl font-semibold mb-2">{item.title}</h3>
                 <p className={`text-sm mb-3 ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>
                   {item.tasks}
                 </p>
@@ -484,27 +488,27 @@ function LandingPage() {
       </section>
 
       {/* Footer */}
-      <footer className={`py-12 ${darkMode ? 'bg-neural-800/50' : 'bg-gray-100'}`}>
+      <footer className={`py-8 sm:py-10 md:py-12 ${darkMode ? 'bg-neural-800/50' : 'bg-gray-100'}`}>
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-12">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-8 md:gap-12">
             <div className="animate-float">
-              <h3 className="text-xl font-bold mb-4">Swinburne</h3>
-              <p className={darkMode ? 'text-gray-400' : 'text-gray-600'}>
+              <h3 className="text-lg sm:text-xl font-bold mb-4">Swinburne</h3>
+              <p className={`text-sm sm:text-base ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>
                 A research project by Swinburne University of Technology
               </p>
             </div>
             <div className="animate-float animation-delay-2000">
-              <h3 className="text-xl font-bold mb-4">Quick Links</h3>
+              <h3 className="text-lg sm:text-xl font-bold mb-4">Quick Links</h3>
               <ul className="space-y-2">
-                <li><a href="#about" className={`transition-colors duration-300 ${darkMode ? 'text-gray-400 hover:text-white' : 'text-gray-600 hover:text-gray-900'}`}>About</a></li>
-                <li><a href="#objectives" className={`transition-colors duration-300 ${darkMode ? 'text-gray-400 hover:text-white' : 'text-gray-600 hover:text-gray-900'}`}>Objectives</a></li>
-                <li><a href="#features" className={`transition-colors duration-300 ${darkMode ? 'text-gray-400 hover:text-white' : 'text-gray-600 hover:text-gray-900'}`}>Features</a></li>
-                <li><a href="#team" className={`transition-colors duration-300 ${darkMode ? 'text-gray-400 hover:text-white' : 'text-gray-600 hover:text-gray-900'}`}>Team</a></li>
+                <li><a href="#about" className={`text-sm sm:text-base transition-colors duration-300 ${darkMode ? 'text-gray-400 hover:text-white' : 'text-gray-600 hover:text-gray-900'}`}>About</a></li>
+                <li><a href="#objectives" className={`text-sm sm:text-base transition-colors duration-300 ${darkMode ? 'text-gray-400 hover:text-white' : 'text-gray-600 hover:text-gray-900'}`}>Objectives</a></li>
+                <li><a href="#features" className={`text-sm sm:text-base transition-colors duration-300 ${darkMode ? 'text-gray-400 hover:text-white' : 'text-gray-600 hover:text-gray-900'}`}>Features</a></li>
+                <li><a href="#team" className={`text-sm sm:text-base transition-colors duration-300 ${darkMode ? 'text-gray-400 hover:text-white' : 'text-gray-600 hover:text-gray-900'}`}>Team</a></li>
               </ul>
             </div>
             <div className="animate-float animation-delay-4000">
-              <h3 className="text-xl font-bold mb-4">Contact</h3>
-              <p className={`mb-4 ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>
+              <h3 className="text-lg sm:text-xl font-bold mb-4">Contact</h3>
+              <p className={`mb-4 text-sm sm:text-base ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>
                 For inquiries, please contact our team at Swinburne University
               </p>
               <div className="flex space-x-4">
@@ -525,8 +529,8 @@ function LandingPage() {
               </div>
             </div>
           </div>
-          <div className={`mt-12 pt-8 border-t ${darkMode ? 'border-neural-700' : 'border-gray-200'} text-center ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>
-            <p>© 2024 Project 49. All rights reserved.</p>
+          <div className={`mt-8 sm:mt-10 md:mt-12 pt-6 sm:pt-8 border-t ${darkMode ? 'border-neural-700' : 'border-gray-200'} text-center ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>
+            <p className="text-sm sm:text-base">© 2024 Project 49. All rights reserved.</p>
           </div>
         </div>
       </footer>
