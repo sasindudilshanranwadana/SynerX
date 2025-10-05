@@ -59,14 +59,14 @@ class Config:
     LOCATION_LAT = -37.740585  # Latitude (Melbourne, Australia)
     LOCATION_LON = 144.731637  # Longitude (Melbourne, Australia)
     
-    # WebSocket Streaming Configuration - Smooth Playback (30 FPS)
-    # Performance settings for smooth real-time video streaming
-    STREAMING_FRAME_SKIP = 2  # Send every 2nd frame for smoother playback (30 FPS)
-    STREAMING_JPEG_QUALITY = 85  # Balanced quality for smooth streaming
-    STREAMING_MAX_FRAME_SIZE = (960, 540)  # 540p for smoother streaming
-    STREAMING_QUEUE_SIZE = 4  # Smaller buffer for more responsive streaming
-    STREAMING_WORKERS = 4  # Balanced workers for smooth performance
-    STREAMING_TARGET_FPS = 30  # Target 30 FPS for smooth playback
+    # WebSocket Streaming Configuration - Smooth Video Optimized
+    # Performance settings optimized for smooth video streaming
+    STREAMING_FRAME_SKIP = 1  # Process every frame for smoothness
+    STREAMING_JPEG_QUALITY = 85  # Higher quality for better video
+    STREAMING_MAX_FRAME_SIZE = (960, 540)  # 540p for smooth streaming
+    STREAMING_QUEUE_SIZE = 5  # Larger buffer for smoother playback
+    STREAMING_WORKERS = 1  # Single worker for stability
+    STREAMING_TARGET_FPS = 30  # Higher FPS for smooth streaming
     
     # Conditional interpolation based on environment
     try:

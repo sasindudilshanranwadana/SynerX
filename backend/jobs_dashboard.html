@@ -527,6 +527,13 @@
           streamReconnectAttempts = 0; // Reset on successful connection
           console.log(`[STREAM] ✅ Connected to video stream for job ${jobId}`);
           console.log(`[STREAM] WebSocket URL: ${wsUrl}`);
+          
+          // Send initial ping to establish connection
+          try {
+            ws.send(JSON.stringify({type: "ping", timestamp: Date.now()}));
+          } catch (e) {
+            console.error("[STREAM] Error sending initial ping:", e);
+          }
         };
         
         ws.onmessage = (evt) => {
@@ -534,23 +541,35 @@
             const msg = JSON.parse(evt.data);
             
             if (msg.type === "frame" && msg.frame_data) {
-              // Reduced logging for performance - only log every 50 frames
-              if (msg.frame_number % 50 === 0) {
+              // Reduced logging for performance - only log every 200 frames
+              if (msg.frame_number % 200 === 0) {
                 console.log("[STREAM] 📨 Received frame:", msg.frame_number, "length:", msg.frame_data.length);
               }
               
-              // Smooth frame transition
-              streamImage.style.opacity = "0";
-              streamImage.onload = () => {
+              // Ultra-smooth frame update for video-like playback
+              try {
+                // Remove all transitions and effects
+                streamImage.style.transition = "none";
                 streamImage.style.opacity = "1";
-                streamImage.style.transition = "opacity 0.1s ease-in-out";
-              };
-              
-              streamImage.src = `data:image/jpeg;base64,${msg.frame_data}`;
-              streamImage.style.display = "block";
-              streamPlaceholder.style.display = "none";
+                streamImage.style.transform = "none";
+                
+                // Direct frame update - no callbacks, no effects
+                streamImage.src = `data:image/jpeg;base64,${msg.frame_data}`;
+                streamImage.style.display = "block";
+                streamPlaceholder.style.display = "none";
+              } catch (e) {
+                console.error("[STREAM] Error displaying frame:", e);
+              }
             } else if (msg.type === "pong") {
-              // Handle ping/pong for connection health (no logging for performance)
+              // Handle ping/pong for connection health
+              console.log("[STREAM] Received pong from server");
+            } else if (msg.type === "ping") {
+              // Respond to server ping
+              try {
+                ws.send(JSON.stringify({type: "pong", timestamp: Date.now()}));
+              } catch (e) {
+                console.error("[STREAM] Error sending pong:", e);
+              }
             }
           } catch (e) {
             console.error("[STREAM] Failed to parse frame message:", e);
@@ -572,13 +591,23 @@
           console.log(`[STREAM] WebSocket closed with code: ${event.code}`);
           streamPlaceholder.textContent = "Disconnected.";
           
-          // Auto-reconnect if not a clean close and we haven't exceeded max attempts
-          if (event.code !== 1000 && streamReconnectAttempts < maxStreamReconnectAttempts && currentJobId) {
+          // Only reconnect if it's not a normal close (1000) and not a user-initiated close
+          // and we haven't exceeded max attempts and we still have a current job
+          if (event.code !== 1000 && event.code !== 1001 && streamReconnectAttempts < maxStreamReconnectAttempts && currentJobId) {
             streamReconnectAttempts++;
             console.log(`[STREAM] Attempting to reconnect (${streamReconnectAttempts}/${maxStreamReconnectAttempts})...`);
             setTimeout(() => {
-              connectStreamWebSocket(currentJobId);
-            }, 1000 * streamReconnectAttempts); // Linear backoff for video stream
+              // Double-check that we still have a current job before reconnecting
+              if (currentJobId) {
+                connectStreamWebSocket(currentJobId);
+              }
+            }, 2000); // Fixed 2 second delay
+          } else if (event.code === 1000) {
+            console.log(`[STREAM] Normal close - not reconnecting`);
+          } else if (!currentJobId) {
+            console.log(`[STREAM] No current job - not reconnecting`);
+          } else {
+            console.log(`[STREAM] Max reconnection attempts reached or user closed stream`);
           }
         };
       }
@@ -586,12 +615,19 @@
       function closeStream() {
         const modal = document.getElementById("streamModal");
         modal.style.display = "none";
+        
+        // Stop auto-reconnection
+        streamReconnectAttempts = maxStreamReconnectAttempts; // Prevent reconnection
+        currentJobId = null; // Clear current job ID
+        
         try {
           if (ws) {
-            ws.close();
+            ws.close(1000, "User closed stream"); // Normal close
             ws = null;
           }
         } catch {}
+        
+        console.log("[STREAM] Stream closed by user - auto-reconnection disabled");
       }
 
       // Video player functions

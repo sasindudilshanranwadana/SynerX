@@ -24,6 +24,18 @@ from utils.shutdown_manager import shutdown_manager
 from utils.video_streamer import video_streamer
 from clients.supabase_client import supabase_manager
 
+# RunPod-specific initialization
+import os
+if os.environ.get('RUNPOD_POD_ID') or 'runpod' in os.environ.get('HOSTNAME', '').lower():
+    print("[MAIN] 🚀 RunPod environment detected - applying optimizations")
+    # Import and run RunPod startup checks
+    try:
+        from runpod_startup import setup_runpod_environment, check_gpu_availability
+        setup_runpod_environment()
+        check_gpu_availability()
+    except ImportError:
+        print("[MAIN] ⚠️ RunPod startup script not available")
+
 # Import middleware
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
@@ -654,7 +666,7 @@ async def websocket_video_stream(websocket: WebSocket, client_id: str):
         await video_streamer.connect(websocket, client_id)
         print(f"[WS] ✅ Video streamer connected for client: {client_id}")
         
-        # Keep connection alive and handle messages
+        # Keep connection alive and handle messages - simplified for stability
         while True:
             try:
                 # Check for pending messages from video streamer
@@ -666,26 +678,27 @@ async def websocket_video_stream(websocket: WebSocket, client_id: str):
                         print(f"[WS] Error sending message to {client_id}: {e}")
                         break
                 
-                # Wait for any message from client (ping/pong) with timeout
+                # Handle client messages with longer timeout for stability
                 try:
-                    data = await asyncio.wait_for(websocket.receive_text(), timeout=0.1)
+                    data = await asyncio.wait_for(websocket.receive_text(), timeout=2.0)  # 2 second timeout
                     try:
                         message = json.loads(data)
                         if message.get("type") == "ping":
                             response = {"type": "pong", "timestamp": time.time()}
                             await websocket.send_text(json.dumps(response))
+                        elif message.get("type") == "pong":
+                            # Client responded to ping
+                            pass
                     except json.JSONDecodeError:
                         # Handle non-JSON messages
                         response = {"type": "pong", "timestamp": time.time()}
                         await websocket.send_text(json.dumps(response))
                 except asyncio.TimeoutError:
-                    # Send ping to keep connection alive
-                    try:
-                        ping_message = {"type": "ping", "timestamp": time.time()}
-                        await websocket.send_text(json.dumps(ping_message))
-                    except Exception as e:
-                        print(f"[WS] Error sending ping to {client_id}: {e}")
-                        break
+                    # No message received, continue to next iteration
+                    pass
+                
+                # Small sleep to prevent CPU spinning
+                await asyncio.sleep(0.05)  # 50ms sleep
                         
             except WebSocketDisconnect:
                 print(f"[WS] Client {client_id} disconnected normally")

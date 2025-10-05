@@ -169,12 +169,12 @@ class VideoProcessor:
                     except Exception:
                         pass
                     
-                    # Skip frames for better performance
+                    # Skip frames for better performance (reduced for smoother streaming)
                     if self.frame_idx % self.frame_skip != 0:
                         continue
                     
-                    # Additional frame skipping for processing performance
-                    if self.frame_idx % Config.PROCESSING_FRAME_SKIP != 0:
+                    # Reduced frame skipping for smoother streaming
+                    if self.frame_idx % max(1, Config.PROCESSING_FRAME_SKIP // 2) != 0:
                         continue
                     
                     # Process frame
@@ -266,13 +266,31 @@ class VideoProcessor:
             
             # Send frame to video streamer for live streaming with safety check
             try:
-                if video_streamer.has_active_connections():
-                    # Minimal logging for RunPod performance
-                    if self.frame_idx % 500 == 0:
+                has_connections = video_streamer.has_active_connections()
+                if has_connections:
+                    # Enhanced logging for debugging
+                    if self.frame_idx % 50 == 0:
                         print(f"[VIDEO] 🎬 Sending frame {self.frame_idx} to video streamer")
-                    video_streamer.update_frame(annotated)
+                        print(f"[VIDEO] Frame shape: {annotated.shape}, dtype: {annotated.dtype}")
+                        print(f"[VIDEO] Active connections: {len(video_streamer.active_connections)}")
+                    
+                    # Ensure frame is in correct format before sending
+                    if annotated.dtype != np.uint8:
+                        annotated = annotated.astype(np.uint8)
+                    
+                    # Ensure frame has correct color channels
+                    if len(annotated.shape) == 3 and annotated.shape[2] == 3:
+                        video_streamer.update_frame(annotated)
+                    else:
+                        print(f"[WARNING] Invalid frame format: {annotated.shape}")
+                else:
+                    # No active connections - skip streaming to save resources
+                    if self.frame_idx % 500 == 0:
+                        print(f"[VIDEO] No WebSocket clients connected - skipping frame {self.frame_idx}")
             except Exception as e:
                 print(f"[WARNING] Video streaming failed: {e}")
+                import traceback
+                traceback.print_exc()
             
             # Output frame with safety check
             try:
