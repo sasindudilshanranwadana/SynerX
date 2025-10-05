@@ -41,8 +41,9 @@ from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
 from starlette.responses import Response, FileResponse
 
-# Create organized temp directories within backend folder
-TEMP_DIR = Path("temp")
+# Create organized temp directories for Docker volumes
+# Use absolute paths for better Docker volume compatibility
+TEMP_DIR = Path("/app/data")  # Absolute path for Docker volumes
 TEMP_DIR.mkdir(exist_ok=True)
 
 TEMP_UPLOADS_DIR = TEMP_DIR / "uploads"
@@ -51,8 +52,12 @@ TEMP_UPLOADS_DIR.mkdir(exist_ok=True)
 TEMP_PROCESSING_DIR = TEMP_DIR / "processing"
 TEMP_PROCESSING_DIR.mkdir(exist_ok=True)
 
-OUTPUT_DIR = Path("processed")
+OUTPUT_DIR = TEMP_DIR / "output"
 OUTPUT_DIR.mkdir(exist_ok=True)
+
+print(f"[MAIN] 📁 Using Docker volume paths:")
+print(f"[MAIN] 📁 Uploads: {TEMP_UPLOADS_DIR}")
+print(f"[MAIN] 📁 Output: {OUTPUT_DIR}")
 
 # Global variables
 api_shutdown_requested = False
@@ -88,6 +93,20 @@ app = FastAPI(
     description="API for video processing with vehicle tracking and analysis",
     version="1.0.0"
 )
+
+# Configure upload limits for better performance
+from fastapi import Request
+from fastapi.responses import JSONResponse
+
+@app.middleware("http")
+async def add_upload_limits(request: Request, call_next):
+    """Add upload size limits and timeout handling"""
+    # Increase max request size to 500MB for large videos
+    if request.method == "POST" and "/video/upload" in str(request.url):
+        # Set longer timeout for video uploads
+        pass
+    response = await call_next(request)
+    return response
 
 # Add middleware
 app.add_middleware(

@@ -43,10 +43,25 @@ def init_video_router(background_jobs, job_lock, job_queue, queue_lock, start_qu
             temp_filename = f"{uuid.uuid4()}{suffix}"
             raw_path = TEMP_UPLOADS_DIR / temp_filename
             
-            with open(raw_path, "wb") as tmp_in:
-                shutil.copyfileobj(file.file, tmp_in)
+            # Optimized chunked upload for large files with progress tracking
+            chunk_size = 8192 * 16  # 128KB chunks for better performance
+            total_size = 0
+            start_time = time.time()
             
-            print(f"[UPLOAD] Step 2: File saved to {raw_path}")
+            with open(raw_path, "wb") as tmp_in:
+                while chunk := file.file.read(chunk_size):
+                    tmp_in.write(chunk)
+                    total_size += len(chunk)
+                    
+                    # Log progress every 10MB
+                    if total_size % (10 * 1024 * 1024) == 0:
+                        elapsed = time.time() - start_time
+                        speed = total_size / elapsed / 1024 / 1024  # MB/s
+                        print(f"[UPLOAD] Progress: {total_size // (1024*1024)}MB uploaded at {speed:.1f}MB/s")
+            
+            upload_time = time.time() - start_time
+            speed = total_size / upload_time / 1024 / 1024  # MB/s
+            print(f"[UPLOAD] Step 2: File saved to {raw_path} ({total_size // (1024*1024)}MB in {upload_time:.1f}s at {speed:.1f}MB/s)")
 
             # 2. Create job ID and add to queue (DB record will be created when processing starts)
             job_id = str(uuid.uuid4())
