@@ -72,7 +72,7 @@ Output will appear in the `/coverage` folder.
 - **`Header.test.tsx`**
   - Verifies branding, link rendering, and responsive layout
 
-### 4.2  API Mocking (If Present)
+### 4.2  API Mocking
 
 - Mock service modules using `vi.mock()` to simulate API calls (if applicable)
 - Check loading states, error messages, and conditional renders
