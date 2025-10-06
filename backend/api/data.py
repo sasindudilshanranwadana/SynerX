@@ -371,4 +371,67 @@ def init_data_router():
         except Exception as e:
             raise HTTPException(status_code=500, detail=f"Error getting video: {str(e)}")
 
+    @router.get("/stream")
+    async def stream_video_by_url(url: str):
+        """
+        Stream video directly by URL with R2 authentication support
+        
+        This endpoint handles both:
+        - R2 storage URLs (using authentication)
+        - External video URLs (direct redirect)
+        
+        Args:
+            url: Direct URL to the video file
+        
+        Returns:
+            Streamed video content or redirect
+        """
+        try:
+            # Validate URL format
+            if not url or not url.startswith(('http://', 'https://')):
+                raise HTTPException(status_code=400, detail="Invalid URL format")
+            
+            # Check if it's an R2 URL (use authentication)
+            if 'r2.dev' in url or 'r2.cloudflarestorage.com' in url:
+                # Extract filename from R2 URL
+                filename = url.split('/')[-1]
+                
+                # Get video from R2 using authentication
+                r2_client = get_r2_client()
+                
+                try:
+                    # Download video from R2 using credentials
+                    response = r2_client.s3_client.get_object(
+                        Bucket=r2_client.bucket_name,
+                        Key=filename
+                    )
+                    
+                    # Stream the video with proper headers
+                    def generate():
+                        for chunk in response['Body'].iter_chunks(chunk_size=8192):
+                            yield chunk
+                    
+                    return StreamingResponse(
+                        generate(),
+                        media_type="video/mp4",
+                        headers={
+                            "Accept-Ranges": "bytes",
+                            "Cache-Control": "public, max-age=3600",
+                            "Content-Disposition": f"inline; filename=\"{filename}\""
+                        }
+                    )
+                    
+                except Exception as e:
+                    print(f"[STREAM] R2 authentication failed: {e}")
+                    raise HTTPException(status_code=500, detail=f"Error accessing R2 video: {str(e)}")
+            
+            else:
+                # For non-R2 URLs, redirect directly
+                from fastapi.responses import RedirectResponse
+                return RedirectResponse(url=url)
+            
+        except Exception as e:
+            print(f"[STREAM] Error streaming video by URL: {e}")
+            raise HTTPException(status_code=500, detail=f"Error streaming video: {str(e)}")
+
     return router
