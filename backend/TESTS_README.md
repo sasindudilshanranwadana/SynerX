@@ -163,3 +163,10 @@ This is the most critical test, verifying the entire end-to-end workflow. It is 
 -   **`teardown_module()` Function**:
     -   This function runs automatically once after all tests in the file have been completed.
     -   Its purpose is to clean up the `processed/` directory, removing any video files generated during the tests to ensure a clean state for the next test run.
+
+
+
+
+ Test Results - Janith
+ <img width="1233" height="560" alt="image" src="https://github.com/user-attachments/assets/0269f954-a814-4c5a-b37a-3520a42d219a" />
+
