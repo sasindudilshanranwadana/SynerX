@@ -311,20 +311,49 @@
           return;
         }
         const file = fileInput.files[0];
+        if (!file || !file.size) {
+          statusEl.textContent = "Error: invalid file";
+          return;
+        }
+
+        // Build FormData without setting Content-Type manually
         const form = new FormData();
         form.append("file", file);
-        statusEl.textContent = "Uploading...";
-        try {
-          const data = await fetchJSON(`${API_BASE}/video/upload`, {
-            method: "POST",
-            body: form,
-          });
-          statusEl.textContent = `Queued job ${data.job_id} (pos ${data.queue_position})`;
-          fileInput.value = "";
-        } catch (e) {
-          console.error(e);
-          statusEl.textContent = `Error: ${e.message}`;
-        }
+
+        // Use XHR to get upload progress and avoid incorrect headers
+        statusEl.textContent = "Uploading... 0%";
+        await new Promise((resolve) => {
+          const xhr = new XMLHttpRequest();
+          xhr.open("POST", `${API_BASE}/video/upload`, true);
+          // Do NOT set Content-Type; the browser will include the correct boundary
+          xhr.upload.onprogress = (evt) => {
+            if (evt.lengthComputable) {
+              const pct = Math.max(1, Math.floor((evt.loaded / evt.total) * 100));
+              statusEl.textContent = `Uploading... ${pct}%`;
+            }
+          };
+          xhr.onreadystatechange = async () => {
+            if (xhr.readyState !== 4) return;
+            try {
+              if (xhr.status >= 200 && xhr.status < 300) {
+                const text = xhr.responseText || "{}";
+                const data = JSON.parse(text);
+                statusEl.textContent = `Queued job ${data.job_id} (pos ${data.queue_position})`;
+                fileInput.value = "";
+              } else {
+                statusEl.textContent = `Error: ${xhr.status} ${xhr.statusText || xhr.responseText}`;
+              }
+            } catch (e) {
+              statusEl.textContent = `Error: ${e.message}`;
+            }
+            resolve();
+          };
+          xhr.onerror = () => {
+            statusEl.textContent = "Network error during upload";
+            resolve();
+          };
+          xhr.send(form);
+        });
       }
 
       // Live jobs updates via WebSocket
