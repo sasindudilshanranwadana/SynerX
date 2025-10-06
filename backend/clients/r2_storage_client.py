@@ -102,7 +102,7 @@ class R2StorageClient:
             
             print(f"[R2] Streaming upload as {unique_filename}...")
             
-            # Upload file stream directly to R2 with proper video streaming headers
+            # Upload file stream directly to R2 with optimized settings
             self.s3_client.upload_fileobj(
                 file_stream,
                 self.bucket_name,
@@ -117,7 +117,13 @@ class R2StorageClient:
                         'video': 'true',
                         'upload_method': 'direct_stream'
                     }
-                }
+                },
+                Config=boto3.s3.transfer.TransferConfig(
+                    multipart_threshold=1024 * 25,  # 25MB
+                    max_concurrency=10,
+                    multipart_chunksize=1024 * 25,
+                    use_threads=True
+                )
             )
             
             # Return the R2 object key (filename) instead of public URL

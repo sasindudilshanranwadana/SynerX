@@ -129,6 +129,13 @@ app.add_middleware(LimitUploadSizeMiddleware, max_upload_size=1024*1024*1024)
 # Mount static files
 app.mount("/videos", StaticFiles(directory=OUTPUT_DIR), name="videos")
 
+# Serve frontend upload page
+@app.get("/fast-upload")
+async def fast_upload_page():
+    """Serve the fast upload page"""
+    from fastapi.responses import FileResponse
+    return FileResponse("frontend-upload.html")
+
 # Queue processing functions
 def start_queue_processor():
     """Start the job queue processor if not already running"""

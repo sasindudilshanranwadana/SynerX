@@ -49,8 +49,14 @@ def init_video_router(background_jobs, job_lock, job_queue, queue_lock, start_qu
             from clients.r2_storage_client import get_r2_client
             r2_client = get_r2_client()
             
-            # Upload file stream directly to R2
+            # Upload file stream directly to R2 with optimized settings
+            print(f"[UPLOAD] Starting R2 upload: {file.filename}")
+            start_time = time.time()
+            
             r2_filename_uploaded = r2_client.upload_video_stream(file.file, r2_filename)
+            
+            upload_time = time.time() - start_time
+            print(f"[UPLOAD] R2 upload completed in {upload_time:.2f}s")
             
             if not r2_filename_uploaded:
                 raise Exception("Failed to upload video to R2 storage")
