@@ -14,6 +14,8 @@ services:
       - ./data:/app/data
       - ./uploads:/app/uploads
       - ./.cache:/app/.cache
+      - ./temp:/app/temp          # For R2 streaming temp files
+      - ./output:/app/output      # For processed videos (temporary)
     restart: unless-stopped
     healthcheck:
       test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:8000/ || exit 1"]
