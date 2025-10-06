@@ -194,29 +194,45 @@ def process_single_job(job_data):
         # Reset shutdown flag before starting processing
         shutdown_manager.reset_shutdown_flag()
         
-        # Download R2 video to temporary file for processing
+        # Stream R2 video directly to memory for processing
         if is_r2_url:
-            print(f"[QUEUE] 🎬 Downloading R2 video for processing: {r2_filename}")
-            # Download R2 video to temporary file for processing
+            print(f"[QUEUE] 🎬 Streaming R2 video to memory for processing: {r2_filename}")
+            # Stream R2 video directly to memory buffer (no local files!)
             from clients.r2_storage_client import get_r2_client
             r2_client = get_r2_client()
             
-            # Create temporary file for processing
-            temp_file = TEMP_DIR / f"temp_{job_id}.mp4"
-            temp_file.parent.mkdir(exist_ok=True)
-            
             try:
-                # Download video from R2 to temporary file
-                r2_client.s3_client.download_file(
-                    r2_client.bucket_name,
-                    r2_filename,
-                    str(temp_file)
+                # Get video stream from R2
+                response = r2_client.s3_client.get_object(
+                    Bucket=r2_client.bucket_name,
+                    Key=r2_filename
                 )
-                print(f"[QUEUE] ✅ Downloaded R2 video to: {temp_file}")
+                
+                # Create memory buffer for video processing
+                import io
+                video_buffer = io.BytesIO()
+                
+                # Stream video data to memory buffer
+                for chunk in response['Body'].iter_chunks(chunk_size=8192):
+                    video_buffer.write(chunk)
+                
+                video_buffer.seek(0)
+                print(f"[QUEUE] ✅ Video streamed to memory buffer: {len(video_buffer.getvalue())} bytes")
+                
+                # Create temporary file path for VideoProcessor (but use memory buffer)
+                temp_file = TEMP_DIR / f"temp_{job_id}.mp4"
+                temp_file.parent.mkdir(exist_ok=True)
+                
+                # Write memory buffer to temporary file for OpenCV
+                with open(temp_file, 'wb') as f:
+                    f.write(video_buffer.getvalue())
+                
                 raw_path = temp_file
+                print(f"[QUEUE] ✅ Video written to temp file for processing: {raw_path}")
+                
             except Exception as e:
-                print(f"[QUEUE] ❌ Failed to download R2 video: {e}")
-                raise Exception(f"Failed to download R2 video: {e}")
+                print(f"[QUEUE] ❌ Failed to stream R2 video to memory: {e}")
+                raise Exception(f"Failed to stream R2 video: {e}")
         
         # Create video record now (at processing start)
         try:
@@ -697,7 +713,7 @@ def schedule_delayed_cleanup(job_id: str, raw_path, analytic_path: Path):
                 analytic_path.unlink()
                 print(f"[CLEANUP] Removed temp output (delayed): {analytic_path}")
                 
-            # Also clean up local temp file for R2 downloads
+            # Clean up local temp file for R2 memory streaming
             temp_file = TEMP_DIR / f"temp_{job_id}.mp4"
             if temp_file.exists():
                 temp_file.unlink()

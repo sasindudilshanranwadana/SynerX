@@ -1,4 +1,4 @@
-from fastapi import APIRouter
+from fastapi import APIRouter, Request
 from fastapi.responses import StreamingResponse
 from clients.supabase_client import supabase_manager
 from clients.r2_storage_client import get_r2_client
@@ -374,7 +374,7 @@ def init_data_router():
     return router
 
 @router.get("/stream")
-async def stream_video_by_filename(filename: str = None, url: str = None):
+async def stream_video_by_filename(filename: str = None, url: str = None, request: Request = None):
     """
     Stream video directly by filename or URL with R2 authentication support
     
@@ -399,25 +399,46 @@ async def stream_video_by_filename(filename: str = None, url: str = None):
             r2_client = get_r2_client()
             
             try:
+                # Get range header for partial content support
+                range_header = request.headers.get('range') if request else None
+                
                 # Download video from R2 using credentials
-                response = r2_client.s3_client.get_object(
-                    Bucket=r2_client.bucket_name,
-                    Key=filename
-                )
+                if range_header:
+                    # Handle range requests for video seeking
+                    response = r2_client.s3_client.get_object(
+                        Bucket=r2_client.bucket_name,
+                        Key=filename,
+                        Range=range_header
+                    )
+                else:
+                    response = r2_client.s3_client.get_object(
+                        Bucket=r2_client.bucket_name,
+                        Key=filename
+                    )
                 
                 # Stream the video with proper headers
                 def generate():
                     for chunk in response['Body'].iter_chunks(chunk_size=8192):
                         yield chunk
                 
+                # Prepare headers
+                headers = {
+                    "Accept-Ranges": "bytes",
+                    "Cache-Control": "public, max-age=3600",
+                    "Content-Disposition": f"inline; filename=\"{filename}\"",
+                    "Content-Type": "video/mp4",
+                    "X-Content-Type-Options": "nosniff"
+                }
+                
+                # Add range response headers if partial content
+                if range_header and 'ContentRange' in response:
+                    headers['Content-Range'] = response['ContentRange']
+                    headers['Content-Length'] = str(response['ContentLength'])
+                
                 return StreamingResponse(
                     generate(),
                     media_type="video/mp4",
-                    headers={
-                        "Accept-Ranges": "bytes",
-                        "Cache-Control": "public, max-age=3600",
-                        "Content-Disposition": f"inline; filename=\"{filename}\""
-                    }
+                    headers=headers
                 )
                 
             except Exception as e:
