@@ -38,53 +38,46 @@ def init_video_router(background_jobs, job_lock, job_queue, queue_lock, start_qu
             start_time = time.time()
             print("[UPLOAD] Step 1: File received")
             
-            # 1. save raw upload to organized temp directory
+            # 1. Upload directly to R2 storage (no temp files!)
             suffix = Path(file.filename).suffix or ".mp4"
-            temp_filename = f"{uuid.uuid4()}{suffix}"
-            raw_path = TEMP_UPLOADS_DIR / temp_filename
-            
-            # Optimized chunked upload for large files with progress tracking
-            chunk_size = 8192 * 16  # 128KB chunks for better performance
-            total_size = 0
-            start_time = time.time()
-            
-            with open(raw_path, "wb") as tmp_in:
-                while chunk := file.file.read(chunk_size):
-                    tmp_in.write(chunk)
-                    total_size += len(chunk)
-                    
-                    # Log progress every 10MB
-                    if total_size % (10 * 1024 * 1024) == 0:
-                        elapsed = time.time() - start_time
-                        speed = total_size / elapsed / 1024 / 1024  # MB/s
-                        print(f"[UPLOAD] Progress: {total_size // (1024*1024)}MB uploaded at {speed:.1f}MB/s")
-            
-            upload_time = time.time() - start_time
-            speed = total_size / upload_time / 1024 / 1024  # MB/s
-            print(f"[UPLOAD] Step 2: File saved to {raw_path} ({total_size // (1024*1024)}MB in {upload_time:.1f}s at {speed:.1f}MB/s)")
-
-            # 2. Create job ID and add to queue (DB record will be created when processing starts)
             job_id = str(uuid.uuid4())
+            r2_filename = f"temp_{job_id}{suffix}"
+            
+            print(f"[UPLOAD] Step 2: Uploading directly to R2 storage...")
+            
+            # Upload to R2 using authentication
+            from clients.r2_storage_client import get_r2_client
+            r2_client = get_r2_client()
+            
+            # Upload file stream directly to R2
+            r2_filename_uploaded = r2_client.upload_video_stream(file.file, r2_filename)
+            
+            if not r2_filename_uploaded:
+                raise Exception("Failed to upload video to R2 storage")
+            
+            print(f"[UPLOAD] Step 3: Video uploaded to R2: {r2_filename_uploaded}")
+
+            # 2. Create job with R2 URL instead of local path
             analytic_path = OUTPUT_DIR / f"{job_id}_out{suffix}"
             
-            # Initialize job status
+            # Initialize job status with R2 filename
             with job_lock:
                 background_jobs[job_id] = {
                     "status": "queued",
                     "start_time": time.time(),
                     "file_name": file.filename,
-                    "temp_filename": temp_filename,  # Store the actual temp filename
+                    "r2_filename": r2_filename_uploaded,  # Store R2 filename instead of URL
                     "progress": 0,
-                    "message": "Video added to processing queue...",
+                    "message": "Video uploaded to R2 storage, added to processing queue...",
                     "result": None,
                     "error": None,
                     "video_id": None
                 }
             
-            # Add job to queue (video_id will be set when processing actually begins)
+            # Add job to queue with R2 filename
             job_data = {
                 "job_id": job_id,
-                "raw_path": raw_path,
+                "r2_filename": r2_filename_uploaded,  # Use R2 filename instead of URL
                 "analytic_path": analytic_path,
                 "suffix": suffix,
                 "start_time": time.time(),
@@ -103,28 +96,23 @@ def init_video_router(background_jobs, job_lock, job_queue, queue_lock, start_qu
                 print(f"[UPLOAD] Warning: Failed to start queue processor: {e}")
                 # Continue anyway, the job is still added to queue
             
+            upload_time = time.time() - start_time
+            print(f"[UPLOAD] ✅ Upload completed in {upload_time:.2f}s")
+            
             # Return immediately with job ID and queue position
             return {
                 "status": "queued",
                 "job_id": job_id,
                 "queue_position": queue_position,
-                "message": f"Video added to processing queue (position: {queue_position})",
-                "file_name": file.filename
+                "message": f"Video uploaded to R2 storage and added to processing queue (position: {queue_position})",
+                "file_name": file.filename,
+                "r2_filename": r2_filename_uploaded,
+                "upload_time": upload_time
             }
         except Exception as e:
             print(f"[UPLOAD] Error: {e}")
-            # Best-effort cleanup of temp file if it was created
-            try:
-                from pathlib import Path as _Path
-                if 'raw_path' in locals():
-                    _p = _Path(str(raw_path))
-                    if _p.exists():
-                        _p.unlink()
-                        print(f"[UPLOAD] Cleaned temp file after failure: {_p}")
-            except Exception as _ce:
-                print(f"[UPLOAD] Warning: failed to cleanup temp file: {_ce}")
             import traceback
             traceback.print_exc()
-            raise HTTPException(status_code=500, detail=f"Upload failed: {str(e)}")
+            raise HTTPException(status_code=500, detail=f"R2 upload failed: {str(e)}")
 
     return router

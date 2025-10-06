@@ -172,7 +172,17 @@ def process_job_queue():
 def process_single_job(job_data):
     """Process a single video job with video-based schema"""
     job_id = job_data['job_id']
-    raw_path = job_data['raw_path']
+    
+    # Handle both R2 filenames and local paths for backward compatibility
+    if 'r2_filename' in job_data:
+        r2_filename = job_data['r2_filename']  # R2 filename for cloud processing
+        is_r2_url = True
+        # For R2 processing, we will use the streaming endpoint directly
+        raw_path = None  # Will be set to streaming URL
+    else:
+        raw_path = job_data['raw_path']  # Local path for backward compatibility
+        is_r2_url = False
+    
     analytic_path = job_data['analytic_path']
     suffix = job_data['suffix']
     start_time = job_data['start_time']
@@ -184,15 +194,50 @@ def process_single_job(job_data):
         # Reset shutdown flag before starting processing
         shutdown_manager.reset_shutdown_flag()
         
+        # Download R2 video to temporary file for processing
+        if is_r2_url:
+            print(f"[QUEUE] 🎬 Downloading R2 video for processing: {r2_filename}")
+            # Download R2 video to temporary file for processing
+            from clients.r2_storage_client import get_r2_client
+            r2_client = get_r2_client()
+            
+            # Create temporary file for processing
+            temp_file = TEMP_DIR / f"temp_{job_id}.mp4"
+            temp_file.parent.mkdir(exist_ok=True)
+            
+            try:
+                # Download video from R2 to temporary file
+                r2_client.s3_client.download_file(
+                    r2_client.bucket_name,
+                    r2_filename,
+                    str(temp_file)
+                )
+                print(f"[QUEUE] ✅ Downloaded R2 video to: {temp_file}")
+                raw_path = temp_file
+            except Exception as e:
+                print(f"[QUEUE] ❌ Failed to download R2 video: {e}")
+                raise Exception(f"Failed to download R2 video: {e}")
+        
         # Create video record now (at processing start)
         try:
-            file_size = os.path.getsize(raw_path) if raw_path.exists() else 0
-            # Use the original filename captured at upload time, not the temp uuid name
-            try:
-                with job_lock:
-                    original_display_name = background_jobs.get(job_id, {}).get('file_name', raw_path.name)
-            except Exception:
-                original_display_name = raw_path.name
+            # Handle file size and metadata for both streaming URLs and local paths
+            if is_r2_url:
+                # For R2 streaming URLs, we can't get file size directly, use 0 as placeholder
+                file_size = 0
+                try:
+                    with job_lock:
+                        original_display_name = background_jobs.get(job_id, {}).get('file_name', 'uploaded_video')
+                except Exception:
+                    original_display_name = 'uploaded_video'
+                print(f"[QUEUE] Processing R2 video via streaming: {raw_path}")
+            else:
+                # For local paths, get file size and metadata
+                file_size = os.path.getsize(raw_path) if Path(raw_path).exists() else 0
+                try:
+                    with job_lock:
+                        original_display_name = background_jobs.get(job_id, {}).get('file_name', Path(raw_path).name)
+                except Exception:
+                    original_display_name = Path(raw_path).name
             # Compute duration using OpenCV (fallback to 0 on failure)
             duration_seconds = 0.0
             try:
@@ -207,11 +252,12 @@ def process_single_job(job_data):
                 print(f"[QUEUE] Warning: failed to compute duration for {raw_path}: {e}")
             video_data = {
                 "video_name": original_display_name,
-                "original_filename": raw_path.name,
+                "original_filename": raw_path.name if not is_r2_url else original_display_name,
                 "file_size": file_size,
                 "status": "processing",
                 "processing_start_time": datetime.now().isoformat(),
-                "duration_seconds": duration_seconds
+                "duration_seconds": duration_seconds,
+                "source_url": f"r2://{r2_filename}" if is_r2_url else None  # Store R2 filename if available
             }
             video_id = supabase_manager.create_video_record(video_data)
             if not video_id:
@@ -534,6 +580,21 @@ def process_single_job(job_data):
         else:
             # Immediate cleanup for normal completion/failure
             cleanup_job_files(job_id, raw_path, analytic_path)
+        
+        # Clean up R2 temp file after processing
+        if is_r2_url:
+            try:
+                from clients.r2_storage_client import get_r2_client
+                r2_client = get_r2_client()
+                
+                # Delete the temp file from R2 using the filename
+                r2_client.delete_video(r2_filename)
+                print(f"[QUEUE] 🧹 Cleaned up R2 temp file: {r2_filename}")
+                
+                # Note: Local temp file cleanup is handled by the delayed cleanup
+                # to avoid file lock issues on Windows
+            except Exception as e:
+                print(f"[QUEUE] ⚠️ Failed to clean R2 temp file {r2_filename}: {e}")
 
 def set_processing_start_time():
     """Set the processing start time"""
@@ -602,31 +663,45 @@ def cleanup_temp_files():
     except Exception as e:
         print(f"[WARNING] Error during temp file cleanup: {e}")
 
-def cleanup_job_files(job_id: str, raw_path: Path, analytic_path: Path):
+def cleanup_job_files(job_id: str, raw_path, analytic_path: Path):
     """Clean up job files immediately (for normal completion/failure)"""
     try:
-        if raw_path.exists():
+        # Only clean up local files, not streaming URLs
+        if isinstance(raw_path, Path) and raw_path.exists():
             raw_path.unlink()
             print(f"[CLEANUP] Removed temp upload: {raw_path}")
+        elif isinstance(raw_path, str):
+            print(f"[CLEANUP] Skipping cleanup for streaming URL: {raw_path}")
+        
         if analytic_path.exists():
             analytic_path.unlink()
             print(f"[CLEANUP] Removed temp output: {analytic_path}")
     except Exception as e:
         print(f"[WARNING] Failed to clean up files for job {job_id}: {e}")
 
-def schedule_delayed_cleanup(job_id: str, raw_path: Path, analytic_path: Path):
+def schedule_delayed_cleanup(job_id: str, raw_path, analytic_path: Path):
     """Schedule delayed cleanup for shutdown scenarios to avoid file lock issues"""
     def delayed_cleanup():
         import time
         # Wait a bit for video processing to completely stop
         time.sleep(2)
         try:
-            if raw_path.exists():
+            # Only clean up local files, not streaming URLs
+            if isinstance(raw_path, Path) and raw_path.exists():
                 raw_path.unlink()
                 print(f"[CLEANUP] Removed temp upload (delayed): {raw_path}")
+            elif isinstance(raw_path, str):
+                print(f"[CLEANUP] Skipping delayed cleanup for streaming URL: {raw_path}")
+            
             if analytic_path.exists():
                 analytic_path.unlink()
                 print(f"[CLEANUP] Removed temp output (delayed): {analytic_path}")
+                
+            # Also clean up local temp file for R2 downloads
+            temp_file = TEMP_DIR / f"temp_{job_id}.mp4"
+            if temp_file.exists():
+                temp_file.unlink()
+                print(f"[CLEANUP] Removed local temp file (delayed): {temp_file}")
         except Exception as e:
             print(f"[WARNING] Failed to clean up files for job {job_id} (delayed): {e}")
     

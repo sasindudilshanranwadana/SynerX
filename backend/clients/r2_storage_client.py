@@ -83,6 +83,58 @@ class R2StorageClient:
             print(f"[R2] ❌ Unexpected error: {e}")
             return None
     
+    def upload_video_stream(self, file_stream, file_name: str) -> Optional[str]:
+        """
+        Upload a video file directly from stream to R2 storage (no temp files!)
+        
+        Args:
+            file_stream: File stream object (e.g., from FastAPI UploadFile)
+            file_name: Filename for the uploaded file
+            
+        Returns:
+            Public URL of the uploaded file, or None if upload failed
+        """
+        try:
+            # Generate unique filename to avoid conflicts
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            name_parts = Path(file_name).stem, Path(file_name).suffix
+            unique_filename = f"{name_parts[0]}_{timestamp}{name_parts[1]}"
+            
+            print(f"[R2] Streaming upload as {unique_filename}...")
+            
+            # Upload file stream directly to R2 with proper video streaming headers
+            self.s3_client.upload_fileobj(
+                file_stream,
+                self.bucket_name,
+                unique_filename,
+                ExtraArgs={
+                    'ContentType': 'video/mp4',
+                    'ACL': 'public-read',  # Make file publicly accessible
+                    'CacheControl': 'public, max-age=31536000',  # Cache for 1 year
+                    'ContentDisposition': 'inline',  # Display inline, not download
+                    'Metadata': {
+                        'streaming': 'true',
+                        'video': 'true',
+                        'upload_method': 'direct_stream'
+                    }
+                }
+            )
+            
+            # Return the R2 object key (filename) instead of public URL
+            # This follows the same pattern as processed videos
+            print(f"[R2] ✅ Direct stream upload successful: {unique_filename}")
+            return unique_filename
+            
+        except NoCredentialsError:
+            print("[R2] ❌ Error: Invalid credentials")
+            return None
+        except ClientError as e:
+            print(f"[R2] ❌ Error uploading stream: {e}")
+            return None
+        except Exception as e:
+            print(f"[R2] ❌ Unexpected error in stream upload: {e}")
+            return None
+
     def delete_video(self, file_name: str) -> bool:
         """
         Delete a video file from R2 storage

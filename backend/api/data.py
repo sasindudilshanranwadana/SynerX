@@ -371,24 +371,63 @@ def init_data_router():
         except Exception as e:
             raise HTTPException(status_code=500, detail=f"Error getting video: {str(e)}")
 
-    @router.get("/stream")
-    async def stream_video_by_url(url: str):
-        """
-        Stream video directly by URL with R2 authentication support
+    return router
+
+@router.get("/stream")
+async def stream_video_by_filename(filename: str = None, url: str = None):
+    """
+    Stream video directly by filename or URL with R2 authentication support
+    
+    This endpoint handles both:
+    - R2 storage filenames (using authentication) - NEW
+    - R2 storage URLs (using authentication) - LEGACY
+    - External video URLs (direct redirect) - LEGACY
+    
+    Args:
+        filename: R2 filename for direct streaming
+        url: Direct URL to the video file (legacy support)
+    
+    Returns:
+        Streamed video content or redirect
+    """
+    try:
+        # Handle new filename-based streaming (preferred)
+        if filename:
+            print(f"[STREAM] Streaming R2 video by filename: {filename}")
+            
+            # Get video from R2 using authentication
+            r2_client = get_r2_client()
+            
+            try:
+                # Download video from R2 using credentials
+                response = r2_client.s3_client.get_object(
+                    Bucket=r2_client.bucket_name,
+                    Key=filename
+                )
+                
+                # Stream the video with proper headers
+                def generate():
+                    for chunk in response['Body'].iter_chunks(chunk_size=8192):
+                        yield chunk
+                
+                return StreamingResponse(
+                    generate(),
+                    media_type="video/mp4",
+                    headers={
+                        "Accept-Ranges": "bytes",
+                        "Cache-Control": "public, max-age=3600",
+                        "Content-Disposition": f"inline; filename=\"{filename}\""
+                    }
+                )
+                
+            except Exception as e:
+                print(f"[STREAM] R2 authentication failed for filename {filename}: {e}")
+                raise HTTPException(status_code=500, detail=f"Error accessing R2 video: {str(e)}")
         
-        This endpoint handles both:
-        - R2 storage URLs (using authentication)
-        - External video URLs (direct redirect)
-        
-        Args:
-            url: Direct URL to the video file
-        
-        Returns:
-            Streamed video content or redirect
-        """
-        try:
+        # Handle legacy URL-based streaming
+        elif url:
             # Validate URL format
-            if not url or not url.startswith(('http://', 'https://')):
+            if not url.startswith(('http://', 'https://')):
                 raise HTTPException(status_code=400, detail="Invalid URL format")
             
             # Check if it's an R2 URL (use authentication)
@@ -429,9 +468,10 @@ def init_data_router():
                 # For non-R2 URLs, redirect directly
                 from fastapi.responses import RedirectResponse
                 return RedirectResponse(url=url)
-            
-        except Exception as e:
-            print(f"[STREAM] Error streaming video by URL: {e}")
-            raise HTTPException(status_code=500, detail=f"Error streaming video: {str(e)}")
-
-    return router
+        
+        else:
+            raise HTTPException(status_code=400, detail="Either filename or url parameter required")
+        
+    except Exception as e:
+        print(f"[STREAM] Error streaming video: {e}")
+        raise HTTPException(status_code=500, detail=f"Error streaming video: {str(e)}")
