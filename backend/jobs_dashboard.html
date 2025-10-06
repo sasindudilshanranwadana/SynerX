@@ -314,17 +314,40 @@
         const form = new FormData();
         form.append("file", file);
         statusEl.textContent = "Uploading...";
-        try {
-          const data = await fetchJSON(`${API_BASE}/video/upload`, {
-            method: "POST",
-            body: form,
-          });
-          statusEl.textContent = `Queued job ${data.job_id} (pos ${data.queue_position})`;
-          fileInput.value = "";
-        } catch (e) {
-          console.error(e);
-          statusEl.textContent = `Error: ${e.message}`;
-        }
+        
+        // Use XHR to get upload progress feedback
+        const xhr = new XMLHttpRequest();
+        xhr.open("POST", `${API_BASE}/video/upload`, true);
+        
+        xhr.upload.onprogress = (e) => {
+          if (e.lengthComputable) {
+            const pct = Math.round((e.loaded / e.total) * 100);
+            statusEl.textContent = `Uploading... ${pct}%`;
+          } else {
+            statusEl.textContent = "Uploading...";
+          }
+        };
+        
+        xhr.onload = () => {
+          if (xhr.status >= 200 && xhr.status < 300) {
+            try {
+              const data = JSON.parse(xhr.responseText || "{}");
+              statusEl.textContent = `Queued job ${data.job_id} (pos ${data.queue_position})`;
+              fileInput.value = "";
+            } catch (err) {
+              console.error(err);
+              statusEl.textContent = "Error: Unexpected response";
+            }
+          } else {
+            statusEl.textContent = `Error: ${xhr.status} ${xhr.statusText}`;
+          }
+        };
+        
+        xhr.onerror = () => {
+          statusEl.textContent = "Network error during upload.";
+        };
+        
+        xhr.send(form);
       }
 
       // Live jobs updates via WebSocket
@@ -389,7 +412,11 @@
       function renderJobs(jobs) {
         const tbody = document.getElementById("jobsBody");
         tbody.innerHTML = "";
-        jobs.sort((a, b) => (a.status === "processing" ? -1 : 1));
+        // Prioritize processing, then queued, then others for stable ordering
+        jobs.sort((a, b) => {
+          const rank = (s) => (s === "processing" ? 0 : s === "queued" ? 1 : 2);
+          return rank(a.status) - rank(b.status);
+        });
         for (const j of jobs) {
           const tr = document.createElement("tr");
           const pillClass = (s) =>
@@ -472,6 +499,11 @@
           await fetch(`${API_BASE}/jobs/clear-completed`, { method: "POST" });
         } catch {}
         refreshJobs();
+      }
+
+      // Helper to refresh job list (restarts the WS connection)
+      function refreshJobs() {
+        startJobsSocket();
       }
 
       async function shutdownJob(jobId) {
