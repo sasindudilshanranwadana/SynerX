@@ -41,9 +41,9 @@ from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
 from starlette.responses import Response, FileResponse
 
-# Create organized temp directories for Docker volumes
-# Use absolute paths for better Docker volume compatibility
-TEMP_DIR = Path("/app/data")  # Absolute path for Docker volumes
+# Create organized temp directories for local development
+# Use relative paths for local development compatibility
+TEMP_DIR = Path("temp")  # Relative path for local development
 TEMP_DIR.mkdir(exist_ok=True)
 
 TEMP_UPLOADS_DIR = TEMP_DIR / "uploads"
