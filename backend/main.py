@@ -85,7 +85,8 @@ app.add_middleware(
         "http://localhost:8000",      # current backend
         "http://localhost:5500",      # Live server
         "https://synerx.netlify.app", # production frontend
-        "https://yourdomain.com",     # Add production domain here
+        "https://yourdomain.com",   
+        "https://15ya7qeg13okk1-8000.proxy.runpod.net"# Add production domain here
         # Add more domains as needed
     ],  
     allow_credentials=True,  # Enable credentials for video streaming

@@ -318,6 +318,8 @@
         // Use XHR to get upload progress feedback
         const xhr = new XMLHttpRequest();
         xhr.open("POST", `${API_BASE}/video/upload`, true);
+        // Allow long uploads (15 minutes)
+        xhr.timeout = 900000;
         
         xhr.upload.onprogress = (e) => {
           if (e.lengthComputable) {
@@ -339,12 +341,17 @@
               statusEl.textContent = "Error: Unexpected response";
             }
           } else {
-            statusEl.textContent = `Error: ${xhr.status} ${xhr.statusText}`;
+            const body = (xhr.responseText || "").slice(0, 500);
+            statusEl.textContent = `Error: ${xhr.status} ${xhr.statusText}${body ? ` - ${body}` : ""}`;
           }
         };
         
         xhr.onerror = () => {
           statusEl.textContent = "Network error during upload.";
+        };
+        
+        xhr.ontimeout = () => {
+          statusEl.textContent = "Upload timed out (proxy or network). Try a smaller file or resume later.";
         };
         
         xhr.send(form);
