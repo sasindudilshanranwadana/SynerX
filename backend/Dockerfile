@@ -73,7 +73,6 @@ USER appuser
 
 # COPY and make the new startup script executable
 COPY start.sh /app/start.sh
-RUN chmod +x /app/start.sh
 
 # The EXPOSE and HEALTHCHECK commands are no longer needed, as RunPod
 # manages this externally via the PORT and PORT_HEALTH variables.
