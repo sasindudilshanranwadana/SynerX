@@ -17,20 +17,20 @@ class Config:
     SOURCE_POLYGON = np.array([(422, 10), (594, 16), (801, 665), (535, 649)])  # Detection area polygon coordinates
     STOP_ZONE_POLYGON = np.array([(507, 199), (681, 209), (751, 555), (484, 541)])  # Stop zone polygon coordinates
     
-    # Thresholds
+    # Thresholds - Optimized for Stable Tracking
     TARGET_WIDTH, TARGET_HEIGHT = 50, 130  # Target dimensions for perspective transformation
-    DETECTION_CONFIDENCE = 0.3  # Minimum confidence threshold for object detection (Range: 0.1-0.9, Recommended: 0.3-0.5 for balance)
-    NMS_THRESHOLD = 0.3  # Non-Maximum Suppression threshold to remove duplicate detections (Range: 0.1-0.7, Recommended: 0.4-0.5 for best results)
+    DETECTION_CONFIDENCE = 0.3  # Minimum confidence threshold for object detection (Reduced: 0.3 for more stable tracking)
+    NMS_THRESHOLD = 0.4  # Non-Maximum Suppression threshold to remove duplicate detections (Reduced: 0.4 for better tracking stability)
     VELOCITY_THRESHOLD = 0.6  # Threshold to determine if vehicle is stationary in pixels/frame (Range: 0.1-2.0, Recommended: 0.5-1.0 based on video resolution)
-    FRAME_BUFFER = 10  # Number of frames to buffer for velocity calculation (Range: 5-30, Recommended: 10-15 for stable tracking)
-    DETECTION_OVERLAP_THRESHOLD = 0.5  # IoU threshold for merging overlapping detections (Range: 0.3-0.8, Recommended: 0.5-0.6 for optimal merging)
-    CLASS_CONFIDENCE_THRESHOLD = 0.7  # Confidence threshold for stable class assignment (Range: 0.5-0.9, Recommended: 0.6-0.8 for reliable classification)
-    CLASS_HISTORY_FRAMES = 10  # Number of frames to track for class consistency (Range: 3-20, Recommended: 5-15 frames)
+    FRAME_BUFFER = 10  # Number of frames to buffer for velocity calculation (Increased: 10 for more stable tracking)
+    DETECTION_OVERLAP_THRESHOLD = 0.3  # IoU threshold for merging overlapping detections (Reduced: 0.3 for better tracking)
+    CLASS_CONFIDENCE_THRESHOLD = 0.6  # Confidence threshold for stable class assignment (Reduced: 0.6 for faster classification)
+    CLASS_HISTORY_FRAMES = 5  # Number of frames to track for class consistency (Reduced: 5 for faster classification)
     
-    # Video Settings
-    TARGET_FPS = 25  # Target frames per second for output video (Range: 15-60, Recommended: 25-30 for real-time processing)
+    # Video Settings - Optimized for Performance
+    TARGET_FPS = 15  # Target frames per second for output video (Optimized: 15 for faster processing)
     FPS_UPDATE_INTERVAL = 30  # Interval (in frames) to update FPS display (Range: 10-100, Recommended: 30-60 frames)
-    PROCESSING_FRAME_SKIP = 1  # Skip every N frames during processing (1 = process all frames, 2 = skip every other frame)
+    PROCESSING_FRAME_SKIP = 2  # Skip every N frames during processing (Optimized: 2 = skip every other frame for 2x speed)
     
     # Visual Settings
     ANNOTATION_THICKNESS = 1  # Thickness of bounding box lines (Range: 1-5, Recommended: 2-3 for visibility)
@@ -49,7 +49,7 @@ class Config:
     CLASS_NAMES = {2: "car", 3: "motorcycle", 5: "bus", 7: "truck"}  # YOLO class ID to vehicle type mapping
     
     # Display Settings (for API mode)
-    ENABLE_DISPLAY = False  # Whether to show live video window in API mode
+    ENABLE_DISPLAY = True  # Whether to show live video window in API mode
     MAX_DISPLAY_WIDTH = 1280  # Maximum width for display window (resize if larger)
     DISPLAY_FRAME_SKIP = 1  # Skip every N frames for better performance (1 = no skip, 2 = skip every other frame)
     DISPLAY_WAIT_KEY_DELAY = 1  # Delay in milliseconds for cv2.waitKey() (1 = responsive, 0 = fastest)
@@ -74,4 +74,24 @@ class Config:
         STREAMING_INTERPOLATION = cv2.INTER_LINEAR  # Better quality interpolation
     except ImportError:
         STREAMING_INTERPOLATION = None  # Will use alternative method
+    
+    # Performance Optimization Settings
+    ENABLE_FP16_PRECISION = True  # Enable half-precision for faster inference
+    ENABLE_MODEL_WARMUP = True  # Enable model warmup for first inference
+    MEMORY_CLEAR_INTERVAL = 100  # Clear GPU memory every N frames
+    # ANNOTATION_SKIP_FRAMES = 3  # Disabled for consistent label display
+    ENABLE_BATCH_PROCESSING = False  # Enable batch processing (experimental)
+    MAX_DETECTIONS_PER_FRAME = 50  # Limit detections per frame for performance
+    
+    # Tracking Stability Settings
+    ENABLE_TRACKING_SMOOTHING = True  # Enable tracking smoothing for stable labels
+    TRACKING_HISTORY_LENGTH = 10  # Number of frames to keep tracking history
+    MIN_TRACKING_CONFIDENCE = 0.2  # Minimum confidence to maintain tracking
+    TRACKING_PREDICTION_FRAMES = 3  # Number of frames to predict when tracking is lost
+    
+    
+    # Weather API Performance Settings
+    ENABLE_WEATHER_API = True  # Enable weather API calls (disable for maximum performance)
+    WEATHER_CACHE_DURATION = 1800  # Weather cache duration in seconds (30 minutes)
+    WEATHER_API_TIMEOUT = 5  # Weather API timeout in seconds
     

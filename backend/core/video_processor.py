@@ -59,6 +59,11 @@ class VideoProcessor:
         self.start_time = time.time()
         self.frame_gen = None
         self.frame_skip = 1  # Always process all frames for API mode
+        self._last_detections = sv.Detections.empty()  # Store last detections for skipped frames
+        
+        # Tracking stability variables
+        self._tracking_history = {}  # Store tracking history for smoothing
+        self._stable_labels = {}  # Store stable labels to prevent flickering
     
     def initialize(self):
         """Initialize all components for video processing with video-based schema"""
@@ -109,15 +114,33 @@ class VideoProcessor:
             raise RuntimeError("Could not read first frame")
     
     def _initialize_components(self, device):
-        """Initialize all processing components"""
+        """Initialize all processing components with performance optimizations"""
         self.heat_map = HeatMapGenerator(self.video_info.resolution_wh)
         self.vehicle_tracker = VehicleTracker()
         self.data_manager = DataManager()
         
-        # Setup model and tracking with device selection
+        # Setup model and tracking with device selection and performance optimizations
+        print(f"[INFO] Loading YOLO model: {Config.MODEL_PATH}")
         self.model = YOLO(Config.MODEL_PATH)
         self.model.to(device)
         self.model.fuse()
+        
+        # Performance optimizations
+        if Config.ENABLE_FP16_PRECISION and device == "cuda":
+            print("[INFO] Enabling FP16 precision for faster inference")
+            self.model.half()
+        
+        if Config.ENABLE_MODEL_WARMUP:
+            print("[INFO] Warming up model for optimal first inference")
+            # Warmup with dummy input
+            dummy_input = np.zeros((640, 640, 3), dtype=np.uint8)
+            try:
+                _ = self.model(dummy_input, verbose=False)
+                print("[INFO] Model warmup completed")
+            except Exception as e:
+                print(f"[WARNING] Model warmup failed: {e}")
+        
+        # Initialize tracker with basic settings
         self.tracker = sv.ByteTrack(frame_rate=self.video_info.fps)
 
         # TEMPORARILY DISABLED - License plate model for performance
@@ -125,7 +148,7 @@ class VideoProcessor:
         # self.plate_model.to(device)
         # self.plate_model.fuse()
         
-        print(f"[INFO] Models loaded on {device.upper()}")
+        print(f"[INFO] Models loaded on {device.upper()} with performance optimizations")
     
     def _setup_zones_and_transformer(self):
         """Setup detection zones and view transformer"""
@@ -169,17 +192,22 @@ class VideoProcessor:
                     except Exception:
                         pass
                     
-                    # Skip frames for better performance
+                    # Skip frames for better performance (processing only, not output)
                     if self.frame_idx % self.frame_skip != 0:
                         continue
                     
-                    # Additional frame skipping for processing performance
-                    if self.frame_idx % Config.PROCESSING_FRAME_SKIP != 0:
-                        continue
+                    # Additional frame skipping for processing performance (YOLO detection only)
+                    should_process_detection = (self.frame_idx % Config.PROCESSING_FRAME_SKIP == 0)
                     
                     # Process frame
-                    if not self._process_frame(frame, sink):
+                    if not self._process_frame(frame, sink, should_process_detection):
                         break
+                    
+                    # Memory optimization - clear GPU memory periodically
+                    if self.frame_idx % Config.MEMORY_CLEAR_INTERVAL == 0:
+                        self.device_manager.clear_gpu_memory()
+                        if self.frame_idx % (Config.MEMORY_CLEAR_INTERVAL * 5) == 0:
+                            print(f"[INFO] Memory cleared at frame {self.frame_idx}")
                     
                     # Check for shutdown after processing each frame
                     if shutdown_manager.check_shutdown():
@@ -195,11 +223,17 @@ class VideoProcessor:
             self._make_video_streamable()
             self._finalize_processing()
     
-    def _process_frame(self, frame, sink):
+    def _process_frame(self, frame, sink, should_process_detection=True):
         """Process a single frame"""
         try:
-            # Detection and tracking
-            detections = self._perform_detection_and_tracking(frame)
+            # Detection and tracking (only when needed for performance)
+            if should_process_detection:
+                detections = self._perform_detection_and_tracking(frame)
+                # Store detections for reuse in skipped frames
+                self._last_detections = detections
+            else:
+                # Use previous detections for skipped frames (maintains visual consistency)
+                detections = getattr(self, '_last_detections', sv.Detections.empty())
 
             # License plate blurring is temporarily disabled for performance
             processed_frame = frame.copy()
@@ -207,7 +241,12 @@ class VideoProcessor:
             # Apply tracker ID offset for global uniqueness with safety check
             if hasattr(detections, 'tracker_id') and detections.tracker_id is not None and len(detections.tracker_id) > 0:
                 try:
-                    detections.tracker_id = [tid + self.vehicle_processor.tracker_id_offset for tid in detections.tracker_id]
+                    # Only apply offset if the IDs are not already offset
+                    # Check if any ID is less than the offset (indicating they need offset)
+                    min_id = min(detections.tracker_id)
+                    if min_id < self.vehicle_processor.tracker_id_offset:
+                        detections.tracker_id = [tid + self.vehicle_processor.tracker_id_offset for tid in detections.tracker_id]
+                        print(f"[DEBUG] Applied offset: {min_id} -> {min(detections.tracker_id)}")
                 except Exception as e:
                     print(f"[WARNING] Tracker ID offset failed: {e}")
                     # Create empty detections if tracker ID processing fails
@@ -239,6 +278,12 @@ class VideoProcessor:
                 top_labels, bottom_labels = self.vehicle_processor.process_detections(
                     detections, anchor_pts, transformed_pts
                 )
+                
+                # Apply tracking smoothing for stable labels
+                if Config.ENABLE_TRACKING_SMOOTHING:
+                    top_labels, bottom_labels = self._smooth_tracking_labels(
+                        detections, top_labels, bottom_labels
+                    )
             except Exception as e:
                 print(f"[WARNING] Detection processing failed: {e}")
                 top_labels, bottom_labels = [], []
@@ -246,9 +291,15 @@ class VideoProcessor:
             # Data is now collected during processing and saved at the end
             # No need to save during processing for better performance
             
-            # Annotate frame with safety check
+            # Annotate frame with safety check and performance optimization
             try:
-                annotated = self.annotation_manager.annotate_frame(processed_frame, detections, top_labels, bottom_labels)
+                # Always annotate frames but with optimized approach
+                if len(detections) > 0:
+                    # Use full annotation for better label consistency
+                    annotated = self.annotation_manager.annotate_frame(processed_frame, detections, top_labels, bottom_labels)
+                else:
+                    # No detections, just copy frame
+                    annotated = processed_frame.copy()
             except Exception as e:
                 print(f"[WARNING] Frame annotation failed: {e}")
                 annotated = processed_frame
@@ -264,13 +315,15 @@ class VideoProcessor:
             except Exception as e:
                 print(f"[WARNING] Stop zone drawing failed: {e}")
             
-            # Send frame to video streamer for live streaming with safety check
+            # Send frame to video streamer for live streaming with performance optimization
             try:
                 if video_streamer.has_active_connections():
-                    # Minimal logging for RunPod performance
-                    if self.frame_idx % 500 == 0:
-                        print(f"[VIDEO] 🎬 Sending frame {self.frame_idx} to video streamer")
-                    video_streamer.update_frame(annotated)
+                    # Only send frames at reduced rate for performance
+                    if self.frame_idx % Config.STREAMING_FRAME_SKIP == 0:
+                        # Minimal logging for performance
+                        if self.frame_idx % 1000 == 0:
+                            print(f"[VIDEO] 🎬 Sending frame {self.frame_idx} to video streamer")
+                        video_streamer.update_frame(annotated)
             except Exception as e:
                 print(f"[WARNING] Video streaming failed: {e}")
             
@@ -366,16 +419,25 @@ class VideoProcessor:
             print(f"[ERROR] Failed to make video streamable: {e}")
     
     def _perform_detection_and_tracking(self, frame):
-        """Perform object detection and tracking on frame"""
-        # Detection with GPU memory error handling
+        """Perform object detection and tracking on frame with performance optimizations"""
+        # Detection with GPU memory error handling and performance optimizations
         def detect():
-            result = self.model(frame, verbose=False)[0]
+            # Use optimized detection parameters
+            result = self.model(frame, verbose=False, half=Config.ENABLE_FP16_PRECISION)[0]
             return result
         
         result = self.device_manager.handle_gpu_memory_error(detect)
         
         # Process detections
         detections = sv.Detections.from_ultralytics(result)
+        
+        # Limit detections for performance
+        if len(detections) > Config.MAX_DETECTIONS_PER_FRAME:
+            # Keep only the highest confidence detections
+            if hasattr(detections, 'confidence') and detections.confidence is not None:
+                sorted_indices = np.argsort(detections.confidence)[::-1]
+                keep_indices = sorted_indices[:Config.MAX_DETECTIONS_PER_FRAME]
+                detections = detections[keep_indices]
         
         # Debug: Print detection info (only for first few frames)
         if self.frame_idx <= 5:
@@ -420,6 +482,89 @@ class VideoProcessor:
         self.heat_map.accumulate(detections)
         
         return detections
+    
+    def _smooth_tracking_labels(self, detections, top_labels, bottom_labels):
+        """Smooth tracking labels to prevent flickering and maintain stability"""
+        if len(detections) == 0:
+            return top_labels, bottom_labels
+        
+        smoothed_top_labels = []
+        smoothed_bottom_labels = []
+        
+        for i, track_id in enumerate(detections.tracker_id):
+            # Get current labels
+            current_top = top_labels[i] if i < len(top_labels) else ""
+            current_bottom = bottom_labels[i] if i < len(bottom_labels) else ""
+            
+            # Initialize tracking history for new tracks
+            if track_id not in self._tracking_history:
+                self._tracking_history[track_id] = {
+                    'top_labels': [],
+                    'bottom_labels': [],
+                    'frame_count': 0
+                }
+            
+            # Update tracking history
+            self._tracking_history[track_id]['top_labels'].append(current_top)
+            self._tracking_history[track_id]['bottom_labels'].append(current_bottom)
+            self._tracking_history[track_id]['frame_count'] += 1
+            
+            # Keep only recent history
+            max_history = Config.TRACKING_HISTORY_LENGTH
+            if len(self._tracking_history[track_id]['top_labels']) > max_history:
+                self._tracking_history[track_id]['top_labels'] = self._tracking_history[track_id]['top_labels'][-max_history:]
+                self._tracking_history[track_id]['bottom_labels'] = self._tracking_history[track_id]['bottom_labels'][-max_history:]
+            
+            # Use stable labels if available, otherwise use current
+            if track_id in self._stable_labels:
+                # Use stable labels for consistency
+                smoothed_top_labels.append(self._stable_labels[track_id]['top'])
+                smoothed_bottom_labels.append(self._stable_labels[track_id]['bottom'])
+            else:
+                # For new tracks, use current labels
+                smoothed_top_labels.append(current_top)
+                smoothed_bottom_labels.append(current_bottom)
+                
+                # Set stable labels after a few frames
+                if self._tracking_history[track_id]['frame_count'] >= 3:
+                    # Use most common label from history
+                    top_history = self._tracking_history[track_id]['top_labels']
+                    bottom_history = self._tracking_history[track_id]['bottom_labels']
+                    
+                    # Get most frequent label
+                    from collections import Counter
+                    top_counter = Counter(top_history)
+                    bottom_counter = Counter(bottom_history)
+                    
+                    stable_top = top_counter.most_common(1)[0][0] if top_counter else current_top
+                    stable_bottom = bottom_counter.most_common(1)[0][0] if bottom_counter else current_bottom
+                    
+                    self._stable_labels[track_id] = {
+                        'top': stable_top,
+                        'bottom': stable_bottom
+                    }
+        
+        # Clean up old tracking data
+        self._cleanup_tracking_history(detections.tracker_id)
+        
+        return smoothed_top_labels, smoothed_bottom_labels
+    
+    def _cleanup_tracking_history(self, current_track_ids):
+        """Clean up tracking history for tracks that are no longer active"""
+        current_set = set(current_track_ids)
+        
+        # Remove old tracking data
+        tracks_to_remove = []
+        for track_id in self._tracking_history:
+            if track_id not in current_set:
+                # Track is no longer active, check if we should remove it
+                if self._tracking_history[track_id]['frame_count'] > Config.TRACKING_PREDICTION_FRAMES:
+                    tracks_to_remove.append(track_id)
+        
+        for track_id in tracks_to_remove:
+            del self._tracking_history[track_id]
+            if track_id in self._stable_labels:
+                del self._stable_labels[track_id]
     
     def _finalize_processing(self):
         """Finalize processing and cleanup with video stats update"""

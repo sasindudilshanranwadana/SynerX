@@ -31,8 +31,12 @@ class AnnotationManager:
         }
     
     def annotate_frame(self, frame, detections, top_labels, bottom_labels):
-        """Annotate frame with detections and labels"""
+        """Annotate frame with detections and labels - optimized for performance"""
         try:
+            # Early return if no detections
+            if len(detections) == 0:
+                return frame.copy()
+            
             # Ensure label lists match detection count
             top_labels += [""] * (len(detections) - len(top_labels))
             bottom_labels += [""] * (len(detections) - len(bottom_labels))
@@ -43,43 +47,35 @@ class AnnotationManager:
                     print(f"[WARNING] Tracker ID length mismatch: {len(detections.tracker_id)} vs {len(detections)}")
                     # Create empty detections if there's a mismatch
                     detections = sv.Detections.empty()
+                    return frame.copy()
             
-            # Apply annotations with safety checks
+            # Apply annotations with optimized approach
             annotated = frame.copy()
             
-            if len(detections) > 0:
-                try:
-                    # Check if tracker_id array is properly shaped before trace annotation
-                    if hasattr(detections, 'tracker_id') and detections.tracker_id is not None:
-                        if len(detections.tracker_id) == len(detections):
-                            annotated = self.annotators['trace'].annotate(scene=annotated, detections=detections)
-                        else:
-                            # Skip trace annotation if tracker_id shape doesn't match
-                            pass
-                    else:
-                        # Skip trace annotation if no tracker_id
-                        pass
-                except Exception as e:
-                    # Continue without trace annotation
-                    pass
-                
-                try:
-                    annotated = self.annotators['box'].annotate(annotated, detections)
-                except Exception as e:
-                    print(f"[WARNING] Box annotation failed: {e}")
-                    # Continue without box annotation
-                
-                try:
-                    annotated = self.annotators['label_top'].annotate(annotated, detections, top_labels)
-                except Exception as e:
-                    print(f"[WARNING] Top label annotation failed: {e}")
-                    # Continue without top labels
-                
-                try:
-                    annotated = self.annotators['label_bottom'].annotate(annotated, detections, bottom_labels)
-                except Exception as e:
-                    print(f"[WARNING] Bottom label annotation failed: {e}")
-                    # Continue without bottom labels
+            # Always draw bounding boxes for consistency
+            try:
+                annotated = self.annotators['box'].annotate(annotated, detections)
+            except Exception as e:
+                print(f"[WARNING] Box annotation failed: {e}")
+            
+            # Always draw labels for consistency
+            try:
+                annotated = self.annotators['label_top'].annotate(annotated, detections, top_labels)
+            except Exception as e:
+                print(f"[WARNING] Top label annotation failed: {e}")
+            
+            try:
+                annotated = self.annotators['label_bottom'].annotate(annotated, detections, bottom_labels)
+            except Exception as e:
+                print(f"[WARNING] Bottom label annotation failed: {e}")
+            
+            # Only draw traces if tracker_id is available (performance optimization)
+            try:
+                if hasattr(detections, 'tracker_id') and detections.tracker_id is not None and len(detections.tracker_id) == len(detections):
+                    annotated = self.annotators['trace'].annotate(scene=annotated, detections=detections)
+            except Exception as e:
+                # Skip trace annotation if it fails (not critical)
+                pass
             
             return annotated
             

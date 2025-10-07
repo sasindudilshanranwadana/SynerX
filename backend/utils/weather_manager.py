@@ -5,6 +5,7 @@ from typing import Dict, Optional, Tuple
 import os
 from dataclasses import dataclass
 from dotenv import load_dotenv
+from config.config import Config
 
 # Load environment variables from .env file
 load_dotenv()
@@ -36,7 +37,7 @@ class WeatherManager:
         
     def get_current_weather(self, lat: float, lon: float) -> Optional[WeatherData]:
         """
-        Get current weather data for a specific location
+        Get current weather data for a specific location with performance optimization
         
         Args:
             lat: Latitude
@@ -46,7 +47,7 @@ class WeatherManager:
             WeatherData object or None if failed
         """
         if not self.api_key:
-            print("[WARNING] No weather API key provided. Using default weather data.")
+            print("[INFO] No weather API key provided. Using default weather data for performance.")
             return self._get_default_weather()
         
         try:
@@ -58,7 +59,7 @@ class WeatherManager:
                 'units': 'metric'
             }
             
-            response = requests.get(url, params=params, timeout=10)
+            response = requests.get(url, params=params, timeout=Config.WEATHER_API_TIMEOUT)
             response.raise_for_status()
             
             data = response.json()
