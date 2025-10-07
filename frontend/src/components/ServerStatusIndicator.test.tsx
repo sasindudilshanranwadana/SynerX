@@ -5,6 +5,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import ServerStatusIndicator from './ServerStatusIndicator';
 import { getStoredTheme } from '../lib/theme';
 
+// Mocks remain the same and are still necessary
 vi.mock('../lib/theme', () => ({
   getStoredTheme: vi.fn(),
 }));
@@ -23,25 +24,17 @@ describe('ServerStatusIndicator component', () => {
     vi.useRealTimers();
   });
 
-  // THE FIX IS APPLIED HERE
   it('initially renders in the "connecting" state', async () => {
-    // Mock the fetch call with a promise that never resolves,
-    // so we can test the "connecting" state cleanly.
-    mockFetch.mockReturnValue(new Promise(() => {}));
-
+    mockFetch.mockReturnValue(new Promise(() => {})); // Prevent fetch from resolving
     render(<ServerStatusIndicator />);
-
-    // Assert the initial state is correct.
     expect(screen.getByText('Connecting...')).toBeInTheDocument();
 
-    // Now, wrap the timer advancement in `act` to flush the `useEffect`
-    // state update and silence the warning. We don't need to assert anything after.
+    // Flush the useEffect state update to silence the `act` warning
     await act(async () => {
       await vi.advanceTimersByTimeAsync(0);
     });
   });
 
-  // The rest of your tests are already correct
   it('transitions to "connected" state on successful API response', async () => {
     mockFetch.mockResolvedValue({
       ok: true,
@@ -52,8 +45,11 @@ describe('ServerStatusIndicator component', () => {
     await act(async () => {
       await vi.advanceTimersByTimeAsync(0);
     });
-
-    expect(screen.getByText('Connected with Runpod')).toBeInTheDocument();
+    
+    // UPDATE: Check for the new text
+    expect(screen.getByText('RunPod Connected')).toBeInTheDocument();
+    // VERIFY: Ensure it's calling the correct development endpoint
+    expect(mockFetch).toHaveBeenCalledWith('/api/', expect.any(Object));
   });
 
   it('transitions to "error" state on a failed API response', async () => {
@@ -64,7 +60,8 @@ describe('ServerStatusIndicator component', () => {
       await vi.advanceTimersByTimeAsync(0);
     });
 
-    expect(screen.getByText('Disconnected from Runpod')).toBeInTheDocument();
+    // UPDATE: Check for the new text
+    expect(screen.getByText('RunPod Disconnected')).toBeInTheDocument();
   });
 
   it('transitions to "error" state when fetch throws an error', async () => {
@@ -75,7 +72,8 @@ describe('ServerStatusIndicator component', () => {
       await vi.advanceTimersByTimeAsync(0);
     });
 
-    expect(screen.getByText('Disconnected from Runpod')).toBeInTheDocument();
+    // UPDATE: Check for the new text
+    expect(screen.getByText('RunPod Disconnected')).toBeInTheDocument();
   });
 
   it('cleans up the interval timer on unmount', () => {
@@ -86,6 +84,7 @@ describe('ServerStatusIndicator component', () => {
   });
   
   it('periodically re-checks the connection', async () => {
+    // First call is successful
     mockFetch.mockResolvedValue({
       ok: true,
       json: () => Promise.resolve({ message: "SynerX API is running!", status: "ok" }),
@@ -95,16 +94,19 @@ describe('ServerStatusIndicator component', () => {
     await act(async () => {
       await vi.advanceTimersByTimeAsync(0);
     });
-    expect(screen.getByText('Connected with Runpod')).toBeInTheDocument();
+    // UPDATE: Check for the new text
+    expect(screen.getByText('RunPod Connected')).toBeInTheDocument();
     expect(mockFetch).toHaveBeenCalledTimes(1);
 
+    // Second call will fail
     mockFetch.mockRejectedValue(new Error('Connection lost'));
 
     await act(async () => {
       await vi.advanceTimersByTimeAsync(30000);
     });
 
-    expect(screen.getByText('Disconnected from Runpod')).toBeInTheDocument();
+    // UPDATE: Check for the new text
+    expect(screen.getByText('RunPod Disconnected')).toBeInTheDocument();
     expect(mockFetch).toHaveBeenCalledTimes(2);
   });
 });
