@@ -1,7 +1,3 @@
-@app.get("/ping")
-def ping():
-    return {"status": "ok"}
-
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
