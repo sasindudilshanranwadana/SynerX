@@ -17,15 +17,15 @@ class Config:
     SOURCE_POLYGON = np.array([(422, 10), (594, 16), (801, 665), (535, 649)])  # Detection area polygon coordinates
     STOP_ZONE_POLYGON = np.array([(507, 199), (681, 209), (751, 555), (484, 541)])  # Stop zone polygon coordinates
     
-    # Thresholds - Optimized for Stable Tracking
+    # Thresholds - Optimized for Performance
     TARGET_WIDTH, TARGET_HEIGHT = 50, 130  # Target dimensions for perspective transformation
-    DETECTION_CONFIDENCE = 0.3  # Minimum confidence threshold for object detection (Reduced: 0.3 for more stable tracking)
-    NMS_THRESHOLD = 0.4  # Non-Maximum Suppression threshold to remove duplicate detections (Reduced: 0.4 for better tracking stability)
+    DETECTION_CONFIDENCE = 0.25  # Minimum confidence threshold for object detection (Original: 0.25 for better detection)
+    NMS_THRESHOLD = 0.3  # Non-Maximum Suppression threshold to remove duplicate detections (Original: 0.3 for better detection)
     VELOCITY_THRESHOLD = 0.6  # Threshold to determine if vehicle is stationary in pixels/frame (Range: 0.1-2.0, Recommended: 0.5-1.0 based on video resolution)
-    FRAME_BUFFER = 10  # Number of frames to buffer for velocity calculation (Increased: 10 for more stable tracking)
-    DETECTION_OVERLAP_THRESHOLD = 0.3  # IoU threshold for merging overlapping detections (Reduced: 0.3 for better tracking)
-    CLASS_CONFIDENCE_THRESHOLD = 0.6  # Confidence threshold for stable class assignment (Reduced: 0.6 for faster classification)
-    CLASS_HISTORY_FRAMES = 5  # Number of frames to track for class consistency (Reduced: 5 for faster classification)
+    FRAME_BUFFER = 5  # Number of frames to buffer for velocity calculation (Optimized: 5 for faster processing)
+    DETECTION_OVERLAP_THRESHOLD = 0.5  # IoU threshold for merging overlapping detections (Range: 0.3-0.8, Recommended: 0.5-0.6 for optimal merging)
+    CLASS_CONFIDENCE_THRESHOLD = 0.5  # Confidence threshold for stable class assignment (Original: 0.5 for better detection)
+    CLASS_HISTORY_FRAMES = 10  # Number of frames to track for class consistency (Range: 3-20, Recommended: 5-15 frames)
     
     # Video Settings - Optimized for Performance
     TARGET_FPS = 15  # Target frames per second for output video (Optimized: 15 for faster processing)

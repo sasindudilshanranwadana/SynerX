@@ -64,6 +64,8 @@ class VideoProcessor:
         # Tracking stability variables
         self._tracking_history = {}  # Store tracking history for smoothing
         self._stable_labels = {}  # Store stable labels to prevent flickering
+        self._position_history = {}  # Store position history for tracking
+        self._id_mapping = {}  # Map old IDs to new IDs for continuity
     
     def initialize(self):
         """Initialize all components for video processing with video-based schema"""
@@ -229,11 +231,15 @@ class VideoProcessor:
             # Detection and tracking (only when needed for performance)
             if should_process_detection:
                 detections = self._perform_detection_and_tracking(frame)
+                # Apply ID continuity to maintain stable tracking
+                detections = self._maintain_id_continuity(detections)
                 # Store detections for reuse in skipped frames
                 self._last_detections = detections
             else:
-                # Use previous detections for skipped frames (maintains visual consistency)
+                # Use previous detections for skipped frames - keep labels persistent
                 detections = getattr(self, '_last_detections', sv.Detections.empty())
+                # For skipped frames, use the exact same detections and labels
+                # This ensures labels stay in the same position and don't flicker
 
             # License plate blurring is temporarily disabled for performance
             processed_frame = frame.copy()
@@ -275,9 +281,18 @@ class VideoProcessor:
             
             # Process detections with safety check
             try:
-                top_labels, bottom_labels = self.vehicle_processor.process_detections(
-                    detections, anchor_pts, transformed_pts
-                )
+                if should_process_detection:
+                    # Process new detections normally
+                    top_labels, bottom_labels = self.vehicle_processor.process_detections(
+                        detections, anchor_pts, transformed_pts
+                    )
+                    # Store labels for reuse in skipped frames
+                    self._last_top_labels = top_labels
+                    self._last_bottom_labels = bottom_labels
+                else:
+                    # For skipped frames, reuse the exact same labels
+                    top_labels = getattr(self, '_last_top_labels', [])
+                    bottom_labels = getattr(self, '_last_bottom_labels', [])
                 
                 # Apply tracking smoothing for stable labels
                 if Config.ENABLE_TRACKING_SMOOTHING:
@@ -480,6 +495,71 @@ class VideoProcessor:
         
         # Heat map accumulation
         self.heat_map.accumulate(detections)
+        
+        return detections
+    
+    def _maintain_id_continuity(self, detections):
+        """Maintain ID continuity to prevent label jumping"""
+        if len(detections) == 0:
+            return detections
+        
+        # Update position history for all detections
+        for i, track_id in enumerate(detections.tracker_id):
+            if hasattr(detections, 'xyxy') and i < len(detections.xyxy):
+                bbox = detections.xyxy[i]
+                center_x = (bbox[0] + bbox[2]) / 2
+                center_y = (bbox[1] + bbox[3]) / 2
+                
+                if track_id not in self._position_history:
+                    self._position_history[track_id] = []
+                
+                self._position_history[track_id].append((center_x, center_y))
+                
+                # Keep only recent positions
+                if len(self._position_history[track_id]) > 10:
+                    self._position_history[track_id] = self._position_history[track_id][-10:]
+        
+        # Try to match new detections with existing tracks
+        new_tracker_ids = []
+        for i, track_id in enumerate(detections.tracker_id):
+            if track_id in self._id_mapping:
+                # Use existing mapped ID
+                new_tracker_ids.append(self._id_mapping[track_id])
+            else:
+                # Check if this detection matches a previous track by position
+                if hasattr(detections, 'xyxy') and i < len(detections.xyxy):
+                    bbox = detections.xyxy[i]
+                    center_x = (bbox[0] + bbox[2]) / 2
+                    center_y = (bbox[1] + bbox[3]) / 2
+                    
+                    # Find closest previous track
+                    best_match_id = None
+                    min_distance = float('inf')
+                    
+                    for old_id, positions in self._position_history.items():
+                        if len(positions) > 0:
+                            last_pos = positions[-1]
+                            distance = ((center_x - last_pos[0])**2 + (center_y - last_pos[1])**2)**0.5
+                            
+                            # If close enough and not already mapped
+                            if distance < 50 and old_id not in self._id_mapping.values():
+                                if distance < min_distance:
+                                    min_distance = distance
+                                    best_match_id = old_id
+                    
+                    if best_match_id is not None:
+                        # Map new ID to existing ID
+                        self._id_mapping[track_id] = best_match_id
+                        new_tracker_ids.append(best_match_id)
+                    else:
+                        # New track, keep original ID
+                        new_tracker_ids.append(track_id)
+                else:
+                    new_tracker_ids.append(track_id)
+        
+        # Update tracker IDs with stable IDs
+        if len(new_tracker_ids) == len(detections.tracker_id):
+            detections.tracker_id = new_tracker_ids
         
         return detections
     
