@@ -163,11 +163,11 @@ class VideoProcessor:
                     print(f"[ERROR] Both streaming and download failed: {download_error}")
                     raise ValueError(f"Could not process video from stream URL: {self.stream_url}")
         else:
-            self.video_info = sv.VideoInfo.from_video_path(self.video_path)
+        self.video_info = sv.VideoInfo.from_video_path(self.video_path)
         
         # Set FPS to TARGET_FPS (now always 30) to prevent None values
         if Config.TARGET_FPS is not None:
-            self.video_info.fps = Config.TARGET_FPS
+        self.video_info.fps = Config.TARGET_FPS
             print(f"[INFO] FPS set to {Config.TARGET_FPS} (configured)")
         else:
             # Fallback to 30 if TARGET_FPS is None
@@ -210,7 +210,7 @@ class VideoProcessor:
             self.frame_gen = self._create_streaming_frame_generator()
         else:
             # Use supervision's frame generator for local files
-            self.frame_gen = sv.get_video_frames_generator(source_path=self.video_path)
+        self.frame_gen = sv.get_video_frames_generator(source_path=self.video_path)
         
         # Video streaming will start automatically when first WebSocket client connects
         # No need to start it here for better performance
@@ -374,8 +374,11 @@ class VideoProcessor:
                     # Additional frame skipping for processing performance (YOLO detection only)
                     should_process_detection = (self.frame_idx % Config.PROCESSING_FRAME_SKIP == 0)
                     
+                    # Frame skipping for streaming to reduce bandwidth and improve quality
+                    should_stream_frame = (self.frame_idx % getattr(Config, 'STREAMING_FRAME_SKIP', 3) == 0)
+                    
                     # Process frame
-                    if not self._process_frame(frame, sink, should_process_detection):
+                    if not self._process_frame(frame, sink, should_process_detection, should_stream_frame):
                         print(f"[ERROR] Frame processing failed at frame {self.frame_idx}")
                         break
                     
@@ -402,7 +405,7 @@ class VideoProcessor:
             self._make_video_streamable()
             self._finalize_processing()
     
-    def _process_frame(self, frame, sink, should_process_detection=True):
+    def _process_frame(self, frame, sink, should_process_detection=True, should_stream_frame=True):
         """Process a single frame"""
         try:
             # Detection and tracking (only when needed for performance)
@@ -509,13 +512,11 @@ class VideoProcessor:
             
             # Send frame to video streamer for live streaming with performance optimization
             try:
-                if video_streamer.has_active_connections():
-                    # Only send frames at reduced rate for performance
-                    if self.frame_idx % Config.STREAMING_FRAME_SKIP == 0:
-                        # Minimal logging for performance
-                        if self.frame_idx % 1000 == 0:
-                            print(f"[VIDEO] 🎬 Sending frame {self.frame_idx} to video streamer")
-                        video_streamer.update_frame(annotated)
+                if video_streamer.has_active_connections() and should_stream_frame:
+                    # Minimal logging for performance
+                    if self.frame_idx % 1000 == 0:
+                        print(f"[VIDEO] 🎬 Sending frame {self.frame_idx} to video streamer")
+                    video_streamer.update_frame(annotated)
             except Exception as e:
                 print(f"[WARNING] Video streaming failed: {e}")
             

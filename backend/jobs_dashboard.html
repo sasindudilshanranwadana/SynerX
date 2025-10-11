@@ -535,7 +535,13 @@
           )}</td>
             <td class="muted">${elapsed}</td>
             <td>
-              <span class="muted">-</span>
+              ${
+                j.status === "processing"
+                  ? `<button onclick="openStream('${j.job_id}')">Live Stream</button>`
+                  : j.status === "completed" && videoUrl
+                  ? `<button onclick="playVideo('${j.job_id}')">Play Video</button>`
+                  : `<span class="muted">-</span>`
+              }
             </td>
             <td class="actions">
               <button class="danger" onclick="shutdownJob('${
