@@ -28,9 +28,9 @@ class Config:
     CLASS_HISTORY_FRAMES = 10  # Number of frames to track for class consistency (Range: 3-20, Recommended: 5-15 frames)
     
     # Video Settings - Balanced for Quality and Performance
-    TARGET_FPS = 15  # Target frames per second for output video (Optimized: 15 for faster processing)
+    TARGET_FPS = None  # Preserve original FPS (None = keep original, or set specific FPS like 30)
     FPS_UPDATE_INTERVAL = 30  # Interval (in frames) to update FPS display (Range: 10-100, Recommended: 30-60 frames)
-    PROCESSING_FRAME_SKIP = 2  # Skip every N frames during processing (2 = 2x speed with minimal accuracy loss)
+    PROCESSING_FRAME_SKIP = 1  # Skip every N frames during processing (1 = process every frame)
     
     # Visual Settings
     ANNOTATION_THICKNESS = 1  # Thickness of bounding box lines (Range: 1-5, Recommended: 2-3 for visibility)

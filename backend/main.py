@@ -111,7 +111,8 @@ app.add_middleware(
     allow_origins=[
         "http://localhost:3000",      # React dev server
         "http://localhost:8000",      # current backend
-        "http://localhost:5500",      # Live server
+        "http://localhost:5500",      # Live server (VS Code Live Server)
+        "http://127.0.0.1:5500",     # Live server (127.0.0.1)
         "https://synerx.netlify.app", # production frontend
         "https://yourdomain.com",     # Add production domain here
         # Add more domains as needed
@@ -896,9 +897,95 @@ async def websocket_video_stream(websocket: WebSocket, client_id: str):
 # WebSocket endpoint for live jobs status updates
 @app.websocket("/ws/jobs")
 async def websocket_jobs_status(websocket: WebSocket):
-    """Push jobs summary and list to clients periodically."""
+    """Push jobs summary and list to clients periodically and handle incoming job messages."""
     try:
         await websocket.accept()
+        
+        # Handle incoming messages (for job creation from frontend)
+        async def handle_incoming_messages():
+            try:
+                while True:
+                    message = await websocket.receive_text()
+                    print(f"[WS] 📨 Received message: {message[:100]}...")  # Log first 100 chars
+                    try:
+                        data = json.loads(message)
+                        print(f"[WS] 📋 Parsed data: {data}")
+                        if data.get("type") == "new_job":
+                            # Handle new job from frontend R2 upload
+                            job_id = data.get("job_id")
+                            r2_url = data.get("r2_url")
+                            file_name = data.get("file_name", "Unknown")
+                            file_size = data.get("file_size", 0)
+                            
+                            print(f"[WS] 📨 Received new job from frontend: {job_id}")
+                            print(f"[WS] R2 URL: {r2_url}")
+                            
+                            # Create job record and auto-queue for processing
+                            with job_lock:
+                                background_jobs[job_id] = {
+                                    "status": "queued",
+                                    "start_time": time.time(),
+                                    "file_name": file_name,
+                                    "r2_url": r2_url,
+                                    "progress": 0,
+                                    "message": "Video uploaded to R2, queued for processing...",
+                                    "result": None,
+                                    "error": None,
+                                    "video_id": None
+                                }
+                            
+                            print(f"[WS] ✅ Job {job_id} created with status: queued")
+                            print(f"[WS] 📊 Total jobs now: {len(background_jobs)}")
+                            
+                            # Auto-add to processing queue
+                            suffix = Path(file_name).suffix or ".mp4"
+                            analytic_path = OUTPUT_DIR / f"{job_id}_out{suffix}"
+                            
+                            job_data = {
+                                "job_id": job_id,
+                                "stream_url": r2_url,
+                                "analytic_path": analytic_path,
+                                "suffix": suffix,
+                                "start_time": time.time(),
+                                "video_id": None
+                            }
+                            
+                            with queue_lock:
+                                job_queue.append(job_data)
+                                queue_position = len(job_queue)
+                            
+                            # Start queue processor if not already running
+                            try:
+                                start_queue_processor()
+                                print(f"[WS] 🚀 Job {job_id} auto-queued for processing (position: {queue_position})")
+                            except Exception as e:
+                                print(f"[WS] ⚠️ Warning: Failed to start queue processor: {e}")
+                            
+                            # Send confirmation back to frontend
+                            await websocket.send_text(json.dumps({
+                                "status": "job_queued",
+                                "job_id": job_id,
+                                "queue_position": queue_position,
+                                "message": f"Job auto-queued for processing (position: {queue_position})"
+                            }))
+                        else:
+                            print(f"[WS] ⚠️ Unknown message type: {data.get('type')}")
+                            
+                    except json.JSONDecodeError:
+                        print(f"[WS] ❌ Invalid JSON received: {message}")
+                    except Exception as e:
+                        print(f"[WS] ❌ Error handling message: {e}")
+                        
+            except WebSocketDisconnect:
+                print(f"[WS] 🔌 WebSocket disconnected")
+                pass
+            except Exception as e:
+                print(f"[WS] ❌ Error in message handler: {e}")
+        
+        # Start message handler in background
+        message_task = asyncio.create_task(handle_incoming_messages())
+        
+        # Main status update loop
         while True:
             try:
                 with job_lock:
@@ -958,6 +1045,10 @@ async def websocket_jobs_status(websocket: WebSocket):
         pass
     except Exception as e:
         print(f"[WS] Jobs status error: {e}")
+    finally:
+        # Cancel the message handler task
+        if 'message_task' in locals():
+            message_task.cancel()
 
 def run_health_server():
     """Runs a simple HTTP server in a thread for health checks."""

@@ -164,7 +164,19 @@ class VideoProcessor:
                     raise ValueError(f"Could not process video from stream URL: {self.stream_url}")
         else:
             self.video_info = sv.VideoInfo.from_video_path(self.video_path)
-        self.video_info.fps = Config.TARGET_FPS
+        
+        # Only set FPS if TARGET_FPS is specified (not None)
+        if Config.TARGET_FPS is not None:
+            self.video_info.fps = Config.TARGET_FPS
+            print(f"[INFO] FPS set to {Config.TARGET_FPS} (configured)")
+        else:
+            print(f"[INFO] FPS preserved at {self.video_info.fps} (original)")
+        
+        # Force output video to use the same FPS as input to prevent duration changes
+        original_fps = self.video_info.fps
+        print(f"[INFO] Output video will use FPS: {original_fps}")
+        print(f"[INFO] Input video info: {self.video_info.width}x{self.video_info.height} @ {self.video_info.fps}fps, {self.video_info.total_frames} frames")
+        print(f"[INFO] Expected duration: {self.video_info.total_frames / self.video_info.fps:.2f} seconds")
         
         # Get first frame for heat map overlay
         self._load_first_frame()
@@ -294,7 +306,15 @@ class VideoProcessor:
         """Main video processing loop"""
         try:
             # Use supervision VideoSink with streaming-compatible settings
-            with sv.VideoSink(self.output_video_path, self.video_info) as sink:
+            # Ensure FPS is preserved for output video
+            output_video_info = sv.VideoInfo(
+                width=self.video_info.width,
+                height=self.video_info.height,
+                fps=self.video_info.fps,  # Use the same FPS as input
+                total_frames=self.video_info.total_frames
+            )
+            print(f"[INFO] Creating output video with FPS: {output_video_info.fps}")
+            with sv.VideoSink(self.output_video_path, output_video_info) as sink:
                 for frame in self.frame_gen:
                     # Check for shutdown request
                     if shutdown_manager.check_shutdown():
@@ -305,6 +325,11 @@ class VideoProcessor:
                     # Debug: Print every 100 frames
                     if self.frame_idx % 100 == 0:
                         print(f"[INFO] Processing frame {self.frame_idx}")
+                    
+                    # Debug: Check if we're processing too many frames
+                    if self.frame_idx > self.video_info.total_frames * 1.5:
+                        print(f"[WARNING] Processing more frames than expected! Frame {self.frame_idx} vs total {self.video_info.total_frames}")
+                        break
                     
                     # Progress callback (cap processing to 80%)
                     try:

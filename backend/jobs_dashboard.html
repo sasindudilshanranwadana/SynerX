@@ -4,6 +4,8 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>SynerX Jobs Dashboard</title>
+    <script src="https://sdk.amazonaws.com/js/aws-sdk-2.1490.0.min.js"></script>
+    <script src="r2_config.js"></script>
     <style>
       body {
         font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial,
@@ -295,9 +297,14 @@
     </main>
 
     <script>
-      // Use relative API base for RunPod
-      const API_BASE = "";
+      // Backend API base
+      const API_BASE = "http://localhost:8000";
       let autoTimer = null;
+      
+      // R2 Configuration - loaded from r2_config.js
+      // Initialize AWS SDK for R2
+      AWS.config.update(R2_CONFIG);
+      const s3 = new AWS.S3();
 
       document.addEventListener("DOMContentLoaded", () => {
         startJobsSocket();
@@ -311,33 +318,121 @@
           return;
         }
         const file = fileInput.files[0];
-        const form = new FormData();
-        form.append("file", file);
-        statusEl.textContent = "Uploading to R2...";
+        statusEl.textContent = "Uploading directly to R2...";
+        
         try {
-          // Step 1: Upload to R2
-          const uploadData = await fetchJSON(`${API_BASE}/video/upload`, {
-            method: "POST",
-            body: form,
-          });
-          
-          if (uploadData.status === "uploaded") {
-            statusEl.textContent = "Starting processing...";
-            
-            // Step 2: Start processing
-            const processData = await fetchJSON(`${API_BASE}/video/process/${uploadData.job_id}`, {
-              method: "POST",
-            });
-            
-            statusEl.textContent = `Processing job ${processData.job_id} (pos ${processData.queue_position})`;
-          } else {
-            statusEl.textContent = `Uploaded job ${uploadData.job_id}`;
+          // Ensure WebSocket is connected before uploading
+          if (!jobsWS || jobsWS.readyState !== WebSocket.OPEN) {
+            console.log('WebSocket not connected, starting connection...');
+            startJobsSocket();
+            // Wait a bit for connection to establish
+            await new Promise(resolve => setTimeout(resolve, 1000));
           }
           
+          // Generate unique filename
+          const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+          const fileExtension = file.name.split('.').pop() || 'mp4';
+          const uniqueFilename = `${file.name.split('.')[0]}_${timestamp}.${fileExtension}`;
+          
+          // Upload to R2
+          const uploadParams = {
+            Bucket: R2_BUCKET_NAME,
+            Key: uniqueFilename,
+            Body: file,
+            ContentType: 'video/mp4',
+            CacheControl: 'public, max-age=31536000'
+          };
+          
+          const result = await s3.upload(uploadParams).promise();
+          console.log('R2 upload successful:', result.Location);
+          
+          // Generate job ID
+          const jobId = crypto.randomUUID();
+          
+          // Push job info to backend WebSocket
+          await pushJobToBackend(jobId, result.Location, file.name, file.size);
+          
+          statusEl.textContent = `✅ Upload successful! Job ID: ${jobId}`;
           fileInput.value = "";
-        } catch (e) {
-          console.error(e);
-          statusEl.textContent = `Error: ${e.message}`;
+          
+        } catch (error) {
+          console.error('R2 upload failed:', error);
+          statusEl.textContent = `❌ Upload failed: ${error.message}`;
+        }
+      }
+      
+      async function pushJobToBackend(jobId, r2Url, fileName, fileSize) {
+        try {
+          console.log('🔍 WebSocket status check:');
+          console.log('  - jobsWS exists:', !!jobsWS);
+          console.log('  - readyState:', jobsWS ? jobsWS.readyState : 'N/A');
+          console.log('  - OPEN constant:', WebSocket.OPEN);
+          
+          // Use the existing dashboard WebSocket connection if available
+          if (jobsWS && jobsWS.readyState === WebSocket.OPEN) {
+            console.log('✅ Using existing WebSocket connection for job push');
+            
+            // Send job info through existing connection
+            jobsWS.send(JSON.stringify({
+              type: 'new_job',
+              job_id: jobId,
+              r2_url: r2Url,
+              file_name: fileName,
+              file_size: fileSize,
+              status: 'uploaded',
+              message: 'Video uploaded to R2, ready for processing...'
+            }));
+            
+            console.log('✅ Job info sent via existing WebSocket');
+          } else {
+            console.log('⚠️ No active WebSocket connection, creating temporary one...');
+            console.log('  - jobsWS state:', jobsWS ? jobsWS.readyState : 'null');
+            
+            // Create temporary WebSocket connection
+            const ws = new WebSocket(`ws://localhost:8000/ws/jobs`);
+            
+            ws.onopen = () => {
+              console.log('🔌 Connected to backend WebSocket for job push');
+              
+              // Send job info to backend
+              ws.send(JSON.stringify({
+                type: 'new_job',
+                job_id: jobId,
+                r2_url: r2Url,
+                file_name: fileName,
+                file_size: fileSize,
+                status: 'uploaded',
+                message: 'Video uploaded to R2, ready for processing...'
+              }));
+            };
+            
+            ws.onmessage = (event) => {
+              try {
+                const response = JSON.parse(event.data);
+                if (response.status === 'job_queued') {
+                  console.log('✅ Job auto-queued for processing:', response.job_id);
+                  console.log('📊 Queue position:', response.queue_position);
+                  // Close WebSocket after receiving confirmation
+                  setTimeout(() => {
+                    ws.close();
+                  }, 500);
+                }
+              } catch (e) {
+                console.log('📨 Received status update from backend');
+              }
+            };
+            
+            ws.onerror = (error) => {
+              console.error('❌ WebSocket error:', error);
+            };
+            
+            ws.onclose = () => {
+              console.log('🔌 WebSocket connection closed');
+            };
+          }
+          
+        } catch (error) {
+          console.error('❌ Failed to push job to backend:', error);
         }
       }
 
@@ -355,7 +450,7 @@
           }
         } catch {}
         
-        const url = API_BASE.replace("http", "ws") + "/ws/jobs";
+        const url = "ws://localhost:8000/ws/jobs";
         jobsWS = new WebSocket(url);
         
         jobsWS.onopen = () => {
@@ -440,13 +535,7 @@
           )}</td>
             <td class="muted">${elapsed}</td>
             <td>
-              ${
-                j.status === "completed"
-                  ? `<button onclick="playVideo('${j.job_id}')" style="background: #059669; font-size: 12px; padding: 4px 8px;">🎥 Play</button>`
-                  : j.status === "processing"
-                  ? `<button onclick="playVideo('${j.job_id}')" style="background: #f59e0b; font-size: 12px; padding: 4px 8px;">🎥 Live</button>`
-                  : `<span class="muted">-</span>`
-              }
+              <span class="muted">-</span>
             </td>
             <td class="actions">
               <button class="danger" onclick="shutdownJob('${
@@ -455,11 +544,6 @@
               ${
                 j.status === "uploaded"
                   ? `<button onclick="startProcessing('${j.job_id}')">Process</button>`
-                  : ""
-              }
-              ${
-                j.status === "processing"
-                  ? `<button onclick="openStream('${j.job_id}')">Open Stream</button>`
                   : ""
               }
             </td>
@@ -541,16 +625,8 @@
           }
         } catch {}
         
-        // Construct WebSocket URL - handle both relative and absolute URLs
-        let wsUrl;
-        if (API_BASE === "") {
-          // Relative URL - use current protocol
-          const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-          wsUrl = `${protocol}//${window.location.host}/ws/video-stream/${encodeURIComponent(jobId)}`;
-        } else {
-          // Absolute URL
-          wsUrl = API_BASE.replace("http", "ws") + `/ws/video-stream/${encodeURIComponent(jobId)}`;
-        }
+        // Construct WebSocket URL for video stream
+        const wsUrl = `ws://localhost:8000/ws/video-stream/${encodeURIComponent(jobId)}`;
         
         console.log(`[STREAM] 🔌 Connecting to: ${wsUrl}`);
         ws = new WebSocket(wsUrl);
