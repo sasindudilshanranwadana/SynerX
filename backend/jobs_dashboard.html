@@ -155,7 +155,7 @@
       <div class="card">
         <div class="row">
           <input id="videoFile" type="file" accept="video/*" />
-          <button onclick="uploadVideo()">Upload & Queue</button>
+          <button onclick="uploadVideo()">Upload & Process</button>
           <span id="uploadStatus" class="muted"></span>
         </div>
       </div>
@@ -313,13 +313,27 @@
         const file = fileInput.files[0];
         const form = new FormData();
         form.append("file", file);
-        statusEl.textContent = "Uploading...";
+        statusEl.textContent = "Uploading to R2...";
         try {
-          const data = await fetchJSON(`${API_BASE}/video/upload`, {
+          // Step 1: Upload to R2
+          const uploadData = await fetchJSON(`${API_BASE}/video/upload`, {
             method: "POST",
             body: form,
           });
-          statusEl.textContent = `Queued job ${data.job_id} (pos ${data.queue_position})`;
+          
+          if (uploadData.status === "uploaded") {
+            statusEl.textContent = "Starting processing...";
+            
+            // Step 2: Start processing
+            const processData = await fetchJSON(`${API_BASE}/video/process/${uploadData.job_id}`, {
+              method: "POST",
+            });
+            
+            statusEl.textContent = `Processing job ${processData.job_id} (pos ${processData.queue_position})`;
+          } else {
+            statusEl.textContent = `Uploaded job ${uploadData.job_id}`;
+          }
+          
           fileInput.value = "";
         } catch (e) {
           console.error(e);
@@ -395,6 +409,7 @@
           const tr = document.createElement("tr");
           const pillClass = (s) =>
             ({
+              uploaded: "queued",
               queued: "queued",
               processing: "processing",
               completed: "completed",
@@ -437,6 +452,11 @@
               <button class="danger" onclick="shutdownJob('${
                 j.job_id
               }')">Shutdown</button>
+              ${
+                j.status === "uploaded"
+                  ? `<button onclick="startProcessing('${j.job_id}')">Process</button>`
+                  : ""
+              }
               ${
                 j.status === "processing"
                   ? `<button onclick="openStream('${j.job_id}')">Open Stream</button>`
@@ -481,6 +501,18 @@
           await fetch(`${API_BASE}/jobs/shutdown/${jobId}`, { method: "POST" });
         } catch {}
         refreshJobs();
+      }
+
+      async function startProcessing(jobId) {
+        try {
+          const data = await fetchJSON(`${API_BASE}/video/process/${jobId}`, {
+            method: "POST",
+          });
+          console.log(`Started processing job ${jobId}:`, data);
+        } catch (e) {
+          console.error(`Failed to start processing job ${jobId}:`, e);
+          alert(`Error: ${e.message}`);
+        }
       }
 
       let ws = null;

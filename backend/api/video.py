@@ -6,11 +6,11 @@ import time
 import os
 from datetime import datetime
 
-router = APIRouter(prefix="/video", tags=["Video Processing"])
-
 def init_video_router(background_jobs, job_lock, job_queue, queue_lock, start_queue_processor, 
                      shutdown_manager, set_processing_start_time, TEMP_UPLOADS_DIR, OUTPUT_DIR):
     """Initialize the video router with global variables"""
+    
+    router = APIRouter(prefix="/video", tags=["Video Processing"])
     
     @router.post("/upload")
     async def upload_video(
@@ -19,8 +19,7 @@ def init_video_router(background_jobs, job_lock, job_queue, queue_lock, start_qu
         """
         Upload a video file for processing
         
-        Uploads a video file and adds it to the processing queue. The video will be processed
-        in the background and results will be available via the job status endpoints.
+        Uploads a video file and automatically adds it to the processing queue.
         
         Args:
             file: Video file to upload (supports common video formats)
@@ -57,52 +56,33 @@ def init_video_router(background_jobs, job_lock, job_queue, queue_lock, start_qu
             
             print(f"[UPLOAD] Step 3: R2 upload successful: {r2_url}")
 
-            # 2. Create job ID and add to queue (DB record will be created when processing starts)
+            # 2. Create job ID
             job_id = str(uuid.uuid4())
             analytic_path = OUTPUT_DIR / f"{job_id}_out{suffix}"
             
             # Initialize job status
             with job_lock:
                 background_jobs[job_id] = {
-                    "status": "queued",
+                    "status": "uploaded", # Initial status is 'uploaded', not 'queued'
                     "start_time": time.time(),
                     "file_name": file.filename,
-                    "r2_url": r2_url,  # Store the R2 URL instead of temp filename
+                    "r2_url": r2_url,
                     "progress": 0,
-                    "message": "Video uploaded to R2 and queued for processing...",
+                    "message": "Video uploaded to R2, awaiting processing trigger...",
                     "result": None,
                     "error": None,
                     "video_id": None
                 }
+                print(f"[UPLOAD] Job {job_id} created with status: uploaded")
             
-            # Add job to queue with R2 URL (video_id will be set when processing actually begins)
-            job_data = {
-                "job_id": job_id,
-                "stream_url": r2_url,  # Use R2 URL instead of local path
-                "analytic_path": analytic_path,
-                "suffix": suffix,
-                "start_time": time.time(),
-                "video_id": None
-            }
+            # Just upload, don't add to queue yet
+            print(f"[UPLOAD] Step 3: Video uploaded to R2, ready for processing")
             
-            with queue_lock:
-                job_queue.append(job_data)
-                queue_position = len(job_queue)
-            
-            # Start queue processor if not already running
-            try:
-                start_queue_processor()
-                print(f"[UPLOAD] Step 3: Job {job_id} added to queue (position: {queue_position})")
-            except Exception as e:
-                print(f"[UPLOAD] Warning: Failed to start queue processor: {e}")
-                # Continue anyway, the job is still added to queue
-            
-            # Return immediately with job ID and queue position
+            # Return job ID for manual processing trigger
             return {
-                "status": "queued",
+                "status": "uploaded",
                 "job_id": job_id,
-                "queue_position": queue_position,
-                "message": f"Video uploaded to R2 and queued for processing (position: {queue_position})",
+                "message": "Video uploaded to R2, ready for processing",
                 "file_name": file.filename,
                 "r2_url": r2_url
             }
@@ -146,5 +126,90 @@ def init_video_router(background_jobs, job_lock, job_queue, queue_lock, start_qu
         except Exception as e:
             print(f"[STREAM] Error streaming video for job {job_id}: {e}")
             raise HTTPException(status_code=500, detail=f"Streaming failed: {str(e)}")
+
+    @router.post("/process/{job_id}")
+    async def start_processing(job_id: str):
+        """
+        Start processing a previously uploaded video
+        
+        Args:
+            job_id: Job ID from the upload endpoint
+        
+        Returns:
+            dict: Processing status and queue position
+        """
+        try:
+            print(f"[PROCESS] Starting processing for job_id: {job_id}")
+            
+            # Check if job exists
+            with job_lock:
+                print(f"[PROCESS] Checking if job exists in background_jobs")
+                if job_id not in background_jobs:
+                    print(f"[PROCESS] Job {job_id} not found in background_jobs")
+                    raise HTTPException(status_code=404, detail="Job not found")
+                
+                job_info = background_jobs[job_id]
+                print(f"[PROCESS] Job found with status: {job_info.get('status', 'unknown')}")
+                
+                # Check if job is in uploaded status
+                if job_info["status"] != "uploaded":
+                    print(f"[PROCESS] Job status is '{job_info['status']}', expected 'uploaded'")
+                    raise HTTPException(
+                        status_code=400, 
+                        detail=f"Job is in '{job_info['status']}' status. Only 'uploaded' jobs can be processed."
+                    )
+                
+                # Get job details
+                r2_url = job_info.get("r2_url")
+                file_name = job_info.get("file_name", "Unknown")
+                
+                if not r2_url:
+                    raise HTTPException(status_code=400, detail="No R2 URL found for this job")
+            
+            # Create analytic path
+            suffix = Path(file_name).suffix or ".mp4"
+            analytic_path = OUTPUT_DIR / f"{job_id}_out{suffix}"
+            
+            # Update job status to queued
+            with job_lock:
+                background_jobs[job_id]["status"] = "queued"
+                background_jobs[job_id]["message"] = "Job queued for processing..."
+            
+            # Add job to processing queue
+            job_data = {
+                "job_id": job_id,
+                "stream_url": r2_url,
+                "analytic_path": analytic_path,
+                "suffix": suffix,
+                "start_time": time.time(),
+                "video_id": None
+            }
+            
+            with queue_lock:
+                job_queue.append(job_data)
+                queue_position = len(job_queue)
+            
+            # Start queue processor if not already running
+            try:
+                start_queue_processor()
+                print(f"[PROCESS] Job {job_id} added to processing queue (position: {queue_position})")
+            except Exception as e:
+                print(f"[PROCESS] Warning: Failed to start queue processor: {e}")
+                # Continue anyway, the job is still added to queue
+            
+            return {
+                "status": "queued",
+                "job_id": job_id,
+                "queue_position": queue_position,
+                "message": f"Job queued for processing (position: {queue_position})",
+                "file_name": file_name,
+                "r2_url": r2_url
+            }
+            
+        except HTTPException:
+            raise
+        except Exception as e:
+            print(f"[PROCESS] Error: {e}")
+            raise HTTPException(status_code=500, detail=f"Failed to start processing: {str(e)}")
 
     return router
