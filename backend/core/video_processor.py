@@ -165,12 +165,19 @@ class VideoProcessor:
         else:
             self.video_info = sv.VideoInfo.from_video_path(self.video_path)
         
-        # Only set FPS if TARGET_FPS is specified (not None)
+        # Set FPS to TARGET_FPS (now always 30) to prevent None values
         if Config.TARGET_FPS is not None:
             self.video_info.fps = Config.TARGET_FPS
             print(f"[INFO] FPS set to {Config.TARGET_FPS} (configured)")
         else:
-            print(f"[INFO] FPS preserved at {self.video_info.fps} (original)")
+            # Fallback to 30 if TARGET_FPS is None
+            self.video_info.fps = 30.0
+            print(f"[INFO] FPS set to 30.0 (fallback)")
+        
+        # Additional safety check
+        if self.video_info.fps is None or self.video_info.fps <= 0:
+            self.video_info.fps = 30.0
+            print(f"[WARNING] FPS was invalid, set to 30.0")
         
         # Force output video to use the same FPS as input to prevent duration changes
         original_fps = self.video_info.fps
@@ -309,6 +316,15 @@ class VideoProcessor:
             # Use supervision VideoSink with streaming-compatible settings
             # CRITICAL: Force output FPS to match input FPS to prevent duration changes
             original_fps = self.video_info.fps
+            print(f"[DEBUG] 🔍 Video info check: fps={original_fps}, total_frames={self.video_info.total_frames}, width={self.video_info.width}, height={self.video_info.height}")
+            
+            # Defensive check for None values
+            if original_fps is None:
+                print(f"[WARNING] ⚠️ FPS is None, setting to 30 as fallback")
+                original_fps = 30.0
+            if self.video_info.total_frames is None:
+                print(f"[WARNING] ⚠️ total_frames is None, this may cause issues")
+            
             output_video_info = sv.VideoInfo(
                 width=self.video_info.width,
                 height=self.video_info.height,
@@ -377,7 +393,10 @@ class VideoProcessor:
         except KeyboardInterrupt:
             print(f"\n[INFO] Keyboard interrupt received at frame {self.frame_idx}. Stopping gracefully...")
         except Exception as e:
+            import traceback
             print(f"[ERROR] {e}")
+            print(f"[ERROR] 🔍 FULL TRACEBACK:")
+            traceback.print_exc()
         finally:
             # Post-process video for streaming compatibility
             self._make_video_streamable()

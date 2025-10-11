@@ -507,7 +507,10 @@ def process_single_job(job_data):
         
     except Exception as e:
         processing_time = time.time() - start_time
+        import traceback
         print(f"[QUEUE] ❌ Job {job_id} failed: {e}")
+        print(f"[QUEUE] 🔍 FULL TRACEBACK:")
+        traceback.print_exc()
         
         with job_lock:
             background_jobs[job_id]["status"] = "failed"
