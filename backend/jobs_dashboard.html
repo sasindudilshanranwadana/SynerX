@@ -298,7 +298,7 @@
 
     <script>
       // Backend API base
-      const API_BASE = "http://localhost:8000";
+      const API_BASE = "https://2szdl2gbq9sd7h-8000.proxy.runpod.net";
       let autoTimer = null;
       
       // R2 Configuration - loaded from r2_config.js
@@ -389,7 +389,7 @@
             console.log('  - jobsWS state:', jobsWS ? jobsWS.readyState : 'null');
             
             // Create temporary WebSocket connection
-            const ws = new WebSocket(`ws://localhost:8000/ws/jobs`);
+            const ws = new WebSocket(`${API_BASE.replace('https://', 'wss://').replace('http://', 'ws://')}/ws/jobs`);
             
             ws.onopen = () => {
               console.log('🔌 Connected to backend WebSocket for job push');
@@ -450,7 +450,7 @@
           }
         } catch {}
         
-        const url = "ws://localhost:8000/ws/jobs";
+        const url = `${API_BASE.replace('https://', 'wss://').replace('http://', 'ws://')}/ws/jobs`;
         jobsWS = new WebSocket(url);
         
         jobsWS.onopen = () => {
@@ -626,7 +626,7 @@
         } catch {}
         
         // Construct WebSocket URL for video stream
-        const wsUrl = `ws://localhost:8000/ws/video-stream/${encodeURIComponent(jobId)}`;
+        const wsUrl = `${API_BASE.replace('https://', 'wss://').replace('http://', 'ws://')}/ws/video-stream/${encodeURIComponent(jobId)}`;
         
         console.log(`[STREAM] 🔌 Connecting to: ${wsUrl}`);
         ws = new WebSocket(wsUrl);

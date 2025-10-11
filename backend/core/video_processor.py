@@ -315,7 +315,8 @@ class VideoProcessor:
                 total_frames=self.video_info.total_frames
             )
             print(f"[INFO] Creating output video with FPS: {output_video_info.fps} (original: {original_fps})")
-            print(f"[INFO] Expected output duration: {self.video_info.total_frames / original_fps:.2f} seconds")
+            if self.video_info.total_frames and original_fps:
+                print(f"[INFO] Expected output duration: {self.video_info.total_frames / original_fps:.2f} seconds")
             print(f"[INFO] GPU/CPU processing speed will NOT affect output video duration")
             
             # Validate FPS preservation
@@ -338,7 +339,7 @@ class VideoProcessor:
                         print(f"[INFO] Processing frame {self.frame_idx}")
                     
                     # Debug: Check if we're processing too many frames
-                    if self.frame_idx > self.video_info.total_frames * 1.5:
+                    if self.video_info.total_frames and self.frame_idx > self.video_info.total_frames * 1.5:
                         print(f"[WARNING] Processing more frames than expected! Frame {self.frame_idx} vs total {self.video_info.total_frames}")
                         break
                     
