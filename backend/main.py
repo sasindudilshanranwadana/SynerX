@@ -326,6 +326,25 @@ def process_single_job(job_data):
                     )
                     if partial_video_url:
                         print(f"[QUEUE] 📹 Partial processed video uploaded for interrupted video {video_id}: {partial_video_url}")
+                        
+                        # Clean up original video from R2 storage after partial processing
+                        try:
+                            if stream_url:
+                                # Extract filename from original R2 URL
+                                original_filename = stream_url.split('/')[-1]
+                                print(f"[CLEANUP] 🗑️ Deleting original video from R2 (interrupted): {original_filename}")
+                                
+                                # Delete original video from R2
+                                r2_client.s3_client.delete_object(
+                                    Bucket=r2_client.bucket_name,
+                                    Key=original_filename
+                                )
+                                print(f"[CLEANUP] ✅ Original video deleted from R2 (interrupted): {original_filename}")
+                            else:
+                                print(f"[CLEANUP] ℹ️ No original R2 video to clean up (local file processing)")
+                        except Exception as cleanup_error:
+                            print(f"[CLEANUP] ⚠️ Failed to delete original video from R2 (interrupted): {cleanup_error}")
+                            # Don't fail the process if cleanup fails
                     else:
                         print(f"[WARNING] Failed to upload partial processed video for interrupted video {video_id}")
                 except Exception as e:
