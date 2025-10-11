@@ -327,6 +327,7 @@
         }
       }
 
+
       // Live jobs updates via WebSocket
       let jobsWS = null;
       let reconnectAttempts = 0;
@@ -425,10 +426,10 @@
             <td class="muted">${elapsed}</td>
             <td>
               ${
-                hasVideo
-                  ? `<button onclick="playVideo('${videoUrl}')" style="background: #059669; font-size: 12px; padding: 4px 8px;">🎥 Play</button>`
-                  : j.status === "completed"
-                  ? `<span class="muted">No video</span>`
+                j.status === "completed"
+                  ? `<button onclick="playVideo('${j.job_id}')" style="background: #059669; font-size: 12px; padding: 4px 8px;">🎥 Play</button>`
+                  : j.status === "processing"
+                  ? `<button onclick="playVideo('${j.job_id}')" style="background: #f59e0b; font-size: 12px; padding: 4px 8px;">🎥 Live</button>`
                   : `<span class="muted">-</span>`
               }
             </td>
@@ -597,14 +598,14 @@
       // Video player functions
       let currentVideoUrl = '';
       
-      function playVideo(videoUrl) {
-        currentVideoUrl = videoUrl;
+      function playVideo(jobId) {
+        currentVideoUrl = `${API_BASE}/video/stream/${jobId}`;
         const modal = document.getElementById("videoModal");
         const videoPlayer = document.getElementById("videoPlayer");
         const urlDisplay = document.getElementById("videoUrl");
         
-        videoPlayer.src = videoUrl;
-        urlDisplay.textContent = videoUrl;
+        videoPlayer.src = currentVideoUrl;
+        urlDisplay.textContent = currentVideoUrl;
         modal.style.display = "flex";
       }
       

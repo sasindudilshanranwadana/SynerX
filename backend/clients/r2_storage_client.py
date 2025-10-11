@@ -28,6 +28,63 @@ class R2StorageClient:
             region_name='auto'  # R2 uses 'auto' region
         )
     
+    def upload_video_from_stream(self, file_stream, file_name: str) -> Optional[str]:
+        """
+        Upload a video file directly from stream to R2 storage (no temp files)
+        
+        Args:
+            file_stream: File stream object (e.g., from FastAPI UploadFile)
+            file_name: Name for the uploaded file
+            
+        Returns:
+            Public URL of the uploaded file, or None if upload failed
+        """
+        try:
+            # Generate unique filename to avoid conflicts
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            name_parts = Path(file_name).stem, Path(file_name).suffix
+            unique_filename = f"{name_parts[0]}_{timestamp}{name_parts[1]}"
+            
+            print(f"[R2] Uploading stream as {unique_filename}...")
+            
+            # Upload file stream directly to R2
+            self.s3_client.upload_fileobj(
+                file_stream,
+                self.bucket_name,
+                unique_filename,
+                ExtraArgs={
+                    'ContentType': 'video/mp4',
+                    'ACL': 'public-read',
+                    'CacheControl': 'public, max-age=31536000',
+                    'ContentDisposition': 'inline',
+                    'Metadata': {
+                        'streaming': 'true',
+                        'video': 'true'
+                    }
+                }
+            )
+            
+            # For private R2, we need to use the bucket URL or generate signed URL
+            # Check if we should use public or private URL
+            if hasattr(self, 'use_public_url') and self.use_public_url:
+                public_url = f"https://pub-d09bbd55032147988e9281c29382194b.r2.dev/{unique_filename}"
+            else:
+                # Use private bucket URL (requires authentication)
+                public_url = f"https://{self.bucket_name}.r2.cloudflarestorage.com/{unique_filename}"
+            
+            print(f"[R2] ✅ Stream upload successful: {public_url}")
+            return public_url
+            
+        except NoCredentialsError:
+            print("[R2] ❌ Error: Invalid credentials")
+            return None
+        except ClientError as e:
+            print(f"[R2] ❌ Error uploading stream: {e}")
+            return None
+        except Exception as e:
+            print(f"[R2] ❌ Unexpected error: {e}")
+            return None
+
     def upload_video(self, file_path: str, file_name: str = None) -> Optional[str]:
         """
         Upload a video file to R2 storage
@@ -67,8 +124,13 @@ class R2StorageClient:
                 }
             )
             
-            # Generate public URL using the public dev URL
-            public_url = f"https://pub-d09bbd55032147988e9281c29382194b.r2.dev/{unique_filename}"
+            # For private R2, we need to use the bucket URL or generate signed URL
+            # Check if we should use public or private URL
+            if hasattr(self, 'use_public_url') and self.use_public_url:
+                public_url = f"https://pub-d09bbd55032147988e9281c29382194b.r2.dev/{unique_filename}"
+            else:
+                # Use private bucket URL (requires authentication)
+                public_url = f"https://{self.bucket_name}.r2.cloudflarestorage.com/{unique_filename}"
             
             print(f"[R2] ✅ Upload successful: {public_url}")
             return public_url

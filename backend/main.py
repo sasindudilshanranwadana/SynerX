@@ -169,7 +169,8 @@ def process_job_queue():
 def process_single_job(job_data):
     """Process a single video job with video-based schema"""
     job_id = job_data['job_id']
-    raw_path = job_data['raw_path']
+    raw_path = job_data.get('raw_path')  # Local file path
+    stream_url = job_data.get('stream_url')  # Stream URL for cloud processing
     analytic_path = job_data['analytic_path']
     suffix = job_data['suffix']
     start_time = job_data['start_time']
@@ -183,28 +184,43 @@ def process_single_job(job_data):
         
         # Create video record now (at processing start)
         try:
-            file_size = os.path.getsize(raw_path) if raw_path.exists() else 0
+            # Handle both local files and stream URLs
+            if stream_url:
+                print(f"[QUEUE] 🌐 Processing from stream URL: {stream_url}")
+                file_size = 0  # Unknown for stream URLs
+                video_source = stream_url
+            else:
+                print(f"[QUEUE] 📁 Processing from local file: {raw_path}")
+                file_size = os.path.getsize(raw_path) if raw_path and raw_path.exists() else 0
+                video_source = str(raw_path)
             # Use the original filename captured at upload time, not the temp uuid name
             try:
                 with job_lock:
-                    original_display_name = background_jobs.get(job_id, {}).get('file_name', raw_path.name)
+                    if stream_url:
+                        # For stream URLs, get filename from job data
+                        original_display_name = background_jobs.get(job_id, {}).get('file_name', 'Stream Video')
+                    else:
+                        original_display_name = background_jobs.get(job_id, {}).get('file_name', raw_path.name if raw_path else 'Unknown Video')
             except Exception:
-                original_display_name = raw_path.name
+                original_display_name = "Unknown Video"
             # Compute duration using OpenCV (fallback to 0 on failure)
             duration_seconds = 0.0
             try:
                 import cv2
-                cap = cv2.VideoCapture(str(raw_path))
+                if stream_url:
+                    cap = cv2.VideoCapture(stream_url)
+                else:
+                    cap = cv2.VideoCapture(str(raw_path))
                 fps = cap.get(cv2.CAP_PROP_FPS) or 0
                 frames = cap.get(cv2.CAP_PROP_FRAME_COUNT) or 0
                 cap.release()
                 if fps and frames:
                     duration_seconds = float(frames / fps)
             except Exception as e:
-                print(f"[QUEUE] Warning: failed to compute duration for {raw_path}: {e}")
+                print(f"[QUEUE] Warning: failed to compute duration for {video_source}: {e}")
             video_data = {
                 "video_name": original_display_name,
-                "original_filename": raw_path.name,
+                "original_filename": original_display_name,  # Use the display name for both
                 "file_size": file_size,
                 "status": "processing",
                 "processing_start_time": datetime.now().isoformat(),
@@ -280,9 +296,15 @@ def process_single_job(job_data):
 
         # Run video processing - always use database mode with video_id
         from core.video_processor import VideoProcessor
-        processor = VideoProcessor(str(raw_path), str(analytic_path), "api", video_id, progress_callback=on_progress, total_frames=total_frames)
+        processing_start = time.time()
+        if stream_url:
+            processor = VideoProcessor(stream_url=stream_url, output_video_path=str(analytic_path), mode="api", video_id=video_id, progress_callback=on_progress, total_frames=total_frames)
+        else:
+            processor = VideoProcessor(str(raw_path), str(analytic_path), "api", video_id, progress_callback=on_progress, total_frames=total_frames)
         processor.initialize()
         processor.process_video()
+        processing_time = time.time() - processing_start
+        print(f"[PROCESSING] Video processing took {processing_time:.2f}s")
         session_data = processor.get_session_data()
         
         # Check if processing was interrupted by shutdown
@@ -295,7 +317,10 @@ def process_single_job(job_data):
             if analytic_path.exists():
                 try:
                     partial_filename = f"interrupted_{job_id}{suffix}"
-                    partial_video_url = supabase_manager.upload_video_to_storage(
+                    # Upload partial video directly to R2
+                    from clients.r2_storage_client import R2StorageClient
+                    r2_client = R2StorageClient()
+                    partial_video_url = r2_client.upload_video(
                         str(analytic_path), 
                         file_name=partial_filename
                     )
@@ -326,13 +351,45 @@ def process_single_job(job_data):
         if analytic_path.exists():
             try:
                 processed_filename = f"processed_{job_id}{suffix}"
-                processed_video_url = supabase_manager.upload_video_to_storage(
+                # Upload processed video directly to R2 (same as initial upload)
+                from clients.r2_storage_client import R2StorageClient
+                r2_client = R2StorageClient()
+                
+                # Get processed file size for comparison
+                processed_file_size = analytic_path.stat().st_size
+                processed_file_size_mb = processed_file_size / (1024 * 1024)
+                print(f"[PROCESSED] File size: {processed_file_size_mb:.2f} MB")
+                
+                print(f"[PROCESSED] Uploading processed video to R2...")
+                processed_upload_start = time.time()
+                processed_video_url = r2_client.upload_video(
                     str(analytic_path), 
                     file_name=processed_filename
                 )
+                processed_upload_time = time.time() - processed_upload_start
+                print(f"[PROCESSED] R2 upload took {processed_upload_time:.2f}s ({processed_file_size_mb/processed_upload_time:.2f} MB/s)")
                 
                 if processed_video_url:
                     print(f"[QUEUE] 📹 Processed video uploaded successfully: {processed_video_url}")
+                    
+                    # Clean up original video from R2 storage after successful processing
+                    try:
+                        if stream_url:
+                            # Extract filename from original R2 URL
+                            original_filename = stream_url.split('/')[-1]
+                            print(f"[CLEANUP] 🗑️ Deleting original video from R2: {original_filename}")
+                            
+                            # Delete original video from R2
+                            r2_client.s3_client.delete_object(
+                                Bucket=r2_client.bucket_name,
+                                Key=original_filename
+                            )
+                            print(f"[CLEANUP] ✅ Original video deleted from R2: {original_filename}")
+                        else:
+                            print(f"[CLEANUP] ℹ️ No original R2 video to clean up (local file processing)")
+                    except Exception as cleanup_error:
+                        print(f"[CLEANUP] ⚠️ Failed to delete original video from R2: {cleanup_error}")
+                        # Don't fail the entire process if cleanup fails
                 else:
                     print(f"[WARNING] Failed to upload processed video - no URL returned")
                 # Compute processed video duration

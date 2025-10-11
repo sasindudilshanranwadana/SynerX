@@ -27,8 +27,9 @@ from typing import Callable, Optional
 class VideoProcessor:
     """Main video processing class that orchestrates all components with video-based schema"""
     
-    def __init__(self, video_path=Config.VIDEO_PATH, output_video_path=Config.OUTPUT_VIDEO_PATH, mode="api", video_id: int = None, progress_callback: Optional[Callable[[int, Optional[int]], None]] = None, total_frames: Optional[int] = None):
+    def __init__(self, video_path=Config.VIDEO_PATH, output_video_path=Config.OUTPUT_VIDEO_PATH, mode="api", video_id: int = None, progress_callback: Optional[Callable[[int, Optional[int]], None]] = None, total_frames: Optional[int] = None, stream_url: str = None):
         self.video_path = video_path
+        self.stream_url = stream_url  # New: stream URL for cloud processing
         self.output_video_path = output_video_path
         self.mode = mode  # Kept for compatibility but always uses database
         self.video_id = video_id  # New: video ID for linking data to database
@@ -76,8 +77,93 @@ class VideoProcessor:
         device = self.device_manager.get_device()
         print(f"[INFO] Using {self.device_manager.get_gpu_info()}")
         
-        # Initialize video info
-        self.video_info = sv.VideoInfo.from_video_path(self.video_path)
+        # Initialize video info - handle both local files and stream URLs
+        if self.stream_url:
+            print(f"[INFO] 🌐 Processing from stream URL: {self.stream_url}")
+            
+            # TRUE STREAMING: Create signed URL for OpenCV streaming
+            print(f"[INFO] 🚀 TRUE STREAMING: Creating signed URL for R2 stream...")
+            try:
+                from clients.r2_storage_client import R2StorageClient
+                r2_client = R2StorageClient()
+                
+                # Extract filename from URL
+                filename = self.stream_url.split('/')[-1]
+                
+                # Create signed URL that OpenCV can access (valid for 1 hour)
+                import boto3
+                signed_url = r2_client.s3_client.generate_presigned_url(
+                    'get_object',
+                    Params={'Bucket': r2_client.bucket_name, 'Key': filename},
+                    ExpiresIn=3600  # 1 hour
+                )
+                
+                print(f"[INFO] ✅ Created signed URL for streaming")
+                
+                # Use OpenCV to get video info from signed URL
+                cap = cv2.VideoCapture(signed_url)
+                if not cap.isOpened():
+                    raise RuntimeError("Could not open signed URL")
+                
+                # Get video properties directly from stream
+                width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+                height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+                fps = cap.get(cv2.CAP_PROP_FPS)
+                total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+                duration = total_frames / fps if fps > 0 else 0
+                
+                cap.release()
+                
+                # Create VideoInfo manually for streaming
+                self.video_info = sv.VideoInfo(
+                    width=width,
+                    height=height,
+                    fps=fps,
+                    total_frames=total_frames
+                )
+                
+                # Store signed URL for direct processing
+                self.video_path = signed_url
+                
+                print(f"[INFO] ✅ TRUE STREAMING: {width}x{height} @ {fps}fps, {total_frames} frames, {duration:.1f}s")
+                
+            except Exception as e:
+                print(f"[ERROR] Failed to stream from URL: {e}")
+                # Fallback: download if streaming fails
+                print(f"[INFO] Streaming failed, falling back to download...")
+                try:
+                    import tempfile
+                    from clients.r2_storage_client import R2StorageClient
+                    r2_client = R2StorageClient()
+                    
+                    # Extract filename from URL
+                    filename = self.stream_url.split('/')[-1]
+                    
+                    # Create temporary file
+                    temp_file = tempfile.NamedTemporaryFile(delete=False, suffix='.mp4')
+                    temp_path = temp_file.name
+                    temp_file.close()
+                    
+                    # Download using R2 client (with authentication)
+                    print(f"[INFO] Downloading {filename} to {temp_path}...")
+                    r2_client.s3_client.download_file(
+                        r2_client.bucket_name,
+                        filename,
+                        temp_path
+                    )
+                    
+                    print(f"[INFO] Video downloaded to: {temp_path}")
+                    
+                    # Use the downloaded file for processing
+                    self.video_path = temp_path
+                    self.video_info = sv.VideoInfo.from_video_path(self.video_path)
+                    print(f"[INFO] Downloaded video info: {self.video_info.width}x{self.video_info.height} @ {self.video_info.fps}fps, {self.video_info.total_frames} frames")
+                    
+                except Exception as download_error:
+                    print(f"[ERROR] Both streaming and download failed: {download_error}")
+                    raise ValueError(f"Could not process video from stream URL: {self.stream_url}")
+        else:
+            self.video_info = sv.VideoInfo.from_video_path(self.video_path)
         self.video_info.fps = Config.TARGET_FPS
         
         # Get first frame for heat map overlay
@@ -98,8 +184,13 @@ class VideoProcessor:
         # Print initialization info
         self._print_initialization_info()
         
-        # Setup frame generator
-        self.frame_gen = sv.get_video_frames_generator(source_path=self.video_path)
+        # Setup frame generator - TRUE STREAMING for URLs, normal for local files
+        if self.stream_url:
+            # Create a custom streaming frame generator
+            self.frame_gen = self._create_streaming_frame_generator()
+        else:
+            # Use supervision's frame generator for local files
+            self.frame_gen = sv.get_video_frames_generator(source_path=self.video_path)
         
         # Video streaming will start automatically when first WebSocket client connects
         # No need to start it here for better performance
@@ -114,6 +205,30 @@ class VideoProcessor:
         cap0.release()
         if not ok:
             raise RuntimeError("Could not read first frame")
+    
+    def _create_streaming_frame_generator(self):
+        """Create a true streaming frame generator that reads directly from signed URL"""
+        def streaming_generator():
+            # Use the signed URL (stored in self.video_path)
+            cap = cv2.VideoCapture(self.video_path)
+            if not cap.isOpened():
+                raise RuntimeError(f"Could not open signed URL: {self.video_path}")
+            
+            frame_count = 0
+            try:
+                while True:
+                    ret, frame = cap.read()
+                    if not ret:
+                        break
+                    
+                    frame_count += 1
+                    yield frame
+                    
+            finally:
+                cap.release()
+                print(f"[STREAMING] Processed {frame_count} frames directly from signed URL")
+        
+        return streaming_generator()
     
     def _initialize_components(self, device):
         """Initialize all processing components with performance optimizations"""
