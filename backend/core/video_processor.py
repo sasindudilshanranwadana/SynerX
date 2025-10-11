@@ -187,6 +187,10 @@ class VideoProcessor:
                         break
                     
                     self.frame_idx += 1
+                    # Debug: Print every 100 frames
+                    if self.frame_idx % 100 == 0:
+                        print(f"[INFO] Processing frame {self.frame_idx}")
+                    
                     # Progress callback (cap processing to 80%)
                     try:
                         if self.progress_callback:
@@ -203,6 +207,7 @@ class VideoProcessor:
                     
                     # Process frame
                     if not self._process_frame(frame, sink, should_process_detection):
+                        print(f"[ERROR] Frame processing failed at frame {self.frame_idx}")
                         break
                     
                     # Memory optimization - clear GPU memory periodically

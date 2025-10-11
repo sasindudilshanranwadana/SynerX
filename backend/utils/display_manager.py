@@ -30,7 +30,12 @@ class DisplayManager:
         
         # Handle local display if enabled
         if Config.ENABLE_DISPLAY:
-            return self._handle_local_display(frame, frame_idx)
+            try:
+                return self._handle_local_display(frame, frame_idx)
+            except Exception as e:
+                print(f"[DISPLAY] Display error: {e}")
+                print(f"[DISPLAY] Continuing without display...")
+                return True  # Always continue processing even if display fails
         
         return True
     
@@ -38,6 +43,7 @@ class DisplayManager:
         """Handle local display and keyboard input (headless-compatible)"""
         # Skip GUI operations on headless servers (RunPod)
         if not HAS_CV2:
+            print(f"[DISPLAY] OpenCV not available, skipping display")
             return True
             
         try:
@@ -53,12 +59,17 @@ class DisplayManager:
             # Only use GUI functions if not on headless server
             cv2.imshow("Tracking with Stop", display_frame)
             
+            # Debug: Print every 100 frames
+            if frame_idx % 100 == 0:
+                print(f"[DISPLAY] Showing frame {frame_idx}")
+            
             # Handle keyboard input
             return self._handle_keyboard_input(frame_idx)
         except Exception as e:
-            # Silently handle GUI errors on headless servers
-            print(f"[DISPLAY] GUI not available (headless mode): {e}")
-            return True
+            # Handle GUI errors gracefully - don't stop processing
+            print(f"[DISPLAY] GUI error: {e}")
+            print(f"[DISPLAY] Continuing processing without display...")
+            return True  # Always return True to continue processing
     
     def _handle_keyboard_input(self, frame_idx):
         """Handle keyboard input and return True if should continue, False if should stop (headless-compatible)"""

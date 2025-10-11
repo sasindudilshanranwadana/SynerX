@@ -495,6 +495,10 @@ def process_single_job(job_data):
                 print(f"[WARNING] Failed to update video {video_id} status for shutdown: {e}")
         
         # Clean up temporary files AFTER processing is completely stopped
+        # Add small delay to ensure all file handles are released
+        import time
+        time.sleep(1)  # Wait 1 second for file handles to be released
+        
         # For shutdown scenarios, delay cleanup to avoid file lock issues
         if shutdown_manager.check_shutdown():
             # Schedule delayed cleanup for shutdown scenarios
@@ -572,32 +576,66 @@ def cleanup_temp_files():
         print(f"[WARNING] Error during temp file cleanup: {e}")
 
 def cleanup_job_files(job_id: str, raw_path: Path, analytic_path: Path):
-    """Clean up job files immediately (for normal completion/failure)"""
-    try:
-        if raw_path.exists():
-            raw_path.unlink()
-            print(f"[CLEANUP] Removed temp upload: {raw_path}")
-        if analytic_path.exists():
-            analytic_path.unlink()
-            print(f"[CLEANUP] Removed temp output: {analytic_path}")
-    except Exception as e:
-        print(f"[WARNING] Failed to clean up files for job {job_id}: {e}")
+    """Clean up job files with retry logic to handle file locking"""
+    import time
+    
+    def safe_delete(file_path: Path, max_retries: int = 5):
+        """Safely delete a file with retry logic"""
+        for attempt in range(max_retries):
+            try:
+                if file_path.exists():
+                    file_path.unlink()
+                    print(f"[CLEANUP] Removed: {file_path}")
+                    return True
+            except PermissionError as e:
+                if attempt < max_retries - 1:
+                    print(f"[CLEANUP] File locked, retrying in 1s... (attempt {attempt + 1}/{max_retries})")
+                    time.sleep(1)
+                else:
+                    print(f"[WARNING] Could not delete {file_path} after {max_retries} attempts: {e}")
+                    return False
+            except Exception as e:
+                print(f"[WARNING] Failed to delete {file_path}: {e}")
+                return False
+        return False
+    
+    # Clean up files with retry logic
+    safe_delete(raw_path)
+    safe_delete(analytic_path)
 
 def schedule_delayed_cleanup(job_id: str, raw_path: Path, analytic_path: Path):
     """Schedule delayed cleanup for shutdown scenarios to avoid file lock issues"""
     def delayed_cleanup():
         import time
-        # Wait a bit for video processing to completely stop
-        time.sleep(2)
-        try:
-            if raw_path.exists():
-                raw_path.unlink()
-                print(f"[CLEANUP] Removed temp upload (delayed): {raw_path}")
-            if analytic_path.exists():
-                analytic_path.unlink()
-                print(f"[CLEANUP] Removed temp output (delayed): {analytic_path}")
-        except Exception as e:
-            print(f"[WARNING] Failed to clean up files for job {job_id} (delayed): {e}")
+        
+        # Wait longer for video processing to completely stop
+        print(f"[CLEANUP] Waiting for file handles to be released...")
+        time.sleep(5)  # Increased wait time
+        
+        # Use the same safe delete logic
+        def safe_delete(file_path: Path, max_retries: int = 10):
+            """Safely delete a file with retry logic"""
+            for attempt in range(max_retries):
+                try:
+                    if file_path.exists():
+                        file_path.unlink()
+                        print(f"[CLEANUP] Removed (delayed): {file_path}")
+                        return True
+                except PermissionError as e:
+                    if attempt < max_retries - 1:
+                        print(f"[CLEANUP] File still locked, retrying in 2s... (attempt {attempt + 1}/{max_retries})")
+                        time.sleep(2)
+                    else:
+                        print(f"[WARNING] Could not delete {file_path} after {max_retries} attempts: {e}")
+                        return False
+                except Exception as e:
+                    print(f"[WARNING] Failed to delete {file_path}: {e}")
+                    return False
+            return False
+        
+        # Clean up files with retry logic
+        safe_delete(raw_path)
+        safe_delete(analytic_path)
     
     # Run delayed cleanup in a separate thread
     cleanup_thread = threading.Thread(target=delayed_cleanup, daemon=True)

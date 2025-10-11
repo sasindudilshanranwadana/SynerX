@@ -27,10 +27,10 @@ class Config:
     CLASS_CONFIDENCE_THRESHOLD = 0.5  # Confidence threshold for stable class assignment (Original: 0.5 for better detection)
     CLASS_HISTORY_FRAMES = 10  # Number of frames to track for class consistency (Range: 3-20, Recommended: 5-15 frames)
     
-    # Video Settings - Optimized for Performance
+    # Video Settings - Balanced for Quality and Performance
     TARGET_FPS = 15  # Target frames per second for output video (Optimized: 15 for faster processing)
     FPS_UPDATE_INTERVAL = 30  # Interval (in frames) to update FPS display (Range: 10-100, Recommended: 30-60 frames)
-    PROCESSING_FRAME_SKIP = 2  # Skip every N frames during processing (Optimized: 2 = skip every other frame for 2x speed)
+    PROCESSING_FRAME_SKIP = 2  # Skip every N frames during processing (2 = 2x speed with minimal accuracy loss)
     
     # Visual Settings
     ANNOTATION_THICKNESS = 1  # Thickness of bounding box lines (Range: 1-5, Recommended: 2-3 for visibility)
@@ -49,7 +49,21 @@ class Config:
     CLASS_NAMES = {2: "car", 3: "motorcycle", 5: "bus", 7: "truck"}  # YOLO class ID to vehicle type mapping
     
     # Display Settings (for API mode)
-    ENABLE_DISPLAY = True  # Whether to show live video window in API mode
+    # Auto-detect environment: enable display locally, disable in production
+    import os
+    import platform
+    
+    # Check if we're in a headless environment
+    is_headless = (
+        os.getenv('RUNPOD_POD_ID') is not None or  # RunPod
+        os.getenv('COLAB_GPU') is not None or     # Google Colab
+        os.getenv('DISPLAY') is None and platform.system() == 'Linux'  # Linux without display
+    )
+    
+    ENABLE_DISPLAY = (
+        os.getenv('ENABLE_DISPLAY', 'auto').lower() == 'true' or
+        (os.getenv('ENABLE_DISPLAY', 'auto').lower() == 'auto' and not is_headless)
+    )
     MAX_DISPLAY_WIDTH = 1280  # Maximum width for display window (resize if larger)
     DISPLAY_FRAME_SKIP = 1  # Skip every N frames for better performance (1 = no skip, 2 = skip every other frame)
     DISPLAY_WAIT_KEY_DELAY = 1  # Delay in milliseconds for cv2.waitKey() (1 = responsive, 0 = fastest)
