@@ -30,18 +30,45 @@ from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
 from starlette.responses import Response, FileResponse
 
-# Create organized temp directories within backend folder
+# Create organized temp directories within backend folder (Docker-compatible)
 TEMP_DIR = Path("temp")
-TEMP_DIR.mkdir(exist_ok=True)
+TEMP_DIR.mkdir(parents=True, exist_ok=True)
 
 TEMP_UPLOADS_DIR = TEMP_DIR / "uploads"
-TEMP_UPLOADS_DIR.mkdir(exist_ok=True)
+TEMP_UPLOADS_DIR.mkdir(parents=True, exist_ok=True)
 
 TEMP_PROCESSING_DIR = TEMP_DIR / "processing"
-TEMP_PROCESSING_DIR.mkdir(exist_ok=True)
+TEMP_PROCESSING_DIR.mkdir(parents=True, exist_ok=True)
 
 OUTPUT_DIR = Path("processed")
-OUTPUT_DIR.mkdir(exist_ok=True)
+OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+
+# Verify directories exist (critical for Docker/RunPod)
+print(f"[INIT] Temp directories created:")
+print(f"[INIT] - TEMP_DIR: {TEMP_DIR} (exists: {TEMP_DIR.exists()})")
+print(f"[INIT] - TEMP_UPLOADS_DIR: {TEMP_UPLOADS_DIR} (exists: {TEMP_UPLOADS_DIR.exists()})")
+print(f"[INIT] - TEMP_PROCESSING_DIR: {TEMP_PROCESSING_DIR} (exists: {TEMP_PROCESSING_DIR.exists()})")
+print(f"[INIT] - OUTPUT_DIR: {OUTPUT_DIR} (exists: {OUTPUT_DIR.exists()})")
+
+def ensure_directories_exist():
+    """Ensure all required directories exist (critical for Docker/RunPod deployment)"""
+    directories = [
+        TEMP_DIR,
+        TEMP_UPLOADS_DIR, 
+        TEMP_PROCESSING_DIR,
+        OUTPUT_DIR
+    ]
+    
+    for directory in directories:
+        try:
+            directory.mkdir(parents=True, exist_ok=True)
+            print(f"[INIT] ✅ Directory ensured: {directory}")
+        except Exception as e:
+            print(f"[ERROR] ❌ Failed to create directory {directory}: {e}")
+            raise RuntimeError(f"Cannot create required directory: {directory}")
+
+# Ensure directories exist at startup
+ensure_directories_exist()
 
 # Global variables
 api_shutdown_requested = False
@@ -694,6 +721,32 @@ async def root():
     """Root endpoint to test CORS"""
     return {"message": "SynerX API is running!", "status": "ok"}
 
+@app.get("/health")
+async def health_check():
+    """Health check endpoint that verifies critical directories exist"""
+    try:
+        # Check if all required directories exist
+        directories = {
+            "temp": TEMP_DIR.exists(),
+            "temp_uploads": TEMP_UPLOADS_DIR.exists(), 
+            "temp_processing": TEMP_PROCESSING_DIR.exists(),
+            "processed": OUTPUT_DIR.exists()
+        }
+        
+        all_exist = all(directories.values())
+        
+        return {
+            "status": "healthy" if all_exist else "unhealthy",
+            "directories": directories,
+            "message": "All directories exist" if all_exist else "Some directories missing"
+        }
+    except Exception as e:
+        return {
+            "status": "unhealthy",
+            "error": str(e),
+            "message": "Health check failed"
+        }
+
 
 @app.get("/videos", include_in_schema=False)
 async def videos_page():
@@ -908,5 +961,10 @@ async def runsync_job(request: Request):
 
 
 if __name__ == "__main__":
+    # Final directory check before starting server
+    print("[STARTUP] 🔍 Final directory verification...")
+    ensure_directories_exist()
+    print("[STARTUP] ✅ All directories verified, starting server...")
+    
     import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=8000)

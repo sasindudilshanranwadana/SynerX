@@ -35,7 +35,7 @@ RUN awk 'BEGIN{IGNORECASE=1} \
 
 RUN python -m pip install --upgrade pip && \
     python -m pip wheel --wheel-dir /wheels \
-      -r req.nocuda.txt -r req_runpod.nocuda.txt
+    -r req.nocuda.txt -r req_runpod.nocuda.txt
 
 ############################
 # Runtime: same modern CUDA/PyTorch base
@@ -57,7 +57,7 @@ COPY --from=builder /wheels /wheels
 COPY --from=builder /build/req.nocuda.txt /wheels/req.nocuda.txt
 COPY --from=builder /build/req_runpod.nocuda.txt /wheels/req_runpod.nocuda.txt
 RUN python -m pip install --no-cache-dir --find-links=/wheels \
-      -r /wheels/req.nocuda.txt -r /wheels/req_runpod.nocuda.txt && \
+    -r /wheels/req.nocuda.txt -r /wheels/req_runpod.nocuda.txt && \
     rm -rf /wheels
 
 # App source
@@ -65,8 +65,9 @@ COPY . /app
 
 # Non-root user + writable dirs (ephemeral only on RunPod; no network volume)
 RUN useradd -m appuser && \
-    mkdir -p /app/.cache /app/models /app/data /app/uploads /app/temp /app/processed && \
-    chown -R appuser:appuser /app
+    mkdir -p /app/.cache /app/models /app/data /app/uploads /app/temp /app/temp/uploads /app/temp/processing /app/processed && \
+    chown -R appuser:appuser /app && \
+    chmod -R 755 /app/temp /app/processed
 USER appuser
 
 # --- START OF CHANGES FOR RUNPOD SERVERLESS ---
