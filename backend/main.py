@@ -1004,6 +1004,25 @@ async def websocket_jobs_status(websocket: WebSocket):
         while True:
             try:
                 with job_lock:
+                    # Clear completed, interrupted, and failed jobs (older than 5 minutes)
+                    current_time = time.time()
+                    jobs_to_remove = []
+                    for job_id, job in background_jobs.items():
+                        if job["status"] in ["completed", "interrupted", "failed"]:
+                            # Remove jobs older than 5 minutes
+                            job_age = current_time - job.get("end_time", job["start_time"])
+                            if job_age > 300:  # 5 minutes = 300 seconds
+                                jobs_to_remove.append(job_id)
+                    
+                    # Remove old completed/failed jobs
+                    for job_id in jobs_to_remove:
+                        job_status = background_jobs[job_id]["status"]
+                        del background_jobs[job_id]
+                        print(f"[WS] 🧹 Cleared old {job_status} job: {job_id}")
+                    
+                    if jobs_to_remove:
+                        print(f"[WS] 🧹 Cleared {len(jobs_to_remove)} old jobs")
+                    
                     # Build summary payload similar to GET /jobs/
                     all_jobs = []
                     for job_id, job in background_jobs.items():
