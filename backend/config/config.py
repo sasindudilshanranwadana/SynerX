@@ -77,10 +77,10 @@ class Config:
     # WebSocket Streaming Configuration - Smooth Playback (30 FPS)
     # Performance settings for smooth real-time video streaming
     STREAMING_FRAME_SKIP = 2  # Send every 2nd frame for balanced smoothness
-    STREAMING_JPEG_QUALITY = 80  # Balanced quality for smooth streaming
-    STREAMING_MAX_FRAME_SIZE = (800, 450)  # Balanced size for smooth processing
-    STREAMING_QUEUE_SIZE = 3  # Balanced buffer for smooth playback
-    STREAMING_WORKERS = 3  # Balanced workers for smooth performance
+    STREAMING_JPEG_QUALITY = 85  # Higher quality for better visual
+    STREAMING_MAX_FRAME_SIZE = (1280, 720)  # Larger size for better quality (720p)
+    STREAMING_QUEUE_SIZE = 4  # Slightly larger buffer for quality
+    STREAMING_WORKERS = 4  # More workers for better quality processing
     STREAMING_TARGET_FPS = 30  # Target 30 FPS for smooth playback
     
     # Conditional interpolation based on environment

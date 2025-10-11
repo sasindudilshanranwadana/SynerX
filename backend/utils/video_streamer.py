@@ -144,12 +144,12 @@ class VideoStreamer:
         new_width = int(width * scale)
         new_height = int(height * scale)
         
-        # Use balanced resize method for smooth quality
+        # Use high-quality resize method for better visual quality
         if HAS_CV2:
-            # Use OpenCV with balanced interpolation for smooth quality
-            frame = cv2.resize(frame, (new_width, new_height), interpolation=cv2.INTER_LINEAR)
+            # Use OpenCV with high-quality interpolation
+            frame = cv2.resize(frame, (new_width, new_height), interpolation=cv2.INTER_CUBIC)
         elif HAS_PIL:
-            # Use PIL with balanced method for smooth quality
+            # Use PIL with high-quality method
             pil_image = PIL.Image.fromarray(frame)
             frame = np.array(pil_image.resize((new_width, new_height), PIL.Image.LANCZOS))
         else:
@@ -236,20 +236,24 @@ class VideoStreamer:
         print(f"[STREAM] 🔄 Streaming loop ended - processed {frame_count} frames")
                 
     def _fast_encode(self, frame: np.ndarray) -> str:
-        """Fast frame encoding for smooth streaming"""
+        """High-quality frame encoding for smooth streaming"""
         try:
-            # Use OpenCV for fastest encoding
+            # Use OpenCV for high-quality encoding
             if HAS_CV2:
-                # Minimal encoding parameters for speed
-                encode_params = [cv2.IMWRITE_JPEG_QUALITY, self.jpeg_quality]
+                # Enhanced encoding parameters for better quality
+                encode_params = [
+                    cv2.IMWRITE_JPEG_QUALITY, self.jpeg_quality,
+                    cv2.IMWRITE_JPEG_OPTIMIZE, 1,
+                    cv2.IMWRITE_JPEG_PROGRESSIVE, 1
+                ]
                 _, buffer = cv2.imencode('.jpg', frame, encode_params)
                 return base64.b64encode(buffer).decode('utf-8')
             elif HAS_PIL:
-                # Use PIL as fallback with minimal processing
+                # Use PIL with better quality settings
                 pil_image = PIL.Image.fromarray(frame)
                 import io
                 buffer = io.BytesIO()
-                pil_image.save(buffer, format='JPEG', quality=self.jpeg_quality, optimize=False)
+                pil_image.save(buffer, format='JPEG', quality=self.jpeg_quality, optimize=True)
                 return base64.b64encode(buffer.getvalue()).decode('utf-8')
             else:
                 # Simple base64 encoding as last resort
