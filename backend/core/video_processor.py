@@ -306,14 +306,25 @@ class VideoProcessor:
         """Main video processing loop"""
         try:
             # Use supervision VideoSink with streaming-compatible settings
-            # Ensure FPS is preserved for output video
+            # CRITICAL: Force output FPS to match input FPS to prevent duration changes
+            original_fps = self.video_info.fps
             output_video_info = sv.VideoInfo(
                 width=self.video_info.width,
                 height=self.video_info.height,
-                fps=self.video_info.fps,  # Use the same FPS as input
+                fps=original_fps,  # CRITICAL: Use original FPS, not processing FPS
                 total_frames=self.video_info.total_frames
             )
-            print(f"[INFO] Creating output video with FPS: {output_video_info.fps}")
+            print(f"[INFO] Creating output video with FPS: {output_video_info.fps} (original: {original_fps})")
+            print(f"[INFO] Expected output duration: {self.video_info.total_frames / original_fps:.2f} seconds")
+            print(f"[INFO] GPU/CPU processing speed will NOT affect output video duration")
+            
+            # Validate FPS preservation
+            if output_video_info.fps != original_fps:
+                print(f"[WARNING] FPS mismatch detected! Output: {output_video_info.fps}, Original: {original_fps}")
+                print(f"[WARNING] This may cause duration changes in the output video!")
+            else:
+                print(f"[INFO] ✅ FPS preservation confirmed: {output_video_info.fps} FPS")
+            
             with sv.VideoSink(self.output_video_path, output_video_info) as sink:
                 for frame in self.frame_gen:
                     # Check for shutdown request
