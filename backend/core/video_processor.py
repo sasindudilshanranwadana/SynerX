@@ -576,24 +576,27 @@ class VideoProcessor:
             
             print("[VIDEO] Converting to streaming-compatible format...")
             
-            # FFmpeg command to make video streaming-compatible
+            # FFmpeg command optimized for good quality with reasonable speed
             cmd = [
                 "ffmpeg",
                 "-y",  # Overwrite output
                 "-i", self.output_video_path,  # Input file
                 "-c:v", "libx264",  # H.264 codec
-                "-preset", "fast",   # Fast encoding
+                "-preset", "medium",   # Balanced speed/quality
                 "-crf", "23",        # Good quality
                 "-pix_fmt", "yuv420p",  # Compatible pixel format
                 "-movflags", "+faststart",  # Enable fast start for streaming
-                "-profile:v", "baseline",   # Baseline profile for compatibility
-                "-level", "3.0",     # Level 3.0 for broad compatibility
+                "-profile:v", "high",   # High profile for better quality
+                "-level", "4.0",     # Level 4.0 for better quality
                 "-c:a", "aac",       # Audio codec
-                "-b:a", "128k",      # Audio bitrate
+                "-b:a", "128k",      # Good audio quality
+                "-threads", "0",     # Use all available threads
+                "-x264opts", "ref=3:bframes=2",  # Better quality settings
                 temp_path
             ]
             
-            result = subprocess.run(cmd, capture_output=True, text=True)
+            # Run FFmpeg with timeout to prevent hanging
+            result = subprocess.run(cmd, capture_output=True, text=True, timeout=300)  # 5 minute timeout
             
             if result.returncode == 0:
                 # Replace original with streaming-compatible version
@@ -605,6 +608,12 @@ class VideoProcessor:
                 # Clean up temp file
                 if Path(temp_path).exists():
                     Path(temp_path).unlink()
+                    
+        except subprocess.TimeoutExpired:
+            print("[ERROR] FFmpeg conversion timed out after 5 minutes")
+            # Clean up temp file
+            if Path(temp_path).exists():
+                Path(temp_path).unlink()
                     
         except FileNotFoundError:
             print("[WARNING] FFmpeg not found. Video may not be streaming-compatible.")
