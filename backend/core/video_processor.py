@@ -163,21 +163,21 @@ class VideoProcessor:
                     print(f"[ERROR] Both streaming and download failed: {download_error}")
                     raise ValueError(f"Could not process video from stream URL: {self.stream_url}")
         else:
-        self.video_info = sv.VideoInfo.from_video_path(self.video_path)
+            self.video_info = sv.VideoInfo.from_video_path(self.video_path)
         
-        # Set FPS to TARGET_FPS (now always 30) to prevent None values
+        # Set FPS to TARGET_FPS (now always 15) to prevent None values
         if Config.TARGET_FPS is not None:
-        self.video_info.fps = Config.TARGET_FPS
+            self.video_info.fps = Config.TARGET_FPS
             print(f"[INFO] FPS set to {Config.TARGET_FPS} (configured)")
         else:
-            # Fallback to 30 if TARGET_FPS is None
-            self.video_info.fps = 30.0
-            print(f"[INFO] FPS set to 30.0 (fallback)")
+            # Fallback to 15 if TARGET_FPS is None
+            self.video_info.fps = 15.0
+            print(f"[INFO] FPS set to 15.0 (fallback)")
         
         # Additional safety check
         if self.video_info.fps is None or self.video_info.fps <= 0:
-            self.video_info.fps = 30.0
-            print(f"[WARNING] FPS was invalid, set to 30.0")
+            self.video_info.fps = 15.0
+            print(f"[WARNING] FPS was invalid, set to 15.0")
         
         # Force output video to use the same FPS as input to prevent duration changes
         original_fps = self.video_info.fps
