@@ -210,7 +210,7 @@ class VideoProcessor:
             self.frame_gen = self._create_streaming_frame_generator()
         else:
             # Use supervision's frame generator for local files
-        self.frame_gen = sv.get_video_frames_generator(source_path=self.video_path)
+            self.frame_gen = sv.get_video_frames_generator(source_path=self.video_path)
         
         # Video streaming will start automatically when first WebSocket client connects
         # No need to start it here for better performance
