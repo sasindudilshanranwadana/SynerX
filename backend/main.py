@@ -273,22 +273,27 @@ def process_single_job(job_data):
                 with job_lock:
                     if background_jobs.get(job_id, {}).get("status") == "processing":
                         if total and total > 0:
-                            # Map 0..total -> 10..90 more responsively (leave 10% for final processing)
+                            # Map 0..total -> 10..90 more gradually (leave 10% for final processing)
                             pct = int(10 + (processed_frames / total) * 80)
                             if pct < 11 and processed_frames > 0:
                                 pct = 11
+                            # Add gradual progression to prevent jumping
+                            if processed_frames < total * 0.1:  # First 10% of video
+                                pct = min(pct, 20)  # Cap at 20% for first 10% of processing
+                            elif processed_frames < total * 0.5:  # First 50% of video
+                                pct = min(pct, 50)  # Cap at 50% for first 50% of processing
                             pct = max(10, min(90, pct))
                         else:
                             # Fallback without total: bump roughly every few frames
                             pct = int(10 + (processed_frames % 100))
                             pct = max(10, min(80, pct))
                         # Quantize to 5% steps for clearer UI changes
-                        pct = max(10, min(80, (pct // 5) * 5))
-                        # Throttle progress updates to ~5Hz and only when pct increases
+                        pct = max(10, min(90, (pct // 5) * 5))
+                        # Throttle progress updates to ~2Hz and only when pct increases
                         import time as _t
                         now = _t.time()
                         nonlocal last_progress_time, last_pct
-                        if pct > last_pct and (now - last_progress_time) >= 0.2:
+                        if pct > last_pct and (now - last_progress_time) >= 0.5:
                             background_jobs[job_id]["progress"] = pct
                             last_pct = pct
                             last_progress_time = now
