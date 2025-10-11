@@ -497,7 +497,6 @@ def process_single_job(job_data):
         
         # Clean up temporary files AFTER processing is completely stopped
         # Add small delay to ensure all file handles are released
-        import time
         time.sleep(1)  # Wait 1 second for file handles to be released
         
         # For shutdown scenarios, delay cleanup to avoid file lock issues
@@ -578,9 +577,8 @@ def cleanup_temp_files():
 
 def cleanup_job_files(job_id: str, raw_path: Path, analytic_path: Path):
     """Clean up job files with retry logic to handle file locking"""
-    import time
     
-    def safe_delete(file_path: Path, max_retries: int = 5):
+    def safe_delete(file_path: Path, max_retries: int = 10):
         """Safely delete a file with retry logic"""
         for attempt in range(max_retries):
             try:
@@ -590,10 +588,22 @@ def cleanup_job_files(job_id: str, raw_path: Path, analytic_path: Path):
                     return True
             except PermissionError as e:
                 if attempt < max_retries - 1:
-                    print(f"[CLEANUP] File locked, retrying in 1s... (attempt {attempt + 1}/{max_retries})")
-                    time.sleep(1)
+                    wait_time = min(2 ** attempt, 10)  # Exponential backoff, max 10 seconds
+                    print(f"[CLEANUP] File locked, retrying in {wait_time}s... (attempt {attempt + 1}/{max_retries})")
+                    time.sleep(wait_time)
                 else:
                     print(f"[WARNING] Could not delete {file_path} after {max_retries} attempts: {e}")
+                    # Try to force close any handles to the file
+                    try:
+                        import gc
+                        gc.collect()
+                        time.sleep(2)
+                        if file_path.exists():
+                            file_path.unlink()
+                            print(f"[CLEANUP] Force removed: {file_path}")
+                            return True
+                    except Exception:
+                        pass
                     return False
             except Exception as e:
                 print(f"[WARNING] Failed to delete {file_path}: {e}")
@@ -607,14 +617,13 @@ def cleanup_job_files(job_id: str, raw_path: Path, analytic_path: Path):
 def schedule_delayed_cleanup(job_id: str, raw_path: Path, analytic_path: Path):
     """Schedule delayed cleanup for shutdown scenarios to avoid file lock issues"""
     def delayed_cleanup():
-        import time
         
         # Wait longer for video processing to completely stop
         print(f"[CLEANUP] Waiting for file handles to be released...")
         time.sleep(5)  # Increased wait time
         
-        # Use the same safe delete logic
-        def safe_delete(file_path: Path, max_retries: int = 10):
+        # Use the same safe delete logic with better retry strategy
+        def safe_delete(file_path: Path, max_retries: int = 15):
             """Safely delete a file with retry logic"""
             for attempt in range(max_retries):
                 try:
@@ -624,10 +633,22 @@ def schedule_delayed_cleanup(job_id: str, raw_path: Path, analytic_path: Path):
                         return True
                 except PermissionError as e:
                     if attempt < max_retries - 1:
-                        print(f"[CLEANUP] File still locked, retrying in 2s... (attempt {attempt + 1}/{max_retries})")
-                        time.sleep(2)
+                        wait_time = min(3 ** attempt, 15)  # Exponential backoff, max 15 seconds
+                        print(f"[CLEANUP] File still locked, retrying in {wait_time}s... (attempt {attempt + 1}/{max_retries})")
+                        time.sleep(wait_time)
                     else:
                         print(f"[WARNING] Could not delete {file_path} after {max_retries} attempts: {e}")
+                        # Final attempt with garbage collection
+                        try:
+                            import gc
+                            gc.collect()
+                            time.sleep(5)
+                            if file_path.exists():
+                                file_path.unlink()
+                                print(f"[CLEANUP] Force removed (delayed): {file_path}")
+                                return True
+                        except Exception:
+                            pass
                         return False
                 except Exception as e:
                     print(f"[WARNING] Failed to delete {file_path}: {e}")

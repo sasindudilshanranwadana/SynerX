@@ -338,90 +338,22 @@ class VehicleProcessor:
                 'precipitation_type': 'none',
                 'wind_speed': 5.0
             }
-    
-    def _get_current_weather_data(self):
-        """Improve vehicle classification to better distinguish trucks from cars"""
-        # Get base classification
-        base_type = Config.CLASS_NAMES.get(class_id, "unknown")
         
-        # Calculate bounding box area for size-based classification
-        if Config.SIZE_BASED_CLASSIFICATION and bbox is not None:
-            x1, y1, x2, y2 = bbox
-            area = (x2 - x1) * (y2 - y1)
-            
-            # Size-based truck classification
-            if area > Config.TRUCK_MIN_SIZE and base_type == "car":
-                # Large car might be a truck
-                if confidence > Config.TRUCK_MIN_CONFIDENCE:
-                    print(f"[DEBUG] Size-based classification: Large vehicle (area={area:.0f}) classified as truck")
-                    return "truck"
-                elif confidence < Config.CAR_MAX_CONFIDENCE:
-                    # Low confidence car with large size - likely truck
-                    print(f"[DEBUG] Low confidence car with large size classified as truck")
-                    return "truck"
+        # Check cache validity (5 minutes = 300 seconds)
+        import time
+        current_time = time.time()
+        if (self._weather_cache is not None and 
+            self._weather_cache_time is not None and 
+            current_time - self._weather_cache_time < Config.WEATHER_CACHE_DURATION):
+            print(f"[WEATHER] Using cached weather data (age: {current_time - self._weather_cache_time:.1f}s)")
+            return self._weather_cache
         
-        # Confidence-based classification
-        if base_type == "truck" and confidence < Config.TRUCK_MIN_CONFIDENCE:
-            # Low confidence truck might be a car
-            if confidence > Config.CAR_MAX_CONFIDENCE:
-                print(f"[DEBUG] Low confidence truck classified as car")
-                return "car"
+        # Fetch fresh weather data
+        print(f"[WEATHER] Fetching fresh weather data for location ({lat}, {lon})")
+        weather_data = weather_manager.get_weather_for_analysis(lat, lon)
         
-        # Additional logic for truck vs car distinction
-        if base_type == "car" and confidence > 0.8:
-            # Very high confidence car - might be misclassified truck
-            if Config.SIZE_BASED_CLASSIFICATION and bbox is not None:
-                x1, y1, x2, y2 = bbox
-                area = (x2 - x1) * (y2 - y1)
-                if area > Config.TRUCK_MIN_SIZE * 1.5:  # Very large
-                    print(f"[DEBUG] Very large high-confidence car classified as truck")
-                    return "truck"
+        # Cache the result
+        self._weather_cache = weather_data
+        self._weather_cache_time = current_time
         
-    def _get_current_weather_data(self):
-        """Get current weather data for the location (cached per session with performance optimization)"""
-        # Get location coordinates from config
-        lat = getattr(Config, 'LOCATION_LAT', -37.740585)  # Melbourne coordinates
-        lon = getattr(Config, 'LOCATION_LON', 144.731637)  # Melbourne coordinates
-        
-        # Check if weather API is disabled for maximum performance
-        if not Config.ENABLE_WEATHER_API:
-            return {
-                'weather_condition': 'disabled',
-                'temperature': 20.0,
-                'humidity': 50,
-                'visibility': 10.0,
-                'precipitation_type': 'none',
-                'wind_speed': 5.0
-            }
-        
-        # Check if we have cached weather data that's still fresh
-        current_time = datetime.now()
-        if (hasattr(self, '_weather_cache') and self._weather_cache is not None and 
-            hasattr(self, '_weather_cache_time') and self._weather_cache_time is not None):
-            time_diff = (current_time - self._weather_cache_time).total_seconds()
-            if time_diff < Config.WEATHER_CACHE_DURATION:
-                return self._weather_cache
-        
-        # Fetch fresh weather data only once per session with timeout optimization
-        print(f"[INFO] Fetching fresh weather data for location: {lat}, {lon}")
-        try:
-            # Use faster timeout for better performance
-            weather_data = weather_manager.get_weather_for_analysis(lat, lon)
-            print(f"[INFO] Weather data: {weather_data.get('weather_condition')}, {weather_data.get('temperature')}°C, {weather_data.get('humidity')}% humidity")
-            
-            # Cache the weather data for the entire session
-            self._weather_cache = weather_data
-            self._weather_cache_time = current_time
-            
-            return weather_data
-        except Exception as e:
-            print(f"[WARNING] Failed to fetch weather data: {e}")
-            # Return default weather data if API fails (no network delay)
-            return {
-                'weather_condition': 'unknown',
-                'temperature': 20.0,
-                'humidity': 50,
-                'visibility': 10.0,
-                'precipitation_type': 'none',
-                'wind_speed': 5.0
-            }
+        return weather_data

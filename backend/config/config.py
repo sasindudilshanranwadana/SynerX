@@ -106,6 +106,6 @@ class Config:
     
     # Weather API Performance Settings
     ENABLE_WEATHER_API = True  # Enable weather API calls (disable for maximum performance)
-    WEATHER_CACHE_DURATION = 1800  # Weather cache duration in seconds (30 minutes)
+    WEATHER_CACHE_DURATION = 300  # Weather cache duration in seconds (5 minutes)
     WEATHER_API_TIMEOUT = 5  # Weather API timeout in seconds
     
