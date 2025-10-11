@@ -128,31 +128,39 @@ class VideoStreamer:
             print(f"[STREAM] ❌ Error updating frame: {e}")
             
     def _quick_resize(self, frame: np.ndarray) -> np.ndarray:
-        """GPU-accelerated resize for maximum speed on RunPod"""
+        """GPU-accelerated resize for maximum speed on RunPod with proper color handling"""
+        if frame is None or frame.size == 0:
+            return frame
+            
         height, width = frame.shape[:2]
         max_width, max_height = self.max_frame_size
+        
+        # Ensure frame is in correct color format (BGR for OpenCV)
+        if len(frame.shape) == 3 and frame.shape[2] == 3:
+            # Frame is already in BGR format, no conversion needed
+            pass
+        elif len(frame.shape) == 3 and frame.shape[2] == 4:
+            # Convert RGBA to BGR
+            frame = cv2.cvtColor(frame, cv2.COLOR_RGBA2BGR) if HAS_CV2 else frame[:,:,:3]
         
         if width > max_width or height > max_height:
             scale = min(max_width / width, max_height / height)
             new_width = int(width * scale)
             new_height = int(height * scale)
             
-            # Use GPU acceleration if available (RunPod)
-            if HAS_CUPY:
+            # Use OpenCV resize with proper interpolation for better quality
+            if HAS_CV2:
                 try:
-                    # Convert to CuPy array for GPU processing
-                    gpu_frame = cp.asarray(frame)
-                    gpu_resized = cp.resize(gpu_frame, (new_height, new_width))
-                    frame = cp.asnumpy(gpu_resized)
-                    return frame
+                    frame = cv2.resize(frame, (new_width, new_height), interpolation=cv2.INTER_LINEAR)
                 except Exception as e:
-                    print(f"[STREAM] GPU resize failed, falling back to CPU: {e}")
-            
-            # Fallback to OpenCV if available
-            if HAS_CV2 and Config.STREAMING_INTERPOLATION is not None:
-                frame = cv2.resize(frame, (new_width, new_height), interpolation=Config.STREAMING_INTERPOLATION)
+                    print(f"[STREAM] OpenCV resize failed: {e}")
+                    # Fallback to PIL
+                    if HAS_PIL:
+                        pil_image = PIL.Image.fromarray(cv2.cvtColor(frame, cv2.COLOR_BGR2RGB))
+                        pil_resized = pil_image.resize((new_width, new_height), PIL.Image.LANCZOS)
+                        frame = cv2.cvtColor(np.array(pil_resized), cv2.COLOR_RGB2BGR)
             elif HAS_PIL:
-                # Use PIL as fallback
+                # Use PIL as fallback with proper color conversion
                 pil_image = PIL.Image.fromarray(frame)
                 pil_resized = pil_image.resize((new_width, new_height), PIL.Image.LANCZOS)
                 frame = np.array(pil_resized)

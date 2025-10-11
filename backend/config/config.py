@@ -28,7 +28,7 @@ class Config:
     CLASS_HISTORY_FRAMES = 10  # Number of frames to track for class consistency (Range: 3-20, Recommended: 5-15 frames)
     
     # Video Settings - Balanced for Quality and Performance
-    TARGET_FPS = 15  # Reduced FPS for better streaming performance and progress accuracy
+    TARGET_FPS = 30  # Target 30 FPS for smooth playback
     FPS_UPDATE_INTERVAL = 30  # Interval (in frames) to update FPS display (Range: 10-100, Recommended: 30-60 frames)
     PROCESSING_FRAME_SKIP = 2  # Skip every N frames during processing (2 = process every 2nd frame for better performance)
     STREAMING_FRAME_SKIP = 3  # Skip frames for streaming to reduce bandwidth and improve quality

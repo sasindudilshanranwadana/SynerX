@@ -273,11 +273,11 @@ def process_single_job(job_data):
                 with job_lock:
                     if background_jobs.get(job_id, {}).get("status") == "processing":
                         if total and total > 0:
-                            # Map 0..total -> 10..80 more responsively
-                            pct = int(10 + (processed_frames / total) * 70)
+                            # Map 0..total -> 10..90 more responsively (leave 10% for final processing)
+                            pct = int(10 + (processed_frames / total) * 80)
                             if pct < 11 and processed_frames > 0:
                                 pct = 11
-                            pct = max(10, min(80, pct))
+                            pct = max(10, min(90, pct))
                         else:
                             # Fallback without total: bump roughly every few frames
                             pct = int(10 + (processed_frames % 100))
