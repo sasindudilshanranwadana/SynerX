@@ -176,7 +176,8 @@ class VideoProcessor:
         original_fps = self.video_info.fps
         print(f"[INFO] Output video will use FPS: {original_fps}")
         print(f"[INFO] Input video info: {self.video_info.width}x{self.video_info.height} @ {self.video_info.fps}fps, {self.video_info.total_frames} frames")
-        print(f"[INFO] Expected duration: {self.video_info.total_frames / self.video_info.fps:.2f} seconds")
+        if self.video_info.total_frames and self.video_info.fps:
+            print(f"[INFO] Expected duration: {self.video_info.total_frames / self.video_info.fps:.2f} seconds")
         
         # Get first frame for heat map overlay
         self._load_first_frame()
