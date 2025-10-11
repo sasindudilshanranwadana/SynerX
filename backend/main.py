@@ -265,38 +265,45 @@ def process_single_job(job_data):
         except Exception:
             pass
 
-        # Progress callback updates background job progress (0-80% during processing)
+        # Progress callback updates background job progress (time-based instead of frame-based)
         last_progress_time = 0.0
         last_pct = 10
+        processing_start_time = time.time()
+        
         def on_progress(processed_frames: int, total):
             try:
                 with job_lock:
                     if background_jobs.get(job_id, {}).get("status") == "processing":
+                        # Use time-based progress instead of frame-based (since FPS is too high)
+                        elapsed_time = time.time() - processing_start_time
+                        
+                        # Estimate total processing time based on video duration
                         if total and total > 0:
-                            # Map 0..total -> 10..90 more gradually (leave 10% for final processing)
-                            pct = int(10 + (processed_frames / total) * 80)
-                            if pct < 11 and processed_frames > 0:
-                                pct = 11
-                            # Add gradual progression to prevent jumping
-                            if processed_frames < total * 0.1:  # First 10% of video
-                                pct = min(pct, 20)  # Cap at 20% for first 10% of processing
-                            elif processed_frames < total * 0.5:  # First 50% of video
-                                pct = min(pct, 50)  # Cap at 50% for first 50% of processing
-                            pct = max(10, min(90, pct))
+                            # Estimate processing time: video_duration * processing_speed_factor
+                            # Based on real data: 1:11 video takes ~69 seconds (about 1x real-time)
+                            estimated_duration = (total / 30.0) * 1.0  # 1x real-time processing (more accurate)
+                            time_progress = min(0.8, elapsed_time / estimated_duration)  # Cap at 80% for processing
                         else:
-                            # Fallback without total: bump roughly every few frames
-                            pct = int(10 + (processed_frames % 100))
-                            pct = max(10, min(80, pct))
+                            # Fallback: assume 60 seconds processing time
+                            estimated_duration = 60.0
+                            time_progress = min(0.8, elapsed_time / estimated_duration)
+                        
+                        # Map time progress to 10-90%
+                        pct = int(10 + time_progress * 80)
+                        pct = max(10, min(90, pct))
+                        
                         # Quantize to 5% steps for clearer UI changes
-                        pct = max(10, min(90, (pct // 5) * 5))
-                        # Throttle progress updates to ~2Hz and only when pct increases
+                        pct = (pct // 5) * 5
+                        
+                        # Throttle progress updates to ~1Hz and only when pct increases
                         import time as _t
                         now = _t.time()
                         nonlocal last_progress_time, last_pct
-                        if pct > last_pct and (now - last_progress_time) >= 0.5:
+                        if pct > last_pct and (now - last_progress_time) >= 1.0:
                             background_jobs[job_id]["progress"] = pct
                             last_pct = pct
                             last_progress_time = now
+                            print(f"[PROGRESS] Time-based progress: {pct}% (elapsed: {elapsed_time:.1f}s, estimated: {estimated_duration:.1f}s)")
             except Exception:
                 pass
 
