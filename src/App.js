@@ -125,7 +125,7 @@ const App = () => {
               <Bar key={key} dataKey={key} stackId="a" fill={COLORS[index % COLORS.length]} />
             ))}
           </BarChart>
-        </ResponsiveContainer>
+        </>
       </div>
     </div>
   );
