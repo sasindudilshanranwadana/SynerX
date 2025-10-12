@@ -94,4 +94,7 @@ Output will appear in the `/coverage` folder.
 
 This test suite helps ensure that all major UI components work as expected under different user flows. Keep tests isolated, declarative, and reflective of user behavior.
 
+
+
 Remember to add new `.test.tsx` files when introducing new components.
+<img width="1127" height="989" alt="image" src="https://github.com/user-attachments/assets/fd4f26cd-0bc2-4908-8e21-43307346fd4d" />
