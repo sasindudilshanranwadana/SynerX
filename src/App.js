@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import {
-  BarChart, Bar, XAxis, YAxis, Tooltip, Legend, CartesianGrid,
+  BarChart, Bar, XAxis, YAxis, , Legend, CartesianGrid,
   PieChart, Pie, Cell, ResponsiveContainer
 } from 'recharts';
 import './styles.css';
