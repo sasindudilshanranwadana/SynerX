@@ -112,7 +112,8 @@ app.add_middleware(
         "http://localhost:3000",      # React dev server
         "http://localhost:8000",      # current backend
         "http://localhost:5500",      # Live server (VS Code Live Server)
-        "http://127.0.0.1:5500",     # Live server (127.0.0.1)
+        "http://127.0.0.1:5500", 
+        "http://localhost:5173",
         "https://synerx.netlify.app", # production frontend
         "https://yourdomain.com",     # Add production domain here
         # Add more domains as needed

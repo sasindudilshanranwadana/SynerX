@@ -47,6 +47,12 @@ function Analytics() {
   const [loading, setLoading] = React.useState(true);
   const [generatingReport, setGeneratingReport] = React.useState(false);
   
+  // Raw table UI state
+  const [sortKey, setSortKey] = React.useState<'tracker_id' | 'vehicle_type' | 'status' | 'compliance' | 'reaction_time' | 'weather_condition' | 'temperature' | 'date'>('date');
+  const [sortDir, setSortDir] = React.useState<'asc' | 'desc'>('desc');
+  const [page, setPage] = React.useState(1);
+  const [pageSize, setPageSize] = React.useState(25);
+  
   // Date filter states
   const [dateFilter, setDateFilter] = React.useState<'all' | '7days' | '30days' | '90days' | 'custom'>('all');
   const [customStartDate, setCustomStartDate] = React.useState('');
@@ -267,7 +273,7 @@ function Analytics() {
       
       // Try to get all analytics from RunPod backend first
       try {
-        const response = await fetch(`${RUNPOD_API_BASE}/analytics/all`);
+        const response = await fetch(`${RUNPOD_API_BASE}/analysis/complete`);
         const analyticsData = await response.json();
         
         if (analyticsData.status === 'success' && analyticsData.tracking_results) {
@@ -279,7 +285,7 @@ function Analytics() {
           setData(filteredData);
           
           // Load correlation analysis
-          const correlationResponse = await fetch(`${RUNPOD_API_BASE}/correlation-analysis/`);
+          const correlationResponse = await fetch(`${RUNPOD_API_BASE}/analysis/correlation`);
           const correlationData = await correlationResponse.json();
           
           if (correlationData.status === 'success') {
@@ -386,6 +392,50 @@ function Analytics() {
     setCustomStartDate('');
     setCustomEndDate('');
     loadAllAnalytics();
+  };
+
+  // Sorting and pagination helpers for raw table
+  const sortedData = React.useMemo(() => {
+    const clone = [...data];
+    const dir = sortDir === 'asc' ? 1 : -1;
+    clone.sort((a, b) => {
+      const ak: any = a[sortKey as keyof typeof a];
+      const bk: any = b[sortKey as keyof typeof b];
+      // Date handling
+      if (sortKey === 'date') {
+        const ad = ak ? new Date(ak).getTime() : 0;
+        const bd = bk ? new Date(bk).getTime() : 0;
+        return ad === bd ? 0 : ad > bd ? dir : -dir;
+      }
+      // Numeric handling
+      if (sortKey === 'tracker_id' || sortKey === 'reaction_time' || sortKey === 'temperature' || sortKey === 'compliance') {
+        const an = ak == null ? -Infinity : Number(ak);
+        const bn = bk == null ? -Infinity : Number(bk);
+        return an === bn ? 0 : an > bn ? dir : -dir;
+      }
+      // String handling
+      const as = (ak ?? '').toString().toLowerCase();
+      const bs = (bk ?? '').toString().toLowerCase();
+      if (as === bs) return 0;
+      return as > bs ? dir : -dir;
+    });
+    return clone;
+  }, [data, sortKey, sortDir]);
+
+  const totalPages = Math.max(1, Math.ceil(sortedData.length / pageSize));
+  const currentPage = Math.min(page, totalPages);
+  const pageStart = (currentPage - 1) * pageSize;
+  const pageEnd = pageStart + pageSize;
+  const pagedData = sortedData.slice(pageStart, pageEnd);
+
+  const toggleSort = (key: typeof sortKey) => {
+    if (sortKey === key) {
+      setSortDir(prev => (prev === 'asc' ? 'desc' : 'asc'));
+    } else {
+      setSortKey(key);
+      setSortDir('asc');
+    }
+    setPage(1);
   };
 
   const getDateFilterLabel = () => {
@@ -880,46 +930,130 @@ function Analytics() {
                   : 'bg-white shadow-lg border border-gray-200'
               }`}>
                 <h2 className="text-lg font-semibold mb-6">📊 Raw Data</h2>
-                <div className="overflow-x-auto">
-                  <table className="w-full">
-                    <thead>
-                      <tr className={`border-b ${isDark ? 'border-gray-700' : 'border-gray-200'}`}>
-                        <th className={`text-left py-3 px-4 font-medium ${isDark ? 'text-gray-300' : 'text-gray-700'}`}>ID</th>
-                        <th className={`text-left py-3 px-4 font-medium ${isDark ? 'text-gray-300' : 'text-gray-700'}`}>Vehicle Type</th>
-                        <th className={`text-left py-3 px-4 font-medium ${isDark ? 'text-gray-300' : 'text-gray-700'}`}>Status</th>
-                        <th className={`text-left py-3 px-4 font-medium ${isDark ? 'text-gray-300' : 'text-gray-700'}`}>Compliance</th>
-                        <th className={`text-left py-3 px-4 font-medium ${isDark ? 'text-gray-300' : 'text-gray-700'}`}>Reaction Time</th>
-                        <th className={`text-left py-3 px-4 font-medium ${isDark ? 'text-gray-300' : 'text-gray-700'}`}>Weather</th>
-                        <th className={`text-left py-3 px-4 font-medium ${isDark ? 'text-gray-300' : 'text-gray-700'}`}>Temperature</th>
-                        <th className={`text-left py-3 px-4 font-medium ${isDark ? 'text-gray-300' : 'text-gray-700'}`}>Date</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {data.slice(0, 50).map((item, index) => (
-                        <tr key={index} className={`border-b ${isDark ? 'border-gray-700' : 'border-gray-200'}`}>
-                          <td className={`py-3 px-4 ${isDark ? 'text-gray-300' : 'text-gray-700'}`}>{item.tracker_id}</td>
-                          <td className={`py-3 px-4 ${isDark ? 'text-gray-300' : 'text-gray-700'}`}>{item.vehicle_type}</td>
-                          <td className={`py-3 px-4 ${isDark ? 'text-gray-300' : 'text-gray-700'}`}>{item.status}</td>
-                          <td className={`py-3 px-4 ${isDark ? 'text-gray-300' : 'text-gray-700'}`}>
-                            {item.compliance === 1 ? '✅' : '❌'}
-                          </td>
-                          <td className={`py-3 px-4 ${isDark ? 'text-gray-300' : 'text-gray-700'}`}>
-                            {item.reaction_time || '-'}
-                          </td>
-                          <td className={`py-3 px-4 ${isDark ? 'text-gray-300' : 'text-gray-700'}`}>
-                            {item.weather_condition || '-'}
-                          </td>
-                          <td className={`py-3 px-4 ${isDark ? 'text-gray-300' : 'text-gray-700'}`}>
-                            {item.temperature ? `${item.temperature}°C` : '-'}
-                          </td>
-                          <td className={`py-3 px-4 ${isDark ? 'text-gray-300' : 'text-gray-700'}`}>
-                            {item.date ? format(parseISO(item.date), 'MMM dd, yyyy HH:mm') : '-'}
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
+              <div className="flex items-center justify-between mb-3">
+                <div className={`text-sm ${isDark ? 'text-gray-400' : 'text-gray-600'}`}>
+                  Showing {(pageStart + 1)}–{Math.min(pageEnd, sortedData.length)} of {sortedData.length}
                 </div>
+                <div className="flex items-center gap-2">
+                  <label className={`text-sm ${isDark ? 'text-gray-300' : 'text-gray-700'}`}>Rows:</label>
+                  <select
+                    value={pageSize}
+                    onChange={(e) => { setPageSize(parseInt(e.target.value)); setPage(1); }}
+                    className={`px-2 py-1 rounded border text-sm ${isDark ? 'bg-[#1E293B] border-[#334155] text-white' : 'bg-white border-gray-300 text-gray-900'}`}
+                  >
+                    {[10, 25, 50, 100].map(size => (
+                      <option key={size} value={size}>{size}</option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+              <div className="overflow-x-auto rounded-lg">
+                <table className={`w-full text-sm table-fixed border-collapse ${isDark ? 'bg-[#0f172a]' : 'bg-white'}`}>
+                  <colgroup>
+                    <col style={{ width: '8rem' }} />
+                    <col style={{ width: '10rem' }} />
+                    <col style={{ width: '10rem' }} />
+                    <col style={{ width: '10rem' }} />
+                    <col style={{ width: '11rem' }} />
+                    <col style={{ width: '10rem' }} />
+                    <col style={{ width: '8rem' }} />
+                    <col style={{ width: '14rem' }} />
+                  </colgroup>
+                  <thead>
+                    <tr className={`${isDark ? 'bg-[#0b1223] text-gray-300' : 'bg-gray-50 text-gray-700'}` }>
+                      {([
+                        { key: 'tracker_id', label: 'ID' },
+                        { key: 'vehicle_type', label: 'Vehicle Type' },
+                        { key: 'status', label: 'Status' },
+                        { key: 'compliance', label: 'Compliance' },
+                        { key: 'reaction_time', label: 'Reaction Time (s)' },
+                        { key: 'weather_condition', label: 'Weather' },
+                        { key: 'temperature', label: 'Temp' },
+                        { key: 'date', label: 'Date' },
+                      ] as const).map(col => (
+                        <th key={col.key} className={`text-center py-3 px-4 font-medium cursor-pointer select-none whitespace-nowrap align-middle text-sm ${isDark ? 'hover:text-white' : 'hover:text-gray-900'}`} onClick={() => toggleSort(col.key)}>
+                          <span className="inline-flex items-center gap-1">
+                            {col.label}
+                            {sortKey === col.key && (
+                              <span className={`text-xs ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>{sortDir === 'asc' ? '▲' : '▼'}</span>
+                            )}
+                          </span>
+                        </th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {pagedData.map((item, index) => {
+                      const status = (item.status || '').toLowerCase();
+                      const statusClasses =
+                        status === 'processed' || status === 'success'
+                          ? 'bg-green-500/15 text-green-400 border border-green-500/30'
+                          : status === 'queued' || status === 'pending'
+                          ? 'bg-yellow-500/15 text-yellow-400 border border-yellow-500/30'
+                          : status === 'failed' || status === 'error'
+                          ? 'bg-red-500/15 text-red-400 border border-red-500/30'
+                          : `${isDark ? 'bg-[#0b1223] text-gray-300 border border-gray-700' : 'bg-gray-100 text-gray-700 border border-gray-200'}`;
+                      const temp = item.temperature as any;
+                      const tempColor = temp == null
+                        ? (isDark ? 'text-gray-400' : 'text-gray-500')
+                        : temp < 15
+                        ? 'text-blue-400'
+                        : temp > 30
+                        ? 'text-red-400'
+                        : (isDark ? 'text-gray-200' : 'text-gray-700');
+                      const rtRaw = (item as any).reaction_time ?? (item as any).reactionTime;
+                      const rt = rtRaw == null ? null : Number(rtRaw);
+                      const rtText = rt == null || !Number.isFinite(rt) ? '-' : rt.toFixed(1);
+                      const zebra = index % 2 === 0 ? (isDark ? 'bg-[#0d1830]' : 'bg-white') : (isDark ? 'bg-[#0b1326]' : 'bg-gray-50');
+                      return (
+                        <tr key={index} className={`${zebra} ${isDark ? 'border-gray-800' : 'border-gray-200'} border-b hover:bg-primary-500/5 transition-colors`}>
+                          <td className={`py-3 px-4 whitespace-nowrap align-middle text-center ${isDark ? 'text-gray-200' : 'text-gray-800'}`}>{item.tracker_id}</td>
+                          <td className={`py-3 px-4 whitespace-nowrap align-middle text-center ${isDark ? 'text-gray-200' : 'text-gray-800'}`}>
+                            <span className={`px-2 py-1 rounded-full capitalize ${isDark ? 'bg-[#122039] text-gray-200' : 'bg-blue-50 text-blue-700'} border ${isDark ? 'border-[#1d335a]' : 'border-blue-200'}`}>
+                              {item.vehicle_type || '-'}
+                            </span>
+                          </td>
+                          <td className={`py-3 px-4 whitespace-nowrap align-middle text-center`}>
+                            <span className={`px-2 py-1 rounded-full text-xs capitalize whitespace-nowrap ${statusClasses}`}>
+                              {item.status || '-'}
+                            </span>
+                          </td>
+                          <td className={`py-3 px-4 text-center whitespace-nowrap align-middle`}> 
+                            <span className={`px-2 py-1 rounded-full text-xs whitespace-nowrap ${item.compliance === 1 ? 'bg-green-500/15 text-green-400 border border-green-500/30' : 'bg-red-500/15 text-red-400 border border-red-500/30'}`}>
+                              {item.compliance === 1 ? 'Compliant' : 'Non-compliant'}
+                            </span>
+                          </td>
+                          <td className={`py-3 px-4 text-center tabular-nums whitespace-nowrap align-middle ${isDark ? 'text-gray-200' : 'text-gray-800'}`}>
+                            {rtText === '-' ? '-' : `${rtText}`}
+                          </td>
+                          <td className={`py-3 px-4 capitalize whitespace-nowrap align-middle text-center ${isDark ? 'text-gray-200' : 'text-gray-800'}`}>{item.weather_condition || '-'}</td>
+                          <td className={`py-3 px-4 text-center tabular-nums whitespace-nowrap align-middle ${tempColor}`}>{temp != null ? `${temp}°C` : '-'}</td>
+                          <td className={`py-3 px-4 whitespace-nowrap align-middle text-center ${isDark ? 'text-gray-300' : 'text-gray-700'}`}>{item.date ? format(parseISO(item.date), 'MMM dd, yyyy HH:mm') : '-'}</td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+              <div className="flex items-center justify-between mt-4">
+                <button
+                  onClick={() => setPage(p => Math.max(1, p - 1))}
+                  className={`px-3 py-1 rounded border ${isDark ? 'bg-[#1E293B] border-[#334155] text-white' : 'bg-white border-gray-300 text-gray-900'} disabled:opacity-50`}
+                  disabled={currentPage === 1}
+                >
+                  Prev
+                </button>
+                <div className={`text-sm ${isDark ? 'text-gray-400' : 'text-gray-600'}`}>
+                  Page {currentPage} of {totalPages}
+                </div>
+                <button
+                  onClick={() => setPage(p => Math.min(totalPages, p + 1))}
+                  className={`px-3 py-1 rounded border ${isDark ? 'bg-[#1E293B] border-[#334155] text-white' : 'bg-white border-gray-300 text-gray-900'} disabled:opacity-50`}
+                  disabled={currentPage === totalPages}
+                >
+                  Next
+                </button>
+              </div>
               </div>
             </div>
           ) : (

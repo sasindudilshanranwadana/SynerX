@@ -233,7 +233,7 @@ function Dashboard() {
       // Try to get analytics from RunPod backend first
       try {
         const apiBase = import.meta.env.DEV ? '/api' : (import.meta.env.VITE_RUNPOD_URL || 'http://localhost:8000');
-        const response = await fetch(`${apiBase}/analytics/summary`, {
+        const response = await fetch(`${apiBase}/analysis/complete`, {
           method: 'GET',
           headers: { 'Content-Type': 'application/json' },
           signal: AbortSignal.timeout(10000)
@@ -241,14 +241,38 @@ function Dashboard() {
         
         if (response.ok) {
           const data = await response.json();
-          if (data.stats) {
-            setStats({
-              videosProcessed: data.stats.videosProcessed || 0,
-              violations: data.stats.violations || 0,
-              complianceRate: data.stats.complianceRate || 0,
-              avgReactionTime: data.stats.avgReactionTime || 0
-            });
-            return;
+          // If analysis endpoint is reachable, derive stats from tracking data
+          if (data.complete_analysis || data.analysis) {
+            try {
+              const trackingRes = await fetch(`${apiBase}/data/tracking?limit=1000`, {
+                method: 'GET',
+                headers: { 'Content-Type': 'application/json' },
+                signal: AbortSignal.timeout(10000)
+              });
+              if (trackingRes.ok) {
+                const t = await trackingRes.json();
+                const items = Array.isArray(t.data) ? t.data : [];
+                const totalVehicles = items.length;
+                const compliant = items.filter((d: any) => d.compliance === 1).length;
+                const violations = Math.max(0, totalVehicles - compliant);
+                const reactionTimes = items
+                  .filter((d: any) => d.compliance === 1 && d.reaction_time !== null && d.reaction_time !== undefined)
+                  .map((d: any) => Number(d.reaction_time))
+                  .filter((n: number) => Number.isFinite(n));
+                const avgReactionTime = reactionTimes.length > 0
+                  ? reactionTimes.reduce((sum: number, n: number) => sum + n, 0) / reactionTimes.length
+                  : 0;
+                const uniqueVideoIds = new Set(items.map((d: any) => d.video_id)).size;
+
+                setStats({
+                  videosProcessed: uniqueVideoIds || totalVehicles,
+                  violations,
+                  complianceRate: totalVehicles > 0 ? (compliant / totalVehicles) * 100 : 0,
+                  avgReactionTime
+                });
+                return;
+              }
+            } catch {}
           }
         }
       } catch (backendError) {
