@@ -5,10 +5,15 @@ import json
 from datetime import datetime
 from typing import Dict, List, Any
 import numpy as np
-import shutil
-import subprocess
 from pathlib import Path
-import threading
+
+# Import R2 client (required)
+try:
+    from .r2_storage_client import get_r2_client
+    R2_AVAILABLE = True
+except ImportError:
+    R2_AVAILABLE = False
+    print("[ERROR] R2 storage is required but not available. Please install boto3 and configure R2 credentials.")
 
 # Load environment variables from .env file
 load_dotenv()
@@ -404,140 +409,73 @@ class SupabaseManager:
             return {}
 
     def delete_video_record(self, video_id: int) -> bool:
-        """Delete a video row by id."""
+        """Delete a video row by id and also delete the video file from R2 storage."""
         try:
+            # First get the video data to find the processed_url
+            # Use direct table query instead of RPC to get URLs
+            video_result = self.client.table("videos").select("id, processed_url").eq("id", video_id).execute()
+            if not video_result.data or len(video_result.data) == 0:
+                print(f"❌ Video {video_id} not found in database")
+                return False
+            
+            video_data = video_result.data[0]
+            
+            # Delete from R2 storage if processed_url exists
+            if R2_AVAILABLE:
+                r2_client = get_r2_client()
+                print(f"[DEBUG] Video data: {video_data}")
+                
+                # Only delete processed video (original is stored locally in temp)
+                if video_data.get('processed_url'):
+                    processed_filename = self._extract_filename_from_url(video_data['processed_url'])
+                    if processed_filename:
+                        print(f"[DEBUG] Attempting to delete processed video: {processed_filename}")
+                        result = r2_client.delete_video(processed_filename)
+                        print(f"🗑️ Deleted processed video from R2: {processed_filename} (result: {result})")
+                    else:
+                        print(f"[DEBUG] Could not extract filename from processed_url: {video_data['processed_url']}")
+                else:
+                    print(f"[DEBUG] No processed_url found for video {video_id}")
+            else:
+                print("[DEBUG] R2 not available, skipping R2 deletion")
+            
+            # Delete from database
             self.client.table("videos").delete().eq("id", video_id).execute()
-            print(f"🗑️ Deleted video record {video_id}")
+            print(f"🗑️ Deleted video record {video_id} from database")
             return True
+            
         except Exception as e:
             print(f"[ERROR] Failed to delete video {video_id}: {e}")
             return False
     
-    # --- Helpers used by cleanup logic ---
-    def get_related_counts(self, video_id: int) -> Dict[str, int]:
-        """Return counts of related tracking_results and vehicle_counts for a video."""
+    def _extract_filename_from_url(self, url: str) -> str:
+        """Extract filename from R2 URL"""
         try:
-            tr_res = self.client.table("tracking_results").select("tracker_id", count='exact').eq("video_id", video_id).execute()
-            vc_res = self.client.table("vehicle_counts").select("id", count='exact').eq("video_id", video_id).execute()
-            tr_count = getattr(tr_res, 'count', None)
-            vc_count = getattr(vc_res, 'count', None)
-            # Fallback if .count is not available
-            if tr_count is None:
-                tr_count = len(tr_res.data or [])
-            if vc_count is None:
-                vc_count = len(vc_res.data or [])
-            return {"tracking_results": tr_count or 0, "vehicle_counts": vc_count or 0}
+            if not url:
+                return None
+            # Extract filename from URL like: https://pub-xxx.r2.dev/filename.mp4
+            filename = url.split('/')[-1]
+            print(f"[DEBUG] Extracted filename from URL '{url}': '{filename}'")
+            return filename
         except Exception as e:
-            print(f"[ERROR] Failed to get related counts for video {video_id}: {e}")
-            return {"tracking_results": 0, "vehicle_counts": 0}
-
-    def get_video_basic(self, video_id: int) -> Dict[str, Any]:
-        """Get minimal fields used for conditional cleanup/status decisions."""
-        try:
-            res = self.client.table("videos").select("id, status, processed_url, error, message").eq("id", video_id).limit(1).execute()
-            if res.data:
-                return res.data[0]
-            return {}
-        except Exception as e:
-            print(f"[ERROR] Failed to fetch video {video_id}: {e}")
-            return {}
-
-    def delete_video_record(self, video_id: int) -> bool:
-        """Delete a video row by id."""
-        try:
-            self.client.table("videos").delete().eq("id", video_id).execute()
-            print(f"🗑️ Deleted video record {video_id}")
-            return True
-        except Exception as e:
-            print(f"[ERROR] Failed to delete video {video_id}: {e}")
-            return False
+            print(f"[DEBUG] Error extracting filename from URL '{url}': {e}")
+            return None
+    
 
     def upload_video_to_storage(self, file_path: str, file_name: str = None) -> str:
-        """Upload video file to Supabase storage (simple upload)."""
+        """Upload video file to R2 storage (S3-compatible)."""
         try:
-            if file_name is None:
-                file_name = os.path.basename(file_path)
+            if not R2_AVAILABLE:
+                print("[ERROR] R2 storage not available. Please install boto3 and configure R2 credentials.")
+                return None
             
-            # Read the file
-            with open(file_path, 'rb') as f:
-                file_data = f.read()
-            
-            # Upload to Supabase storage
-            result = self.client.storage.from_("videos").upload(
-                path=file_name,
-                file=file_data,
-                file_options={"content-type": "video/mp4"}
-            )
-            
-            # Get the public URL
-            public_url = self.client.storage.from_("videos").get_public_url(file_name)
-            return public_url
-            
+            print("[STORAGE] Using R2 storage for video upload")
+            return get_r2_client().upload_video(file_path, file_name)
+                
         except Exception as e:
             print(f"[ERROR] Failed to upload video: {e}")
             return None
 
-    def _run_ffmpeg_compress(self, input_path: str, output_path: str, height: int = 720, crf: int = 26, preset: str = "faster") -> bool:
-        """Compress a video using ffmpeg. Returns True on success."""
-        try:
-            # Ensure output directory exists
-            Path(output_path).parent.mkdir(parents=True, exist_ok=True)
-            cmd = [
-                "ffmpeg",
-                "-y",
-                "-i", input_path,
-                "-vf", f"scale=-2:{height}",
-                "-c:v", "libx264",
-                "-preset", preset,
-                "-crf", str(crf),
-                "-c:a", "aac",
-                "-b:a", "128k",
-                output_path,
-            ]
-            subprocess.run(cmd, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-            return True
-        except FileNotFoundError:
-            print("[ERROR] ffmpeg not found on PATH. Please install ffmpeg and ensure it's available.")
-            return False
-        except subprocess.CalledProcessError as e:
-            print(f"[ERROR] ffmpeg compression failed: {e}")
-            return False
-
-    def compress_and_upload_in_background(self, video_id: int, local_input_path: str, output_height: int = 720, crf: int = 26) -> None:
-        """Start a background thread to compress the local video and upload to Supabase Storage.
-
-        On success, updates the video's processed_url and status.
-        """
-        def _worker():
-            try:
-                input_path = Path(local_input_path)
-                if not input_path.exists():
-                    print(f"[ERROR] Input video not found for compression: {local_input_path}")
-                    return
-
-                temp_dir = Path("backend") / "processed"
-                temp_dir.mkdir(parents=True, exist_ok=True)
-                output_name = f"{input_path.stem}_compressed.mp4"
-                output_path = temp_dir / output_name
-
-                print(f"[COMPRESS] Starting compression for video {video_id} -> {output_path}")
-                ok = self._run_ffmpeg_compress(str(input_path), str(output_path), height=output_height, crf=crf)
-                if not ok:
-                    self.update_video_status_preserve_timing(video_id, status="compression_failed")
-                    return
-
-                public_url = self.upload_video_to_storage(str(output_path), file_name=output_name)
-                if not public_url:
-                    self.update_video_status_preserve_timing(video_id, status="upload_failed")
-                    return
-
-                self.update_video_status_preserve_timing(video_id, status="compressed", processed_url=public_url)
-                print(f"[COMPRESS] Completed for video {video_id}. URL: {public_url}")
-            except Exception as e:
-                print(f"[ERROR] Unexpected error in compression worker: {e}")
-
-        thread = threading.Thread(target=_worker, daemon=True)
-        thread.start()
     
 
 

@@ -1,5 +1,7 @@
 from fastapi import APIRouter
+from fastapi.responses import StreamingResponse
 from clients.supabase_client import supabase_manager
+from clients.r2_storage_client import get_r2_client
 
 router = APIRouter(prefix="/data", tags=["Data"])
 
@@ -314,5 +316,59 @@ def init_data_router():
             return {"status": "error", "error": "Failed to delete video"}
         except Exception as e:
             return {"status": "error", "error": str(e)}
+
+    @router.get("/video/{video_id}")
+    async def stream_video(video_id: str):
+        """
+        Stream video from R2 through the API
+        This creates a persistent URL that works forever
+        """
+        try:
+            # Get video record from database
+            result = supabase_manager.client.table("videos").select("processed_url, video_name").eq("id", video_id).execute()
+            
+            if not result.data:
+                raise HTTPException(status_code=404, detail="Video not found")
+            
+            video_data = result.data[0]
+            processed_url = video_data.get('processed_url')
+            video_name = video_data.get('video_name', 'video')
+            
+            if not processed_url:
+                raise HTTPException(status_code=404, detail="No video file available")
+            
+            # Extract filename from URL
+            filename = processed_url.split('/')[-1]
+            
+            # Get video from R2
+            r2_client = get_r2_client()
+            
+            try:
+                # Download video from R2
+                response = r2_client.s3_client.get_object(
+                    Bucket=r2_client.bucket_name,
+                    Key=filename
+                )
+                
+                # Stream the video with proper headers
+                def generate():
+                    for chunk in response['Body'].iter_chunks(chunk_size=8192):
+                        yield chunk
+                
+                return StreamingResponse(
+                    generate(),
+                    media_type="video/mp4",
+                    headers={
+                        "Accept-Ranges": "bytes",
+                        "Cache-Control": "public, max-age=3600",
+                        "Content-Disposition": f"inline; filename=\"{video_name}\""
+                    }
+                )
+                
+            except Exception as e:
+                raise HTTPException(status_code=500, detail=f"Error streaming video: {str(e)}")
+            
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"Error getting video: {str(e)}")
 
     return router

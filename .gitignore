@@ -3,4 +3,4 @@
 /utils/__pycache__
 /venv
 temp/
-serverless/.env
+serverless/.env.DS_Store

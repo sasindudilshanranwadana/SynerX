@@ -1,7 +1,19 @@
-import cv2
 import time
 from config.config import Config
 from utils.video_streamer import video_streamer
+
+# Conditional OpenCV import with headless mode
+try:
+    import cv2
+    import os
+    # Set OpenCV to headless mode to avoid GUI issues
+    os.environ['OPENCV_VIDEOIO_PRIORITY_MSMF'] = '0'
+    os.environ['OPENCV_VIDEOIO_PRIORITY_DSHOW'] = '0'
+    os.environ['OPENCV_VIDEOIO_PRIORITY_V4L2'] = '0'
+    os.environ['OPENCV_VIDEOIO_PRIORITY_GSTREAMER'] = '0'
+    HAS_CV2 = True
+except ImportError:
+    HAS_CV2 = False
 
 class DisplayManager:
     """Manages video display and streaming to web clients"""
@@ -18,45 +30,74 @@ class DisplayManager:
         
         # Handle local display if enabled
         if Config.ENABLE_DISPLAY:
-            return self._handle_local_display(frame, frame_idx)
+            try:
+                return self._handle_local_display(frame, frame_idx)
+            except Exception as e:
+                print(f"[DISPLAY] Display error: {e}")
+                print(f"[DISPLAY] Continuing without display...")
+                return True  # Always continue processing even if display fails
         
         return True
     
     def _handle_local_display(self, frame, frame_idx):
-        """Handle local display and keyboard input"""
-        # Resize frame for display if too large
-        display_frame = frame.copy()
-        height, width = display_frame.shape[:2]
-        if width > Config.MAX_DISPLAY_WIDTH:
-            scale = Config.MAX_DISPLAY_WIDTH / width
-            new_width = int(width * scale)
-            new_height = int(height * scale)
-            display_frame = cv2.resize(display_frame, (new_width, new_height))
-        
-        cv2.imshow("Tracking with Stop", display_frame)
-        
-        # Handle keyboard input
-        return self._handle_keyboard_input(frame_idx)
+        """Handle local display and keyboard input (headless-compatible)"""
+        # Skip GUI operations on headless servers (RunPod)
+        if not HAS_CV2:
+            print(f"[DISPLAY] OpenCV not available, skipping display")
+            return True
+            
+        try:
+            # Resize frame for display if too large
+            display_frame = frame.copy()
+            height, width = display_frame.shape[:2]
+            if width > Config.MAX_DISPLAY_WIDTH:
+                scale = Config.MAX_DISPLAY_WIDTH / width
+                new_width = int(width * scale)
+                new_height = int(height * scale)
+                display_frame = cv2.resize(display_frame, (new_width, new_height))
+            
+            # Only use GUI functions if not on headless server
+            cv2.imshow("Tracking with Stop", display_frame)
+            
+            # Debug: Print every 100 frames
+            if frame_idx % 100 == 0:
+                print(f"[DISPLAY] Showing frame {frame_idx}")
+            
+            # Handle keyboard input
+            return self._handle_keyboard_input(frame_idx)
+        except Exception as e:
+            # Handle GUI errors gracefully - don't stop processing
+            print(f"[DISPLAY] GUI error: {e}")
+            print(f"[DISPLAY] Continuing processing without display...")
+            return True  # Always return True to continue processing
     
     def _handle_keyboard_input(self, frame_idx):
-        """Handle keyboard input and return True if should continue, False if should stop"""
-        key = cv2.waitKey(Config.DISPLAY_WAIT_KEY_DELAY) & 0xFF
-        
-        if key == ord('q'):
-            print("[INFO] 'q' pressed. Stopping gracefully...")
-            return False
-        elif key == ord('p'):
-            print("[INFO] 'p' pressed. Pausing... Press any key to continue...")
-            cv2.waitKey(0)
-        elif key == ord('s'):
-            print("[INFO] 's' pressed. Saving current frame...")
-            print("[INFO] Frame save requested (not implemented in display manager)")
-        elif key == ord('h'):
-            print("[INFO] 'h' pressed. Displaying help...")
-            print("Controls: q=quit, p=pause, s=save frame, h=help")
-            cv2.waitKey(2000)  # Show help for 2 seconds
-        
-        return True
+        """Handle keyboard input and return True if should continue, False if should stop (headless-compatible)"""
+        if not HAS_CV2:
+            return True
+            
+        try:
+            key = cv2.waitKey(Config.DISPLAY_WAIT_KEY_DELAY) & 0xFF
+            
+            if key == ord('q'):
+                print("[INFO] 'q' pressed. Stopping gracefully...")
+                return False
+            elif key == ord('p'):
+                print("[INFO] 'p' pressed. Pausing... Press any key to continue...")
+                cv2.waitKey(0)
+            elif key == ord('s'):
+                print("[INFO] 's' pressed. Saving current frame...")
+                print("[INFO] Frame save requested (not implemented in display manager)")
+            elif key == ord('h'):
+                print("[INFO] 'h' pressed. Displaying help...")
+                print("Controls: q=quit, p=pause, s=save frame, h=help")
+                cv2.waitKey(2000)  # Show help for 2 seconds
+            
+            return True
+        except Exception as e:
+            # Silently handle GUI errors on headless servers
+            print(f"[DISPLAY] Keyboard input not available (headless mode): {e}")
+            return True
     
     def update_fps_display(self, frame_idx):
         """Update and display FPS information"""
@@ -65,6 +106,14 @@ class DisplayManager:
             fps = Config.FPS_UPDATE_INTERVAL / (now - self.fps_prev_time)
             self.fps_prev_time = now
             print(f"[INFO] FPS: {fps:.2f}")
+    
+    def cleanup(self):
+        """Clean up OpenCV windows (headless-compatible)"""
+        if HAS_CV2:
+            try:
+                cv2.destroyAllWindows()
+            except Exception as e:
+                print(f"[DISPLAY] Cleanup warning (headless mode): {e}")
     
     def start_streaming(self):
         """Start video streaming to web clients - only when clients connect"""
@@ -82,5 +131,6 @@ class DisplayManager:
             
     def cleanup(self):
         """Clean up display resources"""
-        cv2.destroyAllWindows()
+        if Config.ENABLE_DISPLAY:
+            cv2.destroyAllWindows()
         self.stop_streaming()

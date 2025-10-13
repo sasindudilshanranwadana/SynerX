@@ -323,38 +323,37 @@ class VehicleProcessor:
         }
     
     def _get_current_weather_data(self):
-        """Get current weather data for the location (cached per session)"""
+        """Get current weather data for the location (cached per session with performance optimization)"""
         # Get location coordinates from config
         lat = getattr(Config, 'LOCATION_LAT', -37.740585)  # Melbourne coordinates
         lon = getattr(Config, 'LOCATION_LON', 144.731637)  # Melbourne coordinates
         
-        # Check if we have cached weather data that's still fresh (less than 15 minutes old)
-        current_time = datetime.now()
-        if (hasattr(self, '_weather_cache') and self._weather_cache is not None and 
-            hasattr(self, '_weather_cache_time') and self._weather_cache_time is not None):
-            time_diff = (current_time - self._weather_cache_time).total_seconds()
-            if time_diff < 900:  # 15 minutes cache (increased from 5 minutes)
-                return self._weather_cache
-        
-        # Fetch fresh weather data only once per session
-        print(f"[INFO] Fetching fresh weather data for location: {lat}, {lon}")
-        try:
-            weather_data = weather_manager.get_weather_for_analysis(lat, lon)
-            print(f"[INFO] Weather data: {weather_data.get('weather_condition')}, {weather_data.get('temperature')}°C, {weather_data.get('humidity')}% humidity")
-            
-            # Cache the weather data for the entire session
-            self._weather_cache = weather_data
-            self._weather_cache_time = current_time
-            
-            return weather_data
-        except Exception as e:
-            print(f"[WARNING] Failed to fetch weather data: {e}")
-            # Return default weather data if API fails
+        # Check if weather API is disabled for maximum performance
+        if not Config.ENABLE_WEATHER_API:
             return {
-                'weather_condition': 'unknown',
+                'weather_condition': 'disabled',
                 'temperature': 20.0,
                 'humidity': 50,
                 'visibility': 10.0,
                 'precipitation_type': 'none',
                 'wind_speed': 5.0
             }
+        
+        # Check cache validity (5 minutes = 300 seconds)
+        import time
+        current_time = time.time()
+        if (self._weather_cache is not None and 
+            self._weather_cache_time is not None and 
+            current_time - self._weather_cache_time < Config.WEATHER_CACHE_DURATION):
+            print(f"[WEATHER] Using cached weather data (age: {current_time - self._weather_cache_time:.1f}s)")
+            return self._weather_cache
+        
+        # Fetch fresh weather data
+        print(f"[WEATHER] Fetching fresh weather data for location ({lat}, {lon})")
+        weather_data = weather_manager.get_weather_for_analysis(lat, lon)
+        
+        # Cache the result
+        self._weather_cache = weather_data
+        self._weather_cache_time = current_time
+        
+        return weather_data
