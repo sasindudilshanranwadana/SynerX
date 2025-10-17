@@ -5,6 +5,7 @@ import Sidebar from '../components/Sidebar';
 import ServerStatusIndicator from '../components/ServerStatusIndicator';
 import { getStoredTheme } from '../lib/theme';
 import { fetchFilteredVideos, fetchVideoSummary, deleteVideoFromRunPod, getStreamingVideoUrl } from '../lib/api';
+import { formatDateTime, formatDateTimeCompact, formatRelativeTime, getLocalTimezoneAbbreviation } from '../lib/dateUtils';
 import { Chart, registerables } from 'chart.js';
 
 Chart.register(...registerables);
@@ -701,11 +702,17 @@ function Playback() {
               ? 'bg-[#151F32]/80 border-[#1E293B]' 
               : 'bg-white/80 shadow-xl border-gray-200'
           }`}>
-            <div className="flex items-center gap-3 mb-6">
-              <div className="p-2 bg-primary-500/10 rounded-lg">
-                <Filter className="w-5 h-5 text-primary-500" />
+            <div className="flex items-center justify-between mb-6">
+              <div className="flex items-center gap-3">
+                <div className="p-2 bg-primary-500/10 rounded-lg">
+                  <Filter className="w-5 h-5 text-primary-500" />
+                </div>
+                <h2 className="text-xl font-semibold">Advanced Filters</h2>
               </div>
-              <h2 className="text-xl font-semibold">Advanced Filters</h2>
+              <div className={`text-xs px-3 py-1.5 rounded-lg ${isDark ? 'bg-[#1E293B] text-gray-400' : 'bg-gray-100 text-gray-600'}`}>
+                <Clock className="w-3 h-3 inline mr-1" />
+                Timezone: {getLocalTimezoneAbbreviation()}
+              </div>
             </div>
             
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-6 gap-4 mb-4">
@@ -941,9 +948,14 @@ function Playback() {
                         </div>
                       </td>
                       <td className="py-4 px-6">
-                        <span className={`text-sm ${isDark ? 'text-gray-400' : 'text-gray-600'}`}>
-                          {video.created_at?.toString().replace('T', ' ').replace('Z', '').slice(0, 16) || '-'}
-                        </span>
+                        <div className="flex flex-col gap-1">
+                          <span className={`text-sm ${isDark ? 'text-gray-300' : 'text-gray-700'}`}>
+                            {formatDateTimeCompact(video.created_at)}
+                          </span>
+                          <span className={`text-xs ${isDark ? 'text-gray-500' : 'text-gray-500'}`}>
+                            {formatRelativeTime(video.created_at)}
+                          </span>
+                        </div>
                       </td>
                       <td className="py-4 px-6">
                         <div className="flex items-center gap-2">

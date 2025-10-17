@@ -42,7 +42,7 @@ function Header({ title, onToggleSidebar, isSidebarOpen }: HeaderProps) {
     }`}>
       <div className="flex items-center justify-between">
         <button onClick={onToggleSidebar} className="p-1 sm:p-2">
-          {isSidebarOpen ? <X data-testid="x-icon" className="w-6 h-6" /> : <Menu data-testid="menu-icon" className="w-6 h-6" />}
+          {isSidebarOpen ? <X className="w-6 h-6" /> : <Menu className="w-6 h-6" />}
         </button>
         <span className="text-lg sm:text-xl font-bold truncate px-4">{title}</span>
         <img

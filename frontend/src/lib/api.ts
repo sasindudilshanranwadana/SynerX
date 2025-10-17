@@ -142,39 +142,155 @@ const getChartImage = async (
 // RunPod API Base URL
 const RUNPOD_API_BASE = import.meta.env.DEV ? '/api' : (import.meta.env.VITE_RUNPOD_URL || 'http://localhost:8000');
 
-// Robust JSON fetch helper with automatic RunPod URL resolution
-export const fetchJSON = async (url: string, options?: RequestInit) => {
+// Helper to detect if error is from cold start
+const isColdStartError = (error: any, responseText: string = ''): boolean => {
+  const errorMsg = error?.message?.toLowerCase() || '';
+  const respText = responseText.toLowerCase();
+
+  return (
+    respText.includes('no workers available') ||
+    respText.includes('worker') ||
+    errorMsg.includes('503') ||
+    errorMsg.includes('timeout') ||
+    errorMsg.includes('timed out')
+  );
+};
+
+// Helper for retry with exponential backoff
+const retryWithBackoff = async <T>(
+  fn: () => Promise<T>,
+  maxRetries: number = 5,
+  onRetry?: (attempt: number, maxRetries: number) => void
+): Promise<T> => {
+  let lastError: any;
+
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    try {
+      return await fn();
+    } catch (error: any) {
+      lastError = error;
+
+      // Check if this is a cold start error
+      const responseText = error?.response || error?.message || '';
+      const isColdStart = isColdStartError(error, responseText);
+
+      // Only retry on cold start errors, and if we haven't exceeded max retries
+      if (isColdStart && attempt < maxRetries) {
+        const backoffMs = Math.min(3000 * Math.pow(2, attempt), 48000);
+        console.log(`[API Retry] Cold start detected, retrying in ${backoffMs}ms (attempt ${attempt + 1}/${maxRetries})`);
+
+        // Call onRetry callback if provided
+        if (onRetry) {
+          onRetry(attempt + 1, maxRetries);
+        }
+
+        // Wait before retrying
+        await new Promise(resolve => setTimeout(resolve, backoffMs));
+        continue;
+      }
+
+      // If not a cold start error, or max retries exceeded, throw immediately
+      throw lastError;
+    }
+  }
+
+  throw lastError;
+};
+
+// Robust JSON fetch helper with automatic RunPod URL resolution and cold start retry
+export const fetchJSON = async (url: string, options?: RequestInit, enableRetry: boolean = true) => {
   // If URL is relative, prepend RUNPOD_API_BASE (which is /api in dev, full URL in prod)
   const fullUrl = url.startsWith('http') ? url : `${RUNPOD_API_BASE}${url.startsWith('/') ? url : '/' + url}`;
+
+  const fetchFn = async () => {
+    // Add RunPod API key to all requests
+    const headers: HeadersInit = {
+      ...options?.headers,
+    };
+
+    if (import.meta.env.VITE_RUNPOD_API_KEY) {
+      headers['Authorization'] = `Bearer ${import.meta.env.VITE_RUNPOD_API_KEY}`;
+    }
+
+    const res = await fetch(fullUrl, { ...options, headers });
+    const text = await res.text();
+
+    // Log raw response for debugging when there's an error
+    if (!res.ok) {
+      console.error(`HTTP ${res.status} Error for ${fullUrl}:`);
+      console.error('Response headers:', Object.fromEntries(res.headers.entries()));
+      console.error('Raw response text:', text);
+    }
+
+    try {
+      const data = text ? JSON.parse(text) : {};
+      if (!res.ok) {
+        // Create error with response text for cold start detection
+        const error: any = new Error(`${res.status} ${data.detail || data.error || res.statusText}`);
+        error.response = text;
+        error.status = res.status;
+        throw error;
+      }
+      return data;
+    } catch (parseError: any) {
+      if (!res.ok) {
+        const error: any = new Error(`${res.status} ${res.statusText}`);
+        error.response = text;
+        error.status = res.status;
+        throw error;
+      }
+      throw parseError;
+    }
+  };
+
+  // Use retry logic only if enabled (default true)
+  if (enableRetry) {
+    return retryWithBackoff(fetchFn);
+  }
+
+  return fetchFn();
+};
+
+// Check if response is ok first
+const fetchJSONAlternative = async (url: string, options?: RequestInit) => {
+  const fullUrl = url.startsWith('http') ? url : `${RUNPOD_API_BASE}${url.startsWith('/') ? url : '/' + url}`;
+
+  // Add RunPod API key to all requests
+  const headers: HeadersInit = {
+    ...options?.headers,
+  };
+
+  if (import.meta.env.VITE_RUNPOD_API_KEY) {
+    headers['Authorization'] = `Bearer ${import.meta.env.VITE_RUNPOD_API_KEY}`;
+  }
+
+  const res = await fetch(fullUrl, { ...options, headers });
   
-  const res = await fetch(fullUrl, options);
-  const text = await res.text();
-  
-  // Log raw response for debugging when there's an error
   if (!res.ok) {
-    console.error(`HTTP ${res.status} Error for ${fullUrl}:`);
-    console.error('Response headers:', Object.fromEntries(res.headers.entries()));
-    console.error('Raw response text:', text);
+    let errorMessage = res.statusText || 'Request failed';
+    
+    try {
+      // Try to get error details from response body
+      const text = await res.text();
+      if (text) {
+        try {
+          const errorData = JSON.parse(text);
+          errorMessage = errorData.detail || errorData.error || errorMessage;
+        } catch {
+          // If not JSON, use the raw text (but truncate if it's HTML)
+          errorMessage = text.startsWith('<!DOCTYPE') ? 'Server returned HTML error page' : text;
+        }
+      }
+    } catch {
+      // If we can't read the response body, use the status text
+    }
+    
+    throw new Error(`${res.status} ${errorMessage}`);
   }
   
-  try {
-    const data = text ? JSON.parse(text) : {};
-    if (!res.ok) {
-      const msg = data.detail || data.error || res.statusText || 'Request failed';
-      const errorMsg = `${res.status} ${msg}`;
-      console.error('Parsed error message:', errorMsg);
-      throw new Error(errorMsg);
-    }
-    return data;
-  } catch (err) {
-    // If content-type isn't JSON or body empty, surface meaningful error
-    if (!res.ok) {
-      const errorMsg = `${res.status} ${text || res.statusText}`;
-      console.error('Non-JSON error response:', errorMsg);
-      throw new Error(errorMsg);
-    }
-    throw err;
-  }
+  // Only parse JSON for successful responses
+  const text = await res.text();
+  return text ? JSON.parse(text) : {};
 };
 
 export const fetchTrackingResults = async () => {
@@ -254,26 +370,94 @@ export const startRunPodProcessing = async (video: Video): Promise<{ job_id: str
 
 export const startRunPodProcessingDirect = async (
   videoFile: File,
-  videoName: string
-): Promise<{ job_id: string; queue_position: number; original_url: string }> => {
+  videoName: string,
+  onProgress?: (progress: number) => void
+): Promise<{ job_id: string; video_id: number | null; queue_position: number; original_url: string }> => {
   try {
     const formData = new FormData();
-    
+
     formData.append('file', videoFile);
     formData.append('video_name', videoName);
-    
-    const data = await fetchJSON('/video/upload', {
-      method: 'POST',
-      body: formData,
+
+    const fullUrl = `${RUNPOD_API_BASE}/video/upload`;
+
+    const uploadData = await new Promise<any>((resolve, reject) => {
+      const xhr = new XMLHttpRequest();
+
+      xhr.upload.addEventListener('progress', (event) => {
+        if (event.lengthComputable && onProgress) {
+          const percentComplete = (event.loaded / event.total) * 100;
+          onProgress(percentComplete);
+        }
+      });
+
+      xhr.addEventListener('load', () => {
+        if (xhr.status >= 200 && xhr.status < 300) {
+          try {
+            const response = JSON.parse(xhr.responseText);
+            resolve(response);
+          } catch (e) {
+            reject(new Error('Failed to parse server response'));
+          }
+        } else {
+          reject(new Error(`Upload failed with status ${xhr.status}`));
+        }
+      });
+
+      xhr.addEventListener('error', () => {
+        reject(new Error('Network error during upload'));
+      });
+
+      xhr.addEventListener('abort', () => {
+        reject(new Error('Upload cancelled'));
+      });
+
+      xhr.open('POST', fullUrl);
+
+      if (import.meta.env.VITE_RUNPOD_API_KEY) {
+        xhr.setRequestHeader('Authorization', `Bearer ${import.meta.env.VITE_RUNPOD_API_KEY}`);
+      }
+
+      xhr.send(formData);
     });
-    
+
+    if (onProgress) {
+      onProgress(100);
+    }
+
+    const processData = await fetchJSON(`/video/process/${uploadData.job_id}`, {
+      method: 'POST'
+    });
+
     return {
-      job_id: data.job_id,
-      queue_position: data.queue_position,
-      original_url: data.original_url || data.video_url || ''
+      job_id: uploadData.job_id,
+      video_id: uploadData.video_id,
+      queue_position: processData.queue_position ?? uploadData.queue_position ?? 0,
+      original_url: uploadData.original_url || uploadData.video_url || ''
     };
   } catch (error) {
     console.error('Error starting RunPod processing:', error);
+    throw error;
+  }
+};
+
+export const createVideoMetadataRecord = async (
+  file: File,
+  videoName: string,
+  originalUrl?: string
+): Promise<Video> => {
+  try {
+    const videoData = {
+      video_name: videoName,
+      original_filename: file.name,
+      original_url: originalUrl,
+      file_size: file.size,
+      status: 'uploaded' as const
+    };
+
+    return await insertVideo(videoData);
+  } catch (error) {
+    console.error('Error creating video metadata record:', error);
     throw error;
   }
 };
@@ -315,28 +499,6 @@ export const deleteVideo = async (fileName: string, uploadId: string): Promise<v
   }
 };
 
-export const createVideoMetadataRecord = async (
-  videoFile: File,
-  videoName: string,
-  originalUrl: string
-): Promise<Video> => {
-  try {
-    // Create video record in database
-    const video = await createVideo({
-      video_name: videoName,
-      original_filename: videoFile.name,
-      original_url: originalUrl,
-      file_size: videoFile.size,
-      status: 'processing',
-      duration_seconds: 0 // Will be updated when processing completes
-    });
-
-    return video;
-  } catch (error) {
-    console.error('Error creating video metadata record:', error);
-    throw error;
-  }
-};
 
 export const uploadCSV = async (file: File, fileName: string, videoId: string): Promise<string> => {
   try {

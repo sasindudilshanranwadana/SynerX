@@ -3,10 +3,11 @@ import { Link } from 'react-router-dom';
 import { getOverallAnalytics } from '../lib/database';
 import { supabase } from '../lib/supabase';
 import { getStoredTheme } from '../lib/theme';
+import { formatDateTime, formatRelativeTime } from '../lib/dateUtils';
 import ServerStatusIndicator from '../components/ServerStatusIndicator';
 import {
-  Activity, Camera, Clock, 
-  Home, LogOut, Settings, Upload, 
+  Activity, Camera, Clock,
+  Home, LogOut, Settings, Upload,
   BarChart2,
   Play,
   Database, Brain, Menu, X
@@ -44,6 +45,8 @@ function Dashboard() {
   const [recentActivity, setRecentActivity] = React.useState<RecentActivity[]>([
     { event: 'Loading recent activity...', time: 'Just now', type: 'info' }
   ]);
+  const [isWarmingUp, setIsWarmingUp] = React.useState(false);
+  const [warmupAttempt, setWarmupAttempt] = React.useState(0);
 
   React.useEffect(() => {
     const getUser = async () => {
@@ -87,9 +90,16 @@ function Dashboard() {
     try {
       // Check RunPod API health
       const apiBase = import.meta.env.DEV ? '/api' : (import.meta.env.VITE_RUNPOD_URL || 'http://localhost:8000');
+      const headers: HeadersInit = { 'Content-Type': 'application/json' };
+
+      // Add RunPod API key to all requests
+      if (import.meta.env.VITE_RUNPOD_API_KEY) {
+        headers['Authorization'] = `Bearer ${import.meta.env.VITE_RUNPOD_API_KEY}`;
+      }
+
       const healthResponse = await fetch(`${apiBase}/`, {
         method: 'GET',
-        headers: { 'Content-Type': 'application/json' },
+        headers,
         signal: AbortSignal.timeout(10000)
       });
       
@@ -144,9 +154,16 @@ function Dashboard() {
       // Try to get recent activity from RunPod backend
       try {
         const apiBase = import.meta.env.DEV ? '/api' : (import.meta.env.VITE_RUNPOD_URL || 'http://localhost:8000');
+        const headers: HeadersInit = { 'Content-Type': 'application/json' };
+
+        // Add RunPod API key to all requests
+        if (import.meta.env.VITE_RUNPOD_API_KEY) {
+          headers['Authorization'] = `Bearer ${import.meta.env.VITE_RUNPOD_API_KEY}`;
+        }
+
         const response = await fetch(`${apiBase}/recent-activity`, {
           method: 'GET',
-          headers: { 'Content-Type': 'application/json' },
+          headers,
           signal: AbortSignal.timeout(10000)
         });
         
@@ -233,7 +250,7 @@ function Dashboard() {
       // Try to get analytics from RunPod backend first
       try {
         const apiBase = import.meta.env.DEV ? '/api' : (import.meta.env.VITE_RUNPOD_URL || 'http://localhost:8000');
-        const response = await fetch(`${apiBase}/analysis/complete`, {
+        const response = await fetch(`${apiBase}/analytics/summary`, {
           method: 'GET',
           headers: { 'Content-Type': 'application/json' },
           signal: AbortSignal.timeout(10000)
@@ -241,38 +258,14 @@ function Dashboard() {
         
         if (response.ok) {
           const data = await response.json();
-          // If analysis endpoint is reachable, derive stats from tracking data
-          if (data.complete_analysis || data.analysis) {
-            try {
-              const trackingRes = await fetch(`${apiBase}/data/tracking?limit=1000`, {
-                method: 'GET',
-                headers: { 'Content-Type': 'application/json' },
-                signal: AbortSignal.timeout(10000)
-              });
-              if (trackingRes.ok) {
-                const t = await trackingRes.json();
-                const items = Array.isArray(t.data) ? t.data : [];
-                const totalVehicles = items.length;
-                const compliant = items.filter((d: any) => d.compliance === 1).length;
-                const violations = Math.max(0, totalVehicles - compliant);
-                const reactionTimes = items
-                  .filter((d: any) => d.compliance === 1 && d.reaction_time !== null && d.reaction_time !== undefined)
-                  .map((d: any) => Number(d.reaction_time))
-                  .filter((n: number) => Number.isFinite(n));
-                const avgReactionTime = reactionTimes.length > 0
-                  ? reactionTimes.reduce((sum: number, n: number) => sum + n, 0) / reactionTimes.length
-                  : 0;
-                const uniqueVideoIds = new Set(items.map((d: any) => d.video_id)).size;
-
-                setStats({
-                  videosProcessed: uniqueVideoIds || totalVehicles,
-                  violations,
-                  complianceRate: totalVehicles > 0 ? (compliant / totalVehicles) * 100 : 0,
-                  avgReactionTime
-                });
-                return;
-              }
-            } catch {}
+          if (data.stats) {
+            setStats({
+              videosProcessed: data.stats.videosProcessed || 0,
+              violations: data.stats.violations || 0,
+              complianceRate: data.stats.complianceRate || 0,
+              avgReactionTime: data.stats.avgReactionTime || 0
+            });
+            return;
           }
         }
       } catch (backendError) {
@@ -445,7 +438,7 @@ function Dashboard() {
         <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4 lg:gap-6 mb-8">
           {loading ? (
             Array(4).fill(null).map((_, index) => (
-              <div key={index} data-testid="stat-skeleton" className={`p-6 rounded-xl animate-pulse border ${
+              <div key={index} className={`p-6 rounded-xl animate-pulse border ${
                 isDark 
                   ? 'bg-[#151F32] border-[#1E293B]' 
                   : 'bg-white border-gray-200 shadow-lg'
