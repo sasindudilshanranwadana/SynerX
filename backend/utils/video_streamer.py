@@ -19,19 +19,11 @@ try:
     os.environ['OPENCV_VIDEOIO_PRIORITY_DSHOW'] = '0'
     os.environ['OPENCV_VIDEOIO_PRIORITY_V4L2'] = '0'
     os.environ['OPENCV_VIDEOIO_PRIORITY_GSTREAMER'] = '0'
-    # Additional RunPod-specific OpenCV optimizations
-    os.environ['OPENCV_FFMPEG_CAPTURE_OPTIONS'] = 'rtbufsize;100000000'
-    os.environ['OPENCV_VIDEOIO_DEBUG'] = '0'
     HAS_CV2 = True
     print("[STREAM] OpenCV available in headless mode")
 except ImportError:
     HAS_CV2 = False
     print("[STREAM] OpenCV not available, using alternative methods")
-
-# Detect RunPod environment
-IS_RUNPOD = os.environ.get('RUNPOD_POD_ID') is not None or 'runpod' in os.environ.get('HOSTNAME', '').lower()
-if IS_RUNPOD:
-    print("[STREAM] RunPod environment detected - using optimized settings")
 
 # Try to import GPU-accelerated libraries for RunPod
 try:
@@ -60,19 +52,11 @@ class VideoStreamer:
         self.frame_queue = queue.Queue(maxsize=Config.STREAMING_QUEUE_SIZE)
         self.executor = ThreadPoolExecutor(max_workers=Config.STREAMING_WORKERS)
         
-        # Performance settings from config with RunPod optimizations
+        # Performance settings from config
         self.frame_skip = Config.STREAMING_FRAME_SKIP
         self.jpeg_quality = Config.STREAMING_JPEG_QUALITY
         self.max_frame_size = Config.STREAMING_MAX_FRAME_SIZE
-        self.target_fps = getattr(Config, 'STREAMING_TARGET_FPS', 25)  # Lower FPS for RunPod
-        
-        # RunPod-specific optimizations
-        if IS_RUNPOD:
-            # Reduce quality slightly for better stability on RunPod
-            self.jpeg_quality = min(85, self.jpeg_quality)
-            # Smaller frame size for RunPod GPU efficiency
-            self.max_frame_size = (min(960, self.max_frame_size[0]), min(540, self.max_frame_size[1]))
-            print(f"[STREAM] RunPod optimizations applied: quality={self.jpeg_quality}, size={self.max_frame_size}")
+        self.target_fps = getattr(Config, 'STREAMING_TARGET_FPS', 30)
         
         # Frame rate limiting for smooth playback
         self.last_frame_time = 0
@@ -84,8 +68,7 @@ class VideoStreamer:
         self.connection_count = 0
         self._pending_message = None
         
-        print(f"[STREAM] VideoStreamer initialized - ready for WebSocket connections")
-        print(f"[STREAM] Settings: quality={self.jpeg_quality}, size={self.max_frame_size}, fps={self.target_fps}")
+        print("[STREAM] VideoStreamer initialized - ready for WebSocket connections")
         
     async def connect(self, websocket: WebSocket, client_id: str):
         """Connect a new client to the video stream"""
@@ -109,7 +92,7 @@ class VideoStreamer:
         with self.connection_lock:
             if client_id in self.active_connections:
                 del self.active_connections[client_id]
-                self.connection_count -= 1  # Fixed: should be decrement, not increment
+                self.connection_count += 1
                 
                 # Stop streaming if no clients are left
                 if len(self.active_connections) == 0:
@@ -129,78 +112,51 @@ class VideoStreamer:
         try:
             self.frames_processed += 1
             
-            # Don't skip frames - send all frames for smoother video
             # Simple resize without complex processing
             frame = self._quick_resize(frame)
             
-            # Add frame to queue (allow more frames for smoother video)
-            try:
-                self.frame_queue.put_nowait(frame)
-            except queue.Full:
-                # Queue is full, skip this frame to maintain smoothness
-                pass
+            # Clear queue and add new frame immediately
+            while not self.frame_queue.empty():
+                self.frame_queue.get_nowait()
+            self.frame_queue.put_nowait(frame)
             
-            # Log every 100 frames for performance monitoring
-            if self.frames_processed % 100 == 0:
-                queue_size = self.frame_queue.qsize()
-                active_connections = len(self.active_connections)
-                print(f"[STREAM] 📊 Processed {self.frames_processed} frames, sent {self.frames_sent} frames, queue: {queue_size}, connections: {active_connections}")
+            # Minimal logging for performance
+            if self.frames_processed % 500 == 0:
+                print(f"[STREAM] 📊 Processed {self.frames_processed} frames, sent {self.frames_sent} frames to {len(self.active_connections)} clients")
                     
         except Exception as e:
             print(f"[STREAM] ❌ Error updating frame: {e}")
             
     def _quick_resize(self, frame: np.ndarray) -> np.ndarray:
-        """Fixed GPU-accelerated resize for RunPod with proper color handling"""
+        """Fast resize for smooth streaming with minimal processing"""
+        if frame is None or frame.size == 0:
+            return frame
+            
         height, width = frame.shape[:2]
         max_width, max_height = self.max_frame_size
         
-        if width > max_width or height > max_height:
-            scale = min(max_width / width, max_height / height)
-            new_width = int(width * scale)
-            new_height = int(height * scale)
-            
-            # Ensure frame is in correct format (BGR for OpenCV)
-            if len(frame.shape) == 3 and frame.shape[2] == 3:
-                # Frame is already in BGR format
-                pass
-            else:
-                print(f"[STREAM] Warning: Unexpected frame shape {frame.shape}")
-                return frame
-            
-            # Use OpenCV for reliable resizing (avoid GPU issues on RunPod)
-            if HAS_CV2:
-                try:
-                    # Use OpenCV with proper interpolation for better quality
-                    frame = cv2.resize(frame, (new_width, new_height), interpolation=cv2.INTER_LINEAR)
-                    return frame
-                except Exception as e:
-                    print(f"[STREAM] OpenCV resize failed: {e}")
-            
-            # Fallback to PIL with proper color handling
-            if HAS_PIL:
-                try:
-                    # Convert BGR to RGB for PIL
-                    rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB) if HAS_CV2 else frame
-                    pil_image = PIL.Image.fromarray(rgb_frame)
-                    pil_resized = pil_image.resize((new_width, new_height), PIL.Image.LANCZOS)
-                    # Convert back to BGR
-                    resized_rgb = np.array(pil_resized)
-                    if HAS_CV2:
-                        frame = cv2.cvtColor(resized_rgb, cv2.COLOR_RGB2BGR)
-                    else:
-                        frame = resized_rgb
-                    return frame
-                except Exception as e:
-                    print(f"[STREAM] PIL resize failed: {e}")
-            
-            # Simple numpy resize as last resort (preserve color channels)
-            try:
-                frame = np.array([[frame[int(i*height/new_height), int(j*width/new_width)] 
-                                 for j in range(new_width)] for i in range(new_height)])
-            except Exception as e:
-                print(f"[STREAM] Numpy resize failed: {e}")
-                return frame
-            
+        # Only resize if necessary
+        if width <= max_width and height <= max_height:
+            return frame
+        
+        # Calculate new dimensions
+        scale = min(max_width / width, max_height / height)
+        new_width = int(width * scale)
+        new_height = int(height * scale)
+        
+        # Use high-quality resize method for better visual quality
+        if HAS_CV2:
+            # Use OpenCV with high-quality interpolation
+            frame = cv2.resize(frame, (new_width, new_height), interpolation=cv2.INTER_CUBIC)
+        elif HAS_PIL:
+            # Use PIL with high-quality method
+            pil_image = PIL.Image.fromarray(frame)
+            frame = np.array(pil_image.resize((new_width, new_height), PIL.Image.LANCZOS))
+        else:
+            # Simple numpy resize as last resort
+            frame = np.array([[frame[int(i*height/new_height), int(j*width/new_width)] 
+                             for j in range(new_width)] for i in range(new_height)])
+        
         return frame
             
     def start_streaming(self):
@@ -224,31 +180,31 @@ class VideoStreamer:
             print(f"[STREAM] ⚠️ Streaming not active - ignoring stop request")
         
     def _streaming_loop(self):
-        """Smooth streaming loop with proper frame rate control"""
+        """Ultra-fast streaming loop"""
         frame_count = 0
-        last_log_time = time.time()
         print(f"[STREAM] 🔄 Streaming loop started - thread ID: {threading.current_thread().ident}")
         
         while self.streaming_active:
             try:
-                # Get frame with timeout
+                # Get frame immediately
                 try:
-                    frame = self.frame_queue.get(timeout=0.1)
+                    frame = self.frame_queue.get_nowait()
+                    # Minimal logging for RunPod performance
+                    if frame_count % 500 == 0:
+                        print(f"[STREAM] 🎬 Received frame {frame_count + 1} from queue")
                 except queue.Empty:
-                    time.sleep(0.01)
+                    time.sleep(0.0001)  # 0.1ms sleep for faster processing
                     continue
                 
                 frame_count += 1
+                
+                # Frame rate limiting for smooth playback
                 current_time = time.time()
-                
-                # Frame rate limiting for smooth video
                 time_since_last_frame = current_time - self.last_frame_time
-                if time_since_last_frame < self.frame_interval:
-                    time.sleep(self.frame_interval - time_since_last_frame)
-                    current_time = time.time()
                 
-                # Encode and send frame
-                try:
+                # Send frames at target FPS rate with frame skipping
+                if time_since_last_frame >= self.frame_interval and frame_count % self.frame_skip == 0:
+                    # Encode frame directly (no thread pool for speed)
                     encoded_frame = self._fast_encode(frame)
                     
                     if encoded_frame:
@@ -263,76 +219,45 @@ class VideoStreamer:
                             "frame_number": frame_count
                         }
                         
-                        # Store message for async broadcast
+                        # Store message for async broadcast (will be sent by the WebSocket handler)
                         self._pending_message = json.dumps(message)
                         
-                        # Log performance every 5 seconds
-                        if current_time - last_log_time >= 5.0:
-                            fps = self.frames_sent / (current_time - (self.last_frame_time - self.frames_sent * self.frame_interval)) if self.frames_sent > 0 else 0
-                            print(f"[STREAM] 📡 Sent {self.frames_sent} frames to {len(self.active_connections)} clients (FPS: {fps:.1f})")
-                            last_log_time = current_time
-                    else:
-                        print(f"[STREAM] ⚠️ Frame encoding failed for frame {frame_count}")
-                        
-                except Exception as e:
-                    print(f"[STREAM] ❌ Encoding error for frame {frame_count}: {e}")
+                        # Minimal logging for performance
+                        if self.frames_sent % 200 == 0:
+                            print(f"[STREAM] 📡 Sent {self.frames_sent} frames to {len(self.active_connections)} clients")
+                
+                # Balanced sleep for smooth playback
+                time.sleep(0.001)  # 1ms sleep for smooth playback
                 
             except Exception as e:
                 print(f"[STREAM] ❌ Error in streaming loop: {e}")
-                time.sleep(0.01)
+                time.sleep(0.001)  # Minimal error recovery
                 
         print(f"[STREAM] 🔄 Streaming loop ended - processed {frame_count} frames")
                 
     def _fast_encode(self, frame: np.ndarray) -> str:
-        """Fixed high-quality frame encoding for RunPod with proper color handling"""
+        """High-quality frame encoding for smooth streaming"""
         try:
-            # Ensure frame is in correct format and data type
-            if frame.dtype != np.uint8:
-                frame = frame.astype(np.uint8)
-            
-            # Ensure frame has correct shape and color channels
-            if len(frame.shape) != 3 or frame.shape[2] != 3:
-                print(f"[STREAM] Warning: Invalid frame shape {frame.shape}")
-                return None
-            
-            # Use OpenCV for reliable encoding (avoid GPU issues on RunPod)
+            # Use OpenCV for high-quality encoding
             if HAS_CV2:
-                try:
-                    # Optimized encoding parameters for RunPod
-                    encode_params = [
-                        cv2.IMWRITE_JPEG_QUALITY, self.jpeg_quality,
-                        cv2.IMWRITE_JPEG_OPTIMIZE, 1,
-                        cv2.IMWRITE_JPEG_PROGRESSIVE, 0,  # Disable progressive for better compatibility
-                        cv2.IMWRITE_JPEG_RST_INTERVAL, 0  # Disable restart intervals for streaming
-                    ]
-                    success, buffer = cv2.imencode('.jpg', frame, encode_params)
-                    if success:
-                        return base64.b64encode(buffer).decode('utf-8')
-                    else:
-                        print(f"[STREAM] OpenCV encoding failed")
-                except Exception as e:
-                    print(f"[STREAM] OpenCV encoding error: {e}")
-            
-            # Fallback to PIL with proper color handling
-            if HAS_PIL:
-                try:
-                    # Convert BGR to RGB for PIL
-                    if HAS_CV2:
-                        rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-                    else:
-                        rgb_frame = frame
-                    
-                    pil_image = PIL.Image.fromarray(rgb_frame)
-                    import io
-                    buffer = io.BytesIO()
-                    pil_image.save(buffer, format='JPEG', quality=self.jpeg_quality, optimize=True)
-                    return base64.b64encode(buffer.getvalue()).decode('utf-8')
-                except Exception as e:
-                    print(f"[STREAM] PIL encoding error: {e}")
-            
-            # Last resort: simple base64 encoding (not recommended for production)
-            print(f"[STREAM] Warning: Using fallback encoding method")
-            return base64.b64encode(frame.tobytes()).decode('utf-8')
+                # Enhanced encoding parameters for better quality
+                encode_params = [
+                    cv2.IMWRITE_JPEG_QUALITY, self.jpeg_quality,
+                    cv2.IMWRITE_JPEG_OPTIMIZE, 1,
+                    cv2.IMWRITE_JPEG_PROGRESSIVE, 1
+                ]
+                _, buffer = cv2.imencode('.jpg', frame, encode_params)
+                return base64.b64encode(buffer).decode('utf-8')
+            elif HAS_PIL:
+                # Use PIL with better quality settings
+                pil_image = PIL.Image.fromarray(frame)
+                import io
+                buffer = io.BytesIO()
+                pil_image.save(buffer, format='JPEG', quality=self.jpeg_quality, optimize=True)
+                return base64.b64encode(buffer.getvalue()).decode('utf-8')
+            else:
+                # Simple base64 encoding as last resort
+                return base64.b64encode(frame.tobytes()).decode('utf-8')
                 
         except Exception as e:
             print(f"[STREAM] Encoding error: {e}")

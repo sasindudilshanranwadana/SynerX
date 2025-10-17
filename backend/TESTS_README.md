@@ -168,8 +168,5 @@ This is the most critical test, verifying the entire end-to-end workflow. It is 
 
 
  Test Results - Janith
- 
-<img width="1472" height="617" alt="image" src="https://github.com/user-attachments/assets/4707c72f-4415-408d-bf16-1d6c06578a00" />
-
-
+ <img width="1233" height="560" alt="image" src="https://github.com/user-attachments/assets/0269f954-a814-4c5a-b37a-3520a42d219a" />
 

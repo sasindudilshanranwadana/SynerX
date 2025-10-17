@@ -25,40 +25,50 @@ from utils.shutdown_manager import shutdown_manager
 from utils.video_streamer import video_streamer
 from clients.supabase_client import supabase_manager
 
-# RunPod-specific initialization
-import os
-if os.environ.get('RUNPOD_POD_ID') or 'runpod' in os.environ.get('HOSTNAME', '').lower():
-    print("[MAIN] 🚀 RunPod environment detected - applying optimizations")
-    # Import and run RunPod startup checks
-    try:
-        from runpod_startup import setup_runpod_environment, check_gpu_availability
-        setup_runpod_environment()
-        check_gpu_availability()
-    except ImportError:
-        print("[MAIN] ⚠️ RunPod startup script not available")
-
 # Import middleware
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
 from starlette.responses import Response, FileResponse
 
-# Create organized temp directories for local development
-# Use relative paths for local development compatibility
-TEMP_DIR = Path("temp")  # Relative path for local development
-TEMP_DIR.mkdir(exist_ok=True)
+# Create organized temp directories within backend folder (Docker-compatible)
+TEMP_DIR = Path("temp")
+TEMP_DIR.mkdir(parents=True, exist_ok=True)
 
 TEMP_UPLOADS_DIR = TEMP_DIR / "uploads"
-TEMP_UPLOADS_DIR.mkdir(exist_ok=True)
+TEMP_UPLOADS_DIR.mkdir(parents=True, exist_ok=True)
 
 TEMP_PROCESSING_DIR = TEMP_DIR / "processing"
-TEMP_PROCESSING_DIR.mkdir(exist_ok=True)
+TEMP_PROCESSING_DIR.mkdir(parents=True, exist_ok=True)
 
-OUTPUT_DIR = TEMP_DIR / "output"
-OUTPUT_DIR.mkdir(exist_ok=True)
+OUTPUT_DIR = Path("processed")
+OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 
-print(f"[MAIN] 📁 Using Docker volume paths:")
-print(f"[MAIN] 📁 Uploads: {TEMP_UPLOADS_DIR}")
-print(f"[MAIN] 📁 Output: {OUTPUT_DIR}")
+# Verify directories exist (critical for Docker/RunPod)
+print(f"[INIT] Temp directories created:")
+print(f"[INIT] - TEMP_DIR: {TEMP_DIR} (exists: {TEMP_DIR.exists()})")
+print(f"[INIT] - TEMP_UPLOADS_DIR: {TEMP_UPLOADS_DIR} (exists: {TEMP_UPLOADS_DIR.exists()})")
+print(f"[INIT] - TEMP_PROCESSING_DIR: {TEMP_PROCESSING_DIR} (exists: {TEMP_PROCESSING_DIR.exists()})")
+print(f"[INIT] - OUTPUT_DIR: {OUTPUT_DIR} (exists: {OUTPUT_DIR.exists()})")
+
+def ensure_directories_exist():
+    """Ensure all required directories exist (critical for Docker/RunPod deployment)"""
+    directories = [
+        TEMP_DIR,
+        TEMP_UPLOADS_DIR, 
+        TEMP_PROCESSING_DIR,
+        OUTPUT_DIR
+    ]
+    
+    for directory in directories:
+        try:
+            directory.mkdir(parents=True, exist_ok=True)
+            print(f"[INIT] ✅ Directory ensured: {directory}")
+        except Exception as e:
+            print(f"[ERROR] ❌ Failed to create directory {directory}: {e}")
+            raise RuntimeError(f"Cannot create required directory: {directory}")
+
+# Ensure directories exist at startup
+ensure_directories_exist()
 
 # Global variables
 api_shutdown_requested = False
@@ -95,27 +105,14 @@ app = FastAPI(
     version="1.0.0"
 )
 
-# Configure upload limits for better performance
-from fastapi import Request
-from fastapi.responses import JSONResponse
-
-@app.middleware("http")
-async def add_upload_limits(request: Request, call_next):
-    """Add upload size limits and timeout handling"""
-    # Increase max request size to 500MB for large videos
-    if request.method == "POST" and "/video/upload" in str(request.url):
-        # Set longer timeout for video uploads
-        pass
-    response = await call_next(request)
-    return response
-
 # Add middleware
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
         "http://localhost:3000",      # React dev server
         "http://localhost:8000",      # current backend
-        "http://localhost:5500",      # Live server
+        "http://localhost:5500",      # Live server (VS Code Live Server)
+        "http://127.0.0.1:5500",     # Live server (127.0.0.1)
         "https://synerx.netlify.app", # production frontend
         "https://yourdomain.com",     # Add production domain here
         # Add more domains as needed
@@ -129,13 +126,6 @@ app.add_middleware(LimitUploadSizeMiddleware, max_upload_size=1024*1024*1024)
 
 # Mount static files
 app.mount("/videos", StaticFiles(directory=OUTPUT_DIR), name="videos")
-
-# Serve frontend upload page
-@app.get("/fast-upload")
-async def fast_upload_page():
-    """Serve the fast upload page"""
-    from fastapi.responses import FileResponse
-    return FileResponse("frontend-upload.html")
 
 # Queue processing functions
 def start_queue_processor():
@@ -180,17 +170,8 @@ def process_job_queue():
 def process_single_job(job_data):
     """Process a single video job with video-based schema"""
     job_id = job_data['job_id']
-    
-    # Handle both R2 filenames and local paths for backward compatibility
-    if 'r2_filename' in job_data:
-        r2_filename = job_data['r2_filename']  # R2 filename for cloud processing
-        is_r2_url = True
-        # For R2 processing, we will use the streaming endpoint directly
-        raw_path = None  # Will be set to streaming URL
-    else:
-        raw_path = job_data['raw_path']  # Local path for backward compatibility
-        is_r2_url = False
-    
+    raw_path = job_data.get('raw_path')  # Local file path
+    stream_url = job_data.get('stream_url')  # Stream URL for cloud processing
     analytic_path = job_data['analytic_path']
     suffix = job_data['suffix']
     start_time = job_data['start_time']
@@ -202,86 +183,49 @@ def process_single_job(job_data):
         # Reset shutdown flag before starting processing
         shutdown_manager.reset_shutdown_flag()
         
-        # Stream R2 video directly to memory for processing
-        if is_r2_url:
-            print(f"[QUEUE] 🎬 Streaming R2 video to memory for processing: {r2_filename}")
-            # Stream R2 video directly to memory buffer (no local files!)
-            from clients.r2_storage_client import get_r2_client
-            r2_client = get_r2_client()
-            
-            try:
-                # Get video stream from R2
-                response = r2_client.s3_client.get_object(
-                    Bucket=r2_client.bucket_name,
-                    Key=r2_filename
-                )
-                
-                # Create memory buffer for video processing
-                import io
-                video_buffer = io.BytesIO()
-                
-                # Stream video data to memory buffer
-                for chunk in response['Body'].iter_chunks(chunk_size=8192):
-                    video_buffer.write(chunk)
-                
-                video_buffer.seek(0)
-                print(f"[QUEUE] ✅ Video streamed to memory buffer: {len(video_buffer.getvalue())} bytes")
-                
-                # Create temporary file path for VideoProcessor (but use memory buffer)
-                temp_file = TEMP_DIR / f"temp_{job_id}.mp4"
-                temp_file.parent.mkdir(exist_ok=True)
-                
-                # Write memory buffer to temporary file for OpenCV
-                with open(temp_file, 'wb') as f:
-                    f.write(video_buffer.getvalue())
-                
-                raw_path = temp_file
-                print(f"[QUEUE] ✅ Video written to temp file for processing: {raw_path}")
-                
-            except Exception as e:
-                print(f"[QUEUE] ❌ Failed to stream R2 video to memory: {e}")
-                raise Exception(f"Failed to stream R2 video: {e}")
-        
         # Create video record now (at processing start)
         try:
-            # Handle file size and metadata for both streaming URLs and local paths
-            if is_r2_url:
-                # For R2 streaming URLs, we can't get file size directly, use 0 as placeholder
-                file_size = 0
-                try:
-                    with job_lock:
-                        original_display_name = background_jobs.get(job_id, {}).get('file_name', 'uploaded_video')
-                except Exception:
-                    original_display_name = 'uploaded_video'
-                print(f"[QUEUE] Processing R2 video via streaming: {raw_path}")
+            # Handle both local files and stream URLs
+            if stream_url:
+                print(f"[QUEUE] 🌐 Processing from stream URL: {stream_url}")
+                file_size = 0  # Unknown for stream URLs
+                video_source = stream_url
             else:
-                # For local paths, get file size and metadata
-                file_size = os.path.getsize(raw_path) if Path(raw_path).exists() else 0
-                try:
-                    with job_lock:
-                        original_display_name = background_jobs.get(job_id, {}).get('file_name', Path(raw_path).name)
-                except Exception:
-                    original_display_name = Path(raw_path).name
+                print(f"[QUEUE] 📁 Processing from local file: {raw_path}")
+                file_size = os.path.getsize(raw_path) if raw_path and raw_path.exists() else 0
+                video_source = str(raw_path)
+            # Use the original filename captured at upload time, not the temp uuid name
+            try:
+                with job_lock:
+                    if stream_url:
+                        # For stream URLs, get filename from job data
+                        original_display_name = background_jobs.get(job_id, {}).get('file_name', 'Stream Video')
+                    else:
+                        original_display_name = background_jobs.get(job_id, {}).get('file_name', raw_path.name if raw_path else 'Unknown Video')
+            except Exception:
+                original_display_name = "Unknown Video"
             # Compute duration using OpenCV (fallback to 0 on failure)
             duration_seconds = 0.0
             try:
                 import cv2
-                cap = cv2.VideoCapture(str(raw_path))
+                if stream_url:
+                    cap = cv2.VideoCapture(stream_url)
+                else:
+                    cap = cv2.VideoCapture(str(raw_path))
                 fps = cap.get(cv2.CAP_PROP_FPS) or 0
                 frames = cap.get(cv2.CAP_PROP_FRAME_COUNT) or 0
                 cap.release()
                 if fps and frames:
                     duration_seconds = float(frames / fps)
             except Exception as e:
-                print(f"[QUEUE] Warning: failed to compute duration for {raw_path}: {e}")
+                print(f"[QUEUE] Warning: failed to compute duration for {video_source}: {e}")
             video_data = {
                 "video_name": original_display_name,
-                "original_filename": raw_path.name if not is_r2_url else original_display_name,
+                "original_filename": original_display_name,  # Use the display name for both
                 "file_size": file_size,
                 "status": "processing",
                 "processing_start_time": datetime.now().isoformat(),
-                "duration_seconds": duration_seconds,
-                "source_url": f"r2://{r2_filename}" if is_r2_url else None  # Store R2 filename if available
+                "duration_seconds": duration_seconds
             }
             video_id = supabase_manager.create_video_record(video_data)
             if not video_id:
@@ -321,41 +265,59 @@ def process_single_job(job_data):
         except Exception:
             pass
 
-        # Progress callback updates background job progress (0-80% during processing)
+        # Progress callback updates background job progress (time-based instead of frame-based)
         last_progress_time = 0.0
         last_pct = 10
+        processing_start_time = time.time()
+        
         def on_progress(processed_frames: int, total):
             try:
                 with job_lock:
                     if background_jobs.get(job_id, {}).get("status") == "processing":
+                        # Use time-based progress instead of frame-based (since FPS is too high)
+                        elapsed_time = time.time() - processing_start_time
+                        
+                        # Estimate total processing time based on video duration
                         if total and total > 0:
-                            # Map 0..total -> 10..80 more responsively
-                            pct = int(10 + (processed_frames / total) * 70)
-                            if pct < 11 and processed_frames > 0:
-                                pct = 11
-                            pct = max(10, min(80, pct))
+                            # Estimate processing time: video_duration * processing_speed_factor
+                            # Based on real data: 1:11 video takes ~69 seconds (about 1x real-time)
+                            estimated_duration = (total / 30.0) * 1.0  # 1x real-time processing (more accurate)
+                            time_progress = min(0.8, elapsed_time / estimated_duration)  # Cap at 80% for processing
                         else:
-                            # Fallback without total: bump roughly every few frames
-                            pct = int(10 + (processed_frames % 100))
-                            pct = max(10, min(80, pct))
+                            # Fallback: assume 60 seconds processing time
+                            estimated_duration = 60.0
+                            time_progress = min(0.8, elapsed_time / estimated_duration)
+                        
+                        # Map time progress to 10-90%
+                        pct = int(10 + time_progress * 80)
+                        pct = max(10, min(90, pct))
+                        
                         # Quantize to 5% steps for clearer UI changes
-                        pct = max(10, min(80, (pct // 5) * 5))
-                        # Throttle progress updates to ~5Hz and only when pct increases
+                        pct = (pct // 5) * 5
+                        
+                        # Throttle progress updates to ~1Hz and only when pct increases
                         import time as _t
                         now = _t.time()
                         nonlocal last_progress_time, last_pct
-                        if pct > last_pct and (now - last_progress_time) >= 0.2:
+                        if pct > last_pct and (now - last_progress_time) >= 1.0:
                             background_jobs[job_id]["progress"] = pct
                             last_pct = pct
                             last_progress_time = now
+                            print(f"[PROGRESS] Time-based progress: {pct}% (elapsed: {elapsed_time:.1f}s, estimated: {estimated_duration:.1f}s)")
             except Exception:
                 pass
 
         # Run video processing - always use database mode with video_id
         from core.video_processor import VideoProcessor
-        processor = VideoProcessor(str(raw_path), str(analytic_path), "api", video_id, progress_callback=on_progress, total_frames=total_frames)
+        processing_start = time.time()
+        if stream_url:
+            processor = VideoProcessor(stream_url=stream_url, output_video_path=str(analytic_path), mode="api", video_id=video_id, progress_callback=on_progress, total_frames=total_frames)
+        else:
+            processor = VideoProcessor(str(raw_path), str(analytic_path), "api", video_id, progress_callback=on_progress, total_frames=total_frames)
         processor.initialize()
         processor.process_video()
+        processing_time = time.time() - processing_start
+        print(f"[PROCESSING] Video processing took {processing_time:.2f}s")
         session_data = processor.get_session_data()
         
         # Check if processing was interrupted by shutdown
@@ -368,12 +330,34 @@ def process_single_job(job_data):
             if analytic_path.exists():
                 try:
                     partial_filename = f"interrupted_{job_id}{suffix}"
-                    partial_video_url = supabase_manager.upload_video_to_storage(
+                    # Upload partial video directly to R2
+                    from clients.r2_storage_client import R2StorageClient
+                    r2_client = R2StorageClient()
+                    partial_video_url = r2_client.upload_video(
                         str(analytic_path), 
                         file_name=partial_filename
                     )
                     if partial_video_url:
                         print(f"[QUEUE] 📹 Partial processed video uploaded for interrupted video {video_id}: {partial_video_url}")
+                        
+                        # Clean up original video from R2 storage after partial processing
+                        try:
+                            if stream_url:
+                                # Extract filename from original R2 URL
+                                original_filename = stream_url.split('/')[-1]
+                                print(f"[CLEANUP] 🗑️ Deleting original video from R2 (interrupted): {original_filename}")
+                                
+                                # Delete original video from R2
+                                r2_client.s3_client.delete_object(
+                                    Bucket=r2_client.bucket_name,
+                                    Key=original_filename
+                                )
+                                print(f"[CLEANUP] ✅ Original video deleted from R2 (interrupted): {original_filename}")
+                            else:
+                                print(f"[CLEANUP] ℹ️ No original R2 video to clean up (local file processing)")
+                        except Exception as cleanup_error:
+                            print(f"[CLEANUP] ⚠️ Failed to delete original video from R2 (interrupted): {cleanup_error}")
+                            # Don't fail the process if cleanup fails
                     else:
                         print(f"[WARNING] Failed to upload partial processed video for interrupted video {video_id}")
                 except Exception as e:
@@ -399,13 +383,45 @@ def process_single_job(job_data):
         if analytic_path.exists():
             try:
                 processed_filename = f"processed_{job_id}{suffix}"
-                processed_video_url = supabase_manager.upload_video_to_storage(
+                # Upload processed video directly to R2 (same as initial upload)
+                from clients.r2_storage_client import R2StorageClient
+                r2_client = R2StorageClient()
+                
+                # Get processed file size for comparison
+                processed_file_size = analytic_path.stat().st_size
+                processed_file_size_mb = processed_file_size / (1024 * 1024)
+                print(f"[PROCESSED] File size: {processed_file_size_mb:.2f} MB")
+                
+                print(f"[PROCESSED] Uploading processed video to R2...")
+                processed_upload_start = time.time()
+                processed_video_url = r2_client.upload_video(
                     str(analytic_path), 
                     file_name=processed_filename
                 )
+                processed_upload_time = time.time() - processed_upload_start
+                print(f"[PROCESSED] R2 upload took {processed_upload_time:.2f}s ({processed_file_size_mb/processed_upload_time:.2f} MB/s)")
                 
                 if processed_video_url:
                     print(f"[QUEUE] 📹 Processed video uploaded successfully: {processed_video_url}")
+                    
+                    # Clean up original video from R2 storage after successful processing
+                    try:
+                        if stream_url:
+                            # Extract filename from original R2 URL
+                            original_filename = stream_url.split('/')[-1]
+                            print(f"[CLEANUP] 🗑️ Deleting original video from R2: {original_filename}")
+                            
+                            # Delete original video from R2
+                            r2_client.s3_client.delete_object(
+                                Bucket=r2_client.bucket_name,
+                                Key=original_filename
+                            )
+                            print(f"[CLEANUP] ✅ Original video deleted from R2: {original_filename}")
+                        else:
+                            print(f"[CLEANUP] ℹ️ No original R2 video to clean up (local file processing)")
+                    except Exception as cleanup_error:
+                        print(f"[CLEANUP] ⚠️ Failed to delete original video from R2: {cleanup_error}")
+                        # Don't fail the entire process if cleanup fails
                 else:
                     print(f"[WARNING] Failed to upload processed video - no URL returned")
                 # Compute processed video duration
@@ -503,7 +519,10 @@ def process_single_job(job_data):
         
     except Exception as e:
         processing_time = time.time() - start_time
+        import traceback
         print(f"[QUEUE] ❌ Job {job_id} failed: {e}")
+        print(f"[QUEUE] 🔍 FULL TRACEBACK:")
+        traceback.print_exc()
         
         with job_lock:
             background_jobs[job_id]["status"] = "failed"
@@ -596,6 +615,9 @@ def process_single_job(job_data):
                 print(f"[WARNING] Failed to update video {video_id} status for shutdown: {e}")
         
         # Clean up temporary files AFTER processing is completely stopped
+        # Add small delay to ensure all file handles are released
+        time.sleep(1)  # Wait 1 second for file handles to be released
+        
         # For shutdown scenarios, delay cleanup to avoid file lock issues
         if shutdown_manager.check_shutdown():
             # Schedule delayed cleanup for shutdown scenarios
@@ -604,21 +626,6 @@ def process_single_job(job_data):
         else:
             # Immediate cleanup for normal completion/failure
             cleanup_job_files(job_id, raw_path, analytic_path)
-        
-        # Clean up R2 temp file after processing
-        if is_r2_url:
-            try:
-                from clients.r2_storage_client import get_r2_client
-                r2_client = get_r2_client()
-                
-                # Delete the temp file from R2 using the filename
-                r2_client.delete_video(r2_filename)
-                print(f"[QUEUE] 🧹 Cleaned up R2 temp file: {r2_filename}")
-                
-                # Note: Local temp file cleanup is handled by the delayed cleanup
-                # to avoid file lock issues on Windows
-            except Exception as e:
-                print(f"[QUEUE] ⚠️ Failed to clean R2 temp file {r2_filename}: {e}")
 
 def set_processing_start_time():
     """Set the processing start time"""
@@ -687,47 +694,89 @@ def cleanup_temp_files():
     except Exception as e:
         print(f"[WARNING] Error during temp file cleanup: {e}")
 
-def cleanup_job_files(job_id: str, raw_path, analytic_path: Path):
-    """Clean up job files immediately (for normal completion/failure)"""
-    try:
-        # Only clean up local files, not streaming URLs
-        if isinstance(raw_path, Path) and raw_path.exists():
-            raw_path.unlink()
-            print(f"[CLEANUP] Removed temp upload: {raw_path}")
-        elif isinstance(raw_path, str):
-            print(f"[CLEANUP] Skipping cleanup for streaming URL: {raw_path}")
-        
-        if analytic_path.exists():
-            analytic_path.unlink()
-            print(f"[CLEANUP] Removed temp output: {analytic_path}")
-    except Exception as e:
-        print(f"[WARNING] Failed to clean up files for job {job_id}: {e}")
+def cleanup_job_files(job_id: str, raw_path: Path, analytic_path: Path):
+    """Clean up job files with retry logic to handle file locking"""
+    
+    def safe_delete(file_path: Path, max_retries: int = 10):
+        """Safely delete a file with retry logic"""
+        for attempt in range(max_retries):
+            try:
+                if file_path.exists():
+                    file_path.unlink()
+                    print(f"[CLEANUP] Removed: {file_path}")
+                    return True
+            except PermissionError as e:
+                if attempt < max_retries - 1:
+                    wait_time = min(2 ** attempt, 10)  # Exponential backoff, max 10 seconds
+                    print(f"[CLEANUP] File locked, retrying in {wait_time}s... (attempt {attempt + 1}/{max_retries})")
+                    time.sleep(wait_time)
+                else:
+                    print(f"[WARNING] Could not delete {file_path} after {max_retries} attempts: {e}")
+                    # Try to force close any handles to the file
+                    try:
+                        import gc
+                        gc.collect()
+                        time.sleep(2)
+                        if file_path.exists():
+                            file_path.unlink()
+                            print(f"[CLEANUP] Force removed: {file_path}")
+                            return True
+                    except Exception:
+                        pass
+                    return False
+            except Exception as e:
+                print(f"[WARNING] Failed to delete {file_path}: {e}")
+                return False
+        return False
+    
+    # Clean up files with retry logic
+    safe_delete(raw_path)
+    safe_delete(analytic_path)
 
-def schedule_delayed_cleanup(job_id: str, raw_path, analytic_path: Path):
+def schedule_delayed_cleanup(job_id: str, raw_path: Path, analytic_path: Path):
     """Schedule delayed cleanup for shutdown scenarios to avoid file lock issues"""
     def delayed_cleanup():
-        import time
-        # Wait a bit for video processing to completely stop
-        time.sleep(2)
-        try:
-            # Only clean up local files, not streaming URLs
-            if isinstance(raw_path, Path) and raw_path.exists():
-                raw_path.unlink()
-                print(f"[CLEANUP] Removed temp upload (delayed): {raw_path}")
-            elif isinstance(raw_path, str):
-                print(f"[CLEANUP] Skipping delayed cleanup for streaming URL: {raw_path}")
-            
-            if analytic_path.exists():
-                analytic_path.unlink()
-                print(f"[CLEANUP] Removed temp output (delayed): {analytic_path}")
-                
-            # Clean up local temp file for R2 memory streaming
-            temp_file = TEMP_DIR / f"temp_{job_id}.mp4"
-            if temp_file.exists():
-                temp_file.unlink()
-                print(f"[CLEANUP] Removed local temp file (delayed): {temp_file}")
-        except Exception as e:
-            print(f"[WARNING] Failed to clean up files for job {job_id} (delayed): {e}")
+        
+        # Wait longer for video processing to completely stop
+        print(f"[CLEANUP] Waiting for file handles to be released...")
+        time.sleep(5)  # Increased wait time
+        
+        # Use the same safe delete logic with better retry strategy
+        def safe_delete(file_path: Path, max_retries: int = 15):
+            """Safely delete a file with retry logic"""
+            for attempt in range(max_retries):
+                try:
+                    if file_path.exists():
+                        file_path.unlink()
+                        print(f"[CLEANUP] Removed (delayed): {file_path}")
+                        return True
+                except PermissionError as e:
+                    if attempt < max_retries - 1:
+                        wait_time = min(3 ** attempt, 15)  # Exponential backoff, max 15 seconds
+                        print(f"[CLEANUP] File still locked, retrying in {wait_time}s... (attempt {attempt + 1}/{max_retries})")
+                        time.sleep(wait_time)
+                    else:
+                        print(f"[WARNING] Could not delete {file_path} after {max_retries} attempts: {e}")
+                        # Final attempt with garbage collection
+                        try:
+                            import gc
+                            gc.collect()
+                            time.sleep(5)
+                            if file_path.exists():
+                                file_path.unlink()
+                                print(f"[CLEANUP] Force removed (delayed): {file_path}")
+                                return True
+                        except Exception:
+                            pass
+                        return False
+                except Exception as e:
+                    print(f"[WARNING] Failed to delete {file_path}: {e}")
+                    return False
+            return False
+        
+        # Clean up files with retry logic
+        safe_delete(raw_path)
+        safe_delete(analytic_path)
     
     # Run delayed cleanup in a separate thread
     cleanup_thread = threading.Thread(target=delayed_cleanup, daemon=True)
@@ -764,6 +813,32 @@ async def root():
     """Root endpoint to test CORS"""
     return {"message": "SynerX API is running!", "status": "ok"}
 
+@app.get("/health")
+async def health_check():
+    """Health check endpoint that verifies critical directories exist"""
+    try:
+        # Check if all required directories exist
+        directories = {
+            "temp": TEMP_DIR.exists(),
+            "temp_uploads": TEMP_UPLOADS_DIR.exists(), 
+            "temp_processing": TEMP_PROCESSING_DIR.exists(),
+            "processed": OUTPUT_DIR.exists()
+        }
+        
+        all_exist = all(directories.values())
+        
+        return {
+            "status": "healthy" if all_exist else "unhealthy",
+            "directories": directories,
+            "message": "All directories exist" if all_exist else "Some directories missing"
+        }
+    except Exception as e:
+        return {
+            "status": "unhealthy",
+            "error": str(e),
+            "message": "Health check failed"
+        }
+
 
 @app.get("/videos", include_in_schema=False)
 async def videos_page():
@@ -772,11 +847,6 @@ async def videos_page():
 @app.get("/jobs", include_in_schema=False)
 async def jobs_page():
     return FileResponse("jobs_dashboard.html")
-
-@app.get("/player", include_in_schema=False)
-async def video_player_page():
-    return FileResponse("video_player.html")
-
 
 # WebSocket endpoint
 @app.websocket("/ws/video-stream/{client_id}")
@@ -789,7 +859,7 @@ async def websocket_video_stream(websocket: WebSocket, client_id: str):
         await video_streamer.connect(websocket, client_id)
         print(f"[WS] ✅ Video streamer connected for client: {client_id}")
         
-        # Keep connection alive and handle messages - simplified for stability
+        # Keep connection alive and handle messages
         while True:
             try:
                 # Check for pending messages from video streamer
@@ -801,27 +871,26 @@ async def websocket_video_stream(websocket: WebSocket, client_id: str):
                         print(f"[WS] Error sending message to {client_id}: {e}")
                         break
                 
-                # Handle client messages with longer timeout for stability
+                # Wait for any message from client (ping/pong) with timeout
                 try:
-                    data = await asyncio.wait_for(websocket.receive_text(), timeout=2.0)  # 2 second timeout
+                    data = await asyncio.wait_for(websocket.receive_text(), timeout=0.1)
                     try:
                         message = json.loads(data)
                         if message.get("type") == "ping":
                             response = {"type": "pong", "timestamp": time.time()}
                             await websocket.send_text(json.dumps(response))
-                        elif message.get("type") == "pong":
-                            # Client responded to ping
-                            pass
                     except json.JSONDecodeError:
                         # Handle non-JSON messages
                         response = {"type": "pong", "timestamp": time.time()}
                         await websocket.send_text(json.dumps(response))
                 except asyncio.TimeoutError:
-                    # No message received, continue to next iteration
-                    pass
-                
-                # Small sleep to prevent CPU spinning
-                await asyncio.sleep(0.05)  # 50ms sleep
+                    # Send ping to keep connection alive
+                    try:
+                        ping_message = {"type": "ping", "timestamp": time.time()}
+                        await websocket.send_text(json.dumps(ping_message))
+                    except Exception as e:
+                        print(f"[WS] Error sending ping to {client_id}: {e}")
+                        break
                         
             except WebSocketDisconnect:
                 print(f"[WS] Client {client_id} disconnected normally")
@@ -843,12 +912,117 @@ async def websocket_video_stream(websocket: WebSocket, client_id: str):
 # WebSocket endpoint for live jobs status updates
 @app.websocket("/ws/jobs")
 async def websocket_jobs_status(websocket: WebSocket):
-    """Push jobs summary and list to clients periodically."""
+    """Push jobs summary and list to clients periodically and handle incoming job messages."""
     try:
         await websocket.accept()
+        
+        # Handle incoming messages (for job creation from frontend)
+        async def handle_incoming_messages():
+            try:
+                while True:
+                    message = await websocket.receive_text()
+                    print(f"[WS] 📨 Received message: {message[:100]}...")  # Log first 100 chars
+                    try:
+                        data = json.loads(message)
+                        print(f"[WS] 📋 Parsed data: {data}")
+                        if data.get("type") == "new_job":
+                            # Handle new job from frontend R2 upload
+                            job_id = data.get("job_id")
+                            r2_url = data.get("r2_url")
+                            file_name = data.get("file_name", "Unknown")
+                            file_size = data.get("file_size", 0)
+                            
+                            print(f"[WS] 📨 Received new job from frontend: {job_id}")
+                            print(f"[WS] R2 URL: {r2_url}")
+                            
+                            # Create job record and auto-queue for processing
+                            with job_lock:
+                                background_jobs[job_id] = {
+                                    "status": "queued",
+                                    "start_time": time.time(),
+                                    "file_name": file_name,
+                                    "r2_url": r2_url,
+                                    "progress": 0,
+                                    "message": "Video uploaded to R2, queued for processing...",
+                                    "result": None,
+                                    "error": None,
+                                    "video_id": None
+                                }
+                            
+                            print(f"[WS] ✅ Job {job_id} created with status: queued")
+                            print(f"[WS] 📊 Total jobs now: {len(background_jobs)}")
+                            
+                            # Auto-add to processing queue
+                            suffix = Path(file_name).suffix or ".mp4"
+                            analytic_path = OUTPUT_DIR / f"{job_id}_out{suffix}"
+                            
+                            job_data = {
+                                "job_id": job_id,
+                                "stream_url": r2_url,
+                                "analytic_path": analytic_path,
+                                "suffix": suffix,
+                                "start_time": time.time(),
+                                "video_id": None
+                            }
+                            
+                            with queue_lock:
+                                job_queue.append(job_data)
+                                queue_position = len(job_queue)
+                            
+                            # Start queue processor if not already running
+                            try:
+                                start_queue_processor()
+                                print(f"[WS] 🚀 Job {job_id} auto-queued for processing (position: {queue_position})")
+                            except Exception as e:
+                                print(f"[WS] ⚠️ Warning: Failed to start queue processor: {e}")
+                            
+                            # Send confirmation back to frontend
+                            await websocket.send_text(json.dumps({
+                                "status": "job_queued",
+                                "job_id": job_id,
+                                "queue_position": queue_position,
+                                "message": f"Job auto-queued for processing (position: {queue_position})"
+                            }))
+                        else:
+                            print(f"[WS] ⚠️ Unknown message type: {data.get('type')}")
+                            
+                    except json.JSONDecodeError:
+                        print(f"[WS] ❌ Invalid JSON received: {message}")
+                    except Exception as e:
+                        print(f"[WS] ❌ Error handling message: {e}")
+                        
+            except WebSocketDisconnect:
+                print(f"[WS] 🔌 WebSocket disconnected")
+                pass
+            except Exception as e:
+                print(f"[WS] ❌ Error in message handler: {e}")
+        
+        # Start message handler in background
+        message_task = asyncio.create_task(handle_incoming_messages())
+        
+        # Main status update loop
         while True:
             try:
                 with job_lock:
+                    # Clear completed, interrupted, and failed jobs (older than 5 minutes)
+                    current_time = time.time()
+                    jobs_to_remove = []
+                    for job_id, job in background_jobs.items():
+                        if job["status"] in ["completed", "interrupted", "failed"]:
+                            # Remove jobs older than 5 minutes
+                            job_age = current_time - job.get("end_time", job["start_time"])
+                            if job_age > 300:  # 5 minutes = 300 seconds
+                                jobs_to_remove.append(job_id)
+                    
+                    # Remove old completed/failed jobs
+                    for job_id in jobs_to_remove:
+                        job_status = background_jobs[job_id]["status"]
+                        del background_jobs[job_id]
+                        print(f"[WS] 🧹 Cleared old {job_status} job: {job_id}")
+                    
+                    if jobs_to_remove:
+                        print(f"[WS] 🧹 Cleared {len(jobs_to_remove)} old jobs")
+                    
                     # Build summary payload similar to GET /jobs/
                     all_jobs = []
                     for job_id, job in background_jobs.items():
@@ -905,6 +1079,10 @@ async def websocket_jobs_status(websocket: WebSocket):
         pass
     except Exception as e:
         print(f"[WS] Jobs status error: {e}")
+    finally:
+        # Cancel the message handler task
+        if 'message_task' in locals():
+            message_task.cancel()
 
 def run_health_server():
     """Runs a simple HTTP server in a thread for health checks."""
@@ -984,5 +1162,10 @@ async def runsync_job(request: Request):
 
 
 if __name__ == "__main__":
+    # Final directory check before starting server
+    print("[STARTUP] 🔍 Final directory verification...")
+    ensure_directories_exist()
+    print("[STARTUP] ✅ All directories verified, starting server...")
+    
     import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=8000)

@@ -17,20 +17,21 @@ class Config:
     SOURCE_POLYGON = np.array([(422, 10), (594, 16), (801, 665), (535, 649)])  # Detection area polygon coordinates
     STOP_ZONE_POLYGON = np.array([(507, 199), (681, 209), (751, 555), (484, 541)])  # Stop zone polygon coordinates
     
-    # Thresholds
+    # Thresholds - Optimized for Performance
     TARGET_WIDTH, TARGET_HEIGHT = 50, 130  # Target dimensions for perspective transformation
-    DETECTION_CONFIDENCE = 0.3  # Minimum confidence threshold for object detection (Range: 0.1-0.9, Recommended: 0.3-0.5 for balance)
-    NMS_THRESHOLD = 0.3  # Non-Maximum Suppression threshold to remove duplicate detections (Range: 0.1-0.7, Recommended: 0.4-0.5 for best results)
+    DETECTION_CONFIDENCE = 0.25  # Minimum confidence threshold for object detection (Original: 0.25 for better detection)
+    NMS_THRESHOLD = 0.3  # Non-Maximum Suppression threshold to remove duplicate detections (Original: 0.3 for better detection)
     VELOCITY_THRESHOLD = 0.6  # Threshold to determine if vehicle is stationary in pixels/frame (Range: 0.1-2.0, Recommended: 0.5-1.0 based on video resolution)
-    FRAME_BUFFER = 10  # Number of frames to buffer for velocity calculation (Range: 5-30, Recommended: 10-15 for stable tracking)
+    FRAME_BUFFER = 5  # Number of frames to buffer for velocity calculation (Optimized: 5 for faster processing)
     DETECTION_OVERLAP_THRESHOLD = 0.5  # IoU threshold for merging overlapping detections (Range: 0.3-0.8, Recommended: 0.5-0.6 for optimal merging)
-    CLASS_CONFIDENCE_THRESHOLD = 0.7  # Confidence threshold for stable class assignment (Range: 0.5-0.9, Recommended: 0.6-0.8 for reliable classification)
+    CLASS_CONFIDENCE_THRESHOLD = 0.5  # Confidence threshold for stable class assignment (Original: 0.5 for better detection)
     CLASS_HISTORY_FRAMES = 10  # Number of frames to track for class consistency (Range: 3-20, Recommended: 5-15 frames)
     
-    # Video Settings
-    TARGET_FPS = 25  # Target frames per second for output video (Range: 15-60, Recommended: 25-30 for real-time processing)
+    # Video Settings - Balanced for Quality and Performance
+    TARGET_FPS = 30  # Target 30 FPS for smooth playback
     FPS_UPDATE_INTERVAL = 30  # Interval (in frames) to update FPS display (Range: 10-100, Recommended: 30-60 frames)
-    PROCESSING_FRAME_SKIP = 1  # Skip every N frames during processing (1 = process all frames, 2 = skip every other frame)
+    PROCESSING_FRAME_SKIP = 2  # Skip every N frames during processing (2 = process every 2nd frame for better performance)
+    STREAMING_FRAME_SKIP = 3  # Skip frames for streaming to reduce bandwidth and improve quality
     
     # Visual Settings
     ANNOTATION_THICKNESS = 1  # Thickness of bounding box lines (Range: 1-5, Recommended: 2-3 for visibility)
@@ -49,7 +50,21 @@ class Config:
     CLASS_NAMES = {2: "car", 3: "motorcycle", 5: "bus", 7: "truck"}  # YOLO class ID to vehicle type mapping
     
     # Display Settings (for API mode)
-    ENABLE_DISPLAY = False  # Whether to show live video window in API mode
+    # Auto-detect environment: enable display locally, disable in production
+    import os
+    import platform
+    
+    # Check if we're in a headless environment
+    is_headless = (
+        os.getenv('RUNPOD_POD_ID') is not None or  # RunPod
+        os.getenv('COLAB_GPU') is not None or     # Google Colab
+        os.getenv('DISPLAY') is None and platform.system() == 'Linux'  # Linux without display
+    )
+    
+    ENABLE_DISPLAY = (
+        os.getenv('ENABLE_DISPLAY', 'auto').lower() == 'true' or
+        (os.getenv('ENABLE_DISPLAY', 'auto').lower() == 'auto' and not is_headless)
+    )
     MAX_DISPLAY_WIDTH = 1280  # Maximum width for display window (resize if larger)
     DISPLAY_FRAME_SKIP = 1  # Skip every N frames for better performance (1 = no skip, 2 = skip every other frame)
     DISPLAY_WAIT_KEY_DELAY = 1  # Delay in milliseconds for cv2.waitKey() (1 = responsive, 0 = fastest)
@@ -59,14 +74,14 @@ class Config:
     LOCATION_LAT = -37.740585  # Latitude (Melbourne, Australia)
     LOCATION_LON = 144.731637  # Longitude (Melbourne, Australia)
     
-    # WebSocket Streaming Configuration - Smooth Video Optimized
-    # Performance settings optimized for smooth video streaming
-    STREAMING_FRAME_SKIP = 1  # Process every frame for smoothness
-    STREAMING_JPEG_QUALITY = 85  # Higher quality for better video
-    STREAMING_MAX_FRAME_SIZE = (960, 540)  # 540p for smooth streaming
-    STREAMING_QUEUE_SIZE = 5  # Larger buffer for smoother playback
-    STREAMING_WORKERS = 1  # Single worker for stability
-    STREAMING_TARGET_FPS = 30  # Higher FPS for smooth streaming
+    # WebSocket Streaming Configuration - Smooth Playback (30 FPS)
+    # Performance settings for smooth real-time video streaming
+    STREAMING_FRAME_SKIP = 2  # Send every 2nd frame for balanced smoothness
+    STREAMING_JPEG_QUALITY = 85  # Higher quality for better visual
+    STREAMING_MAX_FRAME_SIZE = (1280, 720)  # Larger size for better quality (720p)
+    STREAMING_QUEUE_SIZE = 4  # Slightly larger buffer for quality
+    STREAMING_WORKERS = 4  # More workers for better quality processing
+    STREAMING_TARGET_FPS = 30  # Target 30 FPS for smooth playback
     
     # Conditional interpolation based on environment
     try:
@@ -74,4 +89,24 @@ class Config:
         STREAMING_INTERPOLATION = cv2.INTER_LINEAR  # Better quality interpolation
     except ImportError:
         STREAMING_INTERPOLATION = None  # Will use alternative method
+    
+    # Performance Optimization Settings
+    ENABLE_FP16_PRECISION = True  # Enable half-precision for faster inference
+    ENABLE_MODEL_WARMUP = True  # Enable model warmup for first inference
+    MEMORY_CLEAR_INTERVAL = 100  # Clear GPU memory every N frames
+    # ANNOTATION_SKIP_FRAMES = 3  # Disabled for consistent label display
+    ENABLE_BATCH_PROCESSING = False  # Enable batch processing (experimental)
+    MAX_DETECTIONS_PER_FRAME = 50  # Limit detections per frame for performance
+    
+    # Tracking Stability Settings
+    ENABLE_TRACKING_SMOOTHING = True  # Enable tracking smoothing for stable labels
+    TRACKING_HISTORY_LENGTH = 10  # Number of frames to keep tracking history
+    MIN_TRACKING_CONFIDENCE = 0.2  # Minimum confidence to maintain tracking
+    TRACKING_PREDICTION_FRAMES = 3  # Number of frames to predict when tracking is lost
+    
+    
+    # Weather API Performance Settings
+    ENABLE_WEATHER_API = True  # Enable weather API calls (disable for maximum performance)
+    WEATHER_CACHE_DURATION = 300  # Weather cache duration in seconds (5 minutes)
+    WEATHER_API_TIMEOUT = 5  # Weather API timeout in seconds
     

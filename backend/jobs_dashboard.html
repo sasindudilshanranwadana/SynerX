@@ -4,6 +4,8 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>SynerX Jobs Dashboard</title>
+    <script src="https://sdk.amazonaws.com/js/aws-sdk-2.1490.0.min.js"></script>
+    <script src="r2_config.js"></script>
     <style>
       body {
         font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial,
@@ -155,7 +157,7 @@
       <div class="card">
         <div class="row">
           <input id="videoFile" type="file" accept="video/*" />
-          <button onclick="uploadVideo()">Upload & Queue</button>
+          <button onclick="uploadVideo()">Upload & Process</button>
           <span id="uploadStatus" class="muted"></span>
         </div>
       </div>
@@ -295,9 +297,14 @@
     </main>
 
     <script>
-      // Use relative API base for RunPod
-      const API_BASE = "";
+      // Backend API base
+      const API_BASE = "https://2szdl2gbq9sd7h-8000.proxy.runpod.net";
       let autoTimer = null;
+      
+      // R2 Configuration - loaded from r2_config.js
+      // Initialize AWS SDK for R2
+      AWS.config.update(R2_CONFIG);
+      const s3 = new AWS.S3();
 
       document.addEventListener("DOMContentLoaded", () => {
         startJobsSocket();
@@ -311,21 +318,124 @@
           return;
         }
         const file = fileInput.files[0];
-        const form = new FormData();
-        form.append("file", file);
-        statusEl.textContent = "Uploading...";
+        statusEl.textContent = "Uploading directly to R2...";
+        
         try {
-          const data = await fetchJSON(`${API_BASE}/video/upload`, {
-            method: "POST",
-            body: form,
-          });
-          statusEl.textContent = `Queued job ${data.job_id} (pos ${data.queue_position})`;
+          // Ensure WebSocket is connected before uploading
+          if (!jobsWS || jobsWS.readyState !== WebSocket.OPEN) {
+            console.log('WebSocket not connected, starting connection...');
+            startJobsSocket();
+            // Wait a bit for connection to establish
+            await new Promise(resolve => setTimeout(resolve, 1000));
+          }
+          
+          // Generate unique filename
+          const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+          const fileExtension = file.name.split('.').pop() || 'mp4';
+          const uniqueFilename = `${file.name.split('.')[0]}_${timestamp}.${fileExtension}`;
+          
+          // Upload to R2
+          const uploadParams = {
+            Bucket: R2_BUCKET_NAME,
+            Key: uniqueFilename,
+            Body: file,
+            ContentType: 'video/mp4',
+            CacheControl: 'public, max-age=31536000'
+          };
+          
+          const result = await s3.upload(uploadParams).promise();
+          console.log('R2 upload successful:', result.Location);
+          
+          // Generate job ID
+          const jobId = crypto.randomUUID();
+          
+          // Push job info to backend WebSocket
+          await pushJobToBackend(jobId, result.Location, file.name, file.size);
+          
+          statusEl.textContent = `✅ Upload successful! Job ID: ${jobId}`;
           fileInput.value = "";
-        } catch (e) {
-          console.error(e);
-          statusEl.textContent = `Error: ${e.message}`;
+          
+        } catch (error) {
+          console.error('R2 upload failed:', error);
+          statusEl.textContent = `❌ Upload failed: ${error.message}`;
         }
       }
+      
+      async function pushJobToBackend(jobId, r2Url, fileName, fileSize) {
+        try {
+          console.log('🔍 WebSocket status check:');
+          console.log('  - jobsWS exists:', !!jobsWS);
+          console.log('  - readyState:', jobsWS ? jobsWS.readyState : 'N/A');
+          console.log('  - OPEN constant:', WebSocket.OPEN);
+          
+          // Use the existing dashboard WebSocket connection if available
+          if (jobsWS && jobsWS.readyState === WebSocket.OPEN) {
+            console.log('✅ Using existing WebSocket connection for job push');
+            
+            // Send job info through existing connection
+            jobsWS.send(JSON.stringify({
+              type: 'new_job',
+              job_id: jobId,
+              r2_url: r2Url,
+              file_name: fileName,
+              file_size: fileSize,
+              status: 'uploaded',
+              message: 'Video uploaded to R2, ready for processing...'
+            }));
+            
+            console.log('✅ Job info sent via existing WebSocket');
+          } else {
+            console.log('⚠️ No active WebSocket connection, creating temporary one...');
+            console.log('  - jobsWS state:', jobsWS ? jobsWS.readyState : 'null');
+            
+            // Create temporary WebSocket connection
+            const ws = new WebSocket(`${API_BASE.replace('https://', 'wss://').replace('http://', 'ws://')}/ws/jobs`);
+            
+            ws.onopen = () => {
+              console.log('🔌 Connected to backend WebSocket for job push');
+              
+              // Send job info to backend
+              ws.send(JSON.stringify({
+                type: 'new_job',
+                job_id: jobId,
+                r2_url: r2Url,
+                file_name: fileName,
+                file_size: fileSize,
+                status: 'uploaded',
+                message: 'Video uploaded to R2, ready for processing...'
+              }));
+            };
+            
+            ws.onmessage = (event) => {
+              try {
+                const response = JSON.parse(event.data);
+                if (response.status === 'job_queued') {
+                  console.log('✅ Job auto-queued for processing:', response.job_id);
+                  console.log('📊 Queue position:', response.queue_position);
+                  // Close WebSocket after receiving confirmation
+                  setTimeout(() => {
+                    ws.close();
+                  }, 500);
+                }
+              } catch (e) {
+                console.log('📨 Received status update from backend');
+              }
+            };
+            
+            ws.onerror = (error) => {
+              console.error('❌ WebSocket error:', error);
+            };
+            
+            ws.onclose = () => {
+              console.log('🔌 WebSocket connection closed');
+            };
+          }
+          
+        } catch (error) {
+          console.error('❌ Failed to push job to backend:', error);
+        }
+      }
+
 
       // Live jobs updates via WebSocket
       let jobsWS = null;
@@ -340,7 +450,7 @@
           }
         } catch {}
         
-        const url = API_BASE.replace("http", "ws") + "/ws/jobs";
+        const url = `${API_BASE.replace('https://', 'wss://').replace('http://', 'ws://')}/ws/jobs`;
         jobsWS = new WebSocket(url);
         
         jobsWS.onopen = () => {
@@ -394,6 +504,7 @@
           const tr = document.createElement("tr");
           const pillClass = (s) =>
             ({
+              uploaded: "queued",
               queued: "queued",
               processing: "processing",
               completed: "completed",
@@ -425,10 +536,10 @@
             <td class="muted">${elapsed}</td>
             <td>
               ${
-                hasVideo
-                  ? `<button onclick="playVideo('${videoUrl}')" style="background: #059669; font-size: 12px; padding: 4px 8px;">🎥 Play</button>`
-                  : j.status === "completed"
-                  ? `<span class="muted">No video</span>`
+                j.status === "processing"
+                  ? `<button onclick="openStream('${j.job_id}')">Live Stream</button>`
+                  : j.status === "completed" && videoUrl
+                  ? `<button onclick="playVideo('${j.job_id}')">Play Video</button>`
                   : `<span class="muted">-</span>`
               }
             </td>
@@ -437,8 +548,8 @@
                 j.job_id
               }')">Shutdown</button>
               ${
-                j.status === "processing"
-                  ? `<button onclick="openStream('${j.job_id}')">Open Stream</button>`
+                j.status === "uploaded"
+                  ? `<button onclick="startProcessing('${j.job_id}')">Process</button>`
                   : ""
               }
             </td>
@@ -482,6 +593,18 @@
         refreshJobs();
       }
 
+      async function startProcessing(jobId) {
+        try {
+          const data = await fetchJSON(`${API_BASE}/video/process/${jobId}`, {
+            method: "POST",
+          });
+          console.log(`Started processing job ${jobId}:`, data);
+        } catch (e) {
+          console.error(`Failed to start processing job ${jobId}:`, e);
+          alert(`Error: ${e.message}`);
+        }
+      }
+
       let ws = null;
       let streamReconnectAttempts = 0;
       const maxStreamReconnectAttempts = 3;
@@ -508,16 +631,8 @@
           }
         } catch {}
         
-        // Construct WebSocket URL - handle both relative and absolute URLs
-        let wsUrl;
-        if (API_BASE === "") {
-          // Relative URL - use current protocol
-          const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-          wsUrl = `${protocol}//${window.location.host}/ws/video-stream/${encodeURIComponent(jobId)}`;
-        } else {
-          // Absolute URL
-          wsUrl = API_BASE.replace("http", "ws") + `/ws/video-stream/${encodeURIComponent(jobId)}`;
-        }
+        // Construct WebSocket URL for video stream
+        const wsUrl = `${API_BASE.replace('https://', 'wss://').replace('http://', 'ws://')}/ws/video-stream/${encodeURIComponent(jobId)}`;
         
         console.log(`[STREAM] 🔌 Connecting to: ${wsUrl}`);
         ws = new WebSocket(wsUrl);
@@ -527,13 +642,6 @@
           streamReconnectAttempts = 0; // Reset on successful connection
           console.log(`[STREAM] ✅ Connected to video stream for job ${jobId}`);
           console.log(`[STREAM] WebSocket URL: ${wsUrl}`);
-          
-          // Send initial ping to establish connection
-          try {
-            ws.send(JSON.stringify({type: "ping", timestamp: Date.now()}));
-          } catch (e) {
-            console.error("[STREAM] Error sending initial ping:", e);
-          }
         };
         
         ws.onmessage = (evt) => {
@@ -541,35 +649,23 @@
             const msg = JSON.parse(evt.data);
             
             if (msg.type === "frame" && msg.frame_data) {
-              // Reduced logging for performance - only log every 200 frames
-              if (msg.frame_number % 200 === 0) {
+              // Reduced logging for performance - only log every 50 frames
+              if (msg.frame_number % 50 === 0) {
                 console.log("[STREAM] 📨 Received frame:", msg.frame_number, "length:", msg.frame_data.length);
               }
               
-              // Ultra-smooth frame update for video-like playback
-              try {
-                // Remove all transitions and effects
-                streamImage.style.transition = "none";
+              // Smooth frame transition
+              streamImage.style.opacity = "0";
+              streamImage.onload = () => {
                 streamImage.style.opacity = "1";
-                streamImage.style.transform = "none";
-                
-                // Direct frame update - no callbacks, no effects
-                streamImage.src = `data:image/jpeg;base64,${msg.frame_data}`;
-                streamImage.style.display = "block";
-                streamPlaceholder.style.display = "none";
-              } catch (e) {
-                console.error("[STREAM] Error displaying frame:", e);
-              }
+                streamImage.style.transition = "opacity 0.1s ease-in-out";
+              };
+              
+              streamImage.src = `data:image/jpeg;base64,${msg.frame_data}`;
+              streamImage.style.display = "block";
+              streamPlaceholder.style.display = "none";
             } else if (msg.type === "pong") {
-              // Handle ping/pong for connection health
-              console.log("[STREAM] Received pong from server");
-            } else if (msg.type === "ping") {
-              // Respond to server ping
-              try {
-                ws.send(JSON.stringify({type: "pong", timestamp: Date.now()}));
-              } catch (e) {
-                console.error("[STREAM] Error sending pong:", e);
-              }
+              // Handle ping/pong for connection health (no logging for performance)
             }
           } catch (e) {
             console.error("[STREAM] Failed to parse frame message:", e);
@@ -591,23 +687,13 @@
           console.log(`[STREAM] WebSocket closed with code: ${event.code}`);
           streamPlaceholder.textContent = "Disconnected.";
           
-          // Only reconnect if it's not a normal close (1000) and not a user-initiated close
-          // and we haven't exceeded max attempts and we still have a current job
-          if (event.code !== 1000 && event.code !== 1001 && streamReconnectAttempts < maxStreamReconnectAttempts && currentJobId) {
+          // Auto-reconnect if not a clean close and we haven't exceeded max attempts
+          if (event.code !== 1000 && streamReconnectAttempts < maxStreamReconnectAttempts && currentJobId) {
             streamReconnectAttempts++;
             console.log(`[STREAM] Attempting to reconnect (${streamReconnectAttempts}/${maxStreamReconnectAttempts})...`);
             setTimeout(() => {
-              // Double-check that we still have a current job before reconnecting
-              if (currentJobId) {
-                connectStreamWebSocket(currentJobId);
-              }
-            }, 2000); // Fixed 2 second delay
-          } else if (event.code === 1000) {
-            console.log(`[STREAM] Normal close - not reconnecting`);
-          } else if (!currentJobId) {
-            console.log(`[STREAM] No current job - not reconnecting`);
-          } else {
-            console.log(`[STREAM] Max reconnection attempts reached or user closed stream`);
+              connectStreamWebSocket(currentJobId);
+            }, 1000 * streamReconnectAttempts); // Linear backoff for video stream
           }
         };
       }
@@ -615,32 +701,25 @@
       function closeStream() {
         const modal = document.getElementById("streamModal");
         modal.style.display = "none";
-        
-        // Stop auto-reconnection
-        streamReconnectAttempts = maxStreamReconnectAttempts; // Prevent reconnection
-        currentJobId = null; // Clear current job ID
-        
         try {
           if (ws) {
-            ws.close(1000, "User closed stream"); // Normal close
+            ws.close();
             ws = null;
           }
         } catch {}
-        
-        console.log("[STREAM] Stream closed by user - auto-reconnection disabled");
       }
 
       // Video player functions
       let currentVideoUrl = '';
       
-      function playVideo(videoUrl) {
-        currentVideoUrl = videoUrl;
+      function playVideo(jobId) {
+        currentVideoUrl = `${API_BASE}/video/stream/${jobId}`;
         const modal = document.getElementById("videoModal");
         const videoPlayer = document.getElementById("videoPlayer");
         const urlDisplay = document.getElementById("videoUrl");
         
-        videoPlayer.src = videoUrl;
-        urlDisplay.textContent = videoUrl;
+        videoPlayer.src = currentVideoUrl;
+        urlDisplay.textContent = currentVideoUrl;
         modal.style.display = "flex";
       }
       
