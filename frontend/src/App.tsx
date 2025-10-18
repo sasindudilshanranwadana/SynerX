@@ -9,6 +9,7 @@ import Upload from './pages/Upload';
 import Analytics from './pages/Analytics';
 import Settings from './pages/Settings';
 import Playback from './pages/Playback';
+import Storage from './pages/Storage';
 import ConfirmationSuccess from './pages/ConfirmationSuccess';
 import LoadingScreen from './components/LoadingScreen';
 
@@ -78,6 +79,7 @@ function App() {
         <Route path="/upload" element={user ? <Upload /> : <Navigate to="/auth" />} />
         <Route path="/analytics" element={user ? <Analytics /> : <Navigate to="/auth" />} />
         <Route path="/playback" element={user ? <Playback /> : <Navigate to="/auth" />} />
+        <Route path="/storage" element={user ? <Storage /> : <Navigate to="/auth" />} />
         <Route path="/settings" element={user ? <Settings /> : <Navigate to="/auth" />} />
         <Route path="/auth" element={!user ? <Auth /> : <Navigate to="/dashboard" />} />
         <Route path="/confirmation-success" element={<ConfirmationSuccess />} />

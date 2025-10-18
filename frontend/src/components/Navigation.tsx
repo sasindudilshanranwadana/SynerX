@@ -6,6 +6,7 @@ import {
   Upload, 
   Activity, 
   Play,
+  HardDrive,
   Settings, 
   LogOut 
 } from 'lucide-react';
@@ -23,6 +24,7 @@ export const navItems = [
   { icon: <Upload className="w-5 h-5" />, label: 'Video Upload', path: '/upload' },
   { icon: <Activity className="w-5 h-5" />, label: 'Analytics', path: '/analytics' },
   { icon: <Play className="w-5 h-5" />, label: 'Video Playback', path: '/playback' },
+  { icon: <HardDrive className="w-5 h-5" />, label: 'Storage', path: '/storage' },
   { icon: <Settings className="w-5 h-5" />, label: 'Settings', path: '/settings' }
 ];
 

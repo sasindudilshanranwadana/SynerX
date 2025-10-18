@@ -177,11 +177,17 @@ class R2StorageClient:
             List of file objects
         """
         try:
+            print(f"[R2] Listing files with prefix: '{prefix}'")
             response = self.s3_client.list_objects_v2(
                 Bucket=self.bucket_name,
                 Prefix=prefix
             )
-            return response.get('Contents', [])
+            files = response.get('Contents', [])
+            print(f"[R2] Found {len(files)} files in bucket")
+            if files:
+                total_size = sum(f['Size'] for f in files)
+                print(f"[R2] Total size: {total_size} bytes ({total_size / (1024*1024*1024):.2f} GB)")
+            return files
         except ClientError as e:
             print(f"[R2] ❌ Error listing files: {e}")
             return []
@@ -233,6 +239,15 @@ class R2StorageClient:
             Dictionary with usage statistics
         """
         try:
+            # Try to get actual bucket metrics first
+            try:
+                # Get bucket location and basic info
+                response = self.s3_client.head_bucket(Bucket=self.bucket_name)
+                print(f"[R2] Bucket exists and is accessible")
+            except Exception as e:
+                print(f"[R2] Bucket access issue: {e}")
+            
+            # Get all objects to calculate storage
             objects = self.list_videos()
             
             if not objects:
@@ -245,6 +260,7 @@ class R2StorageClient:
                     'remaining_gb': 10.0
                 }
             
+            # Calculate from file sizes (this is what we're currently doing)
             total_size_bytes = sum(obj['Size'] for obj in objects)
             total_size_mb = total_size_bytes / (1024 * 1024)
             total_size_gb = total_size_mb / 1024
@@ -254,6 +270,9 @@ class R2StorageClient:
             free_limit_bytes = free_limit_gb * 1024 * 1024 * 1024
             usage_percentage = (total_size_bytes / free_limit_bytes) * 100
             remaining_gb = free_limit_gb - total_size_gb
+            
+            print(f"[R2] Calculated storage: {total_size_bytes} bytes ({total_size_gb:.2f} GB)")
+            print(f"[R2] Note: This is calculated from file sizes. R2 dashboard may show different values due to overhead.")
             
             return {
                 'total_files': len(objects),

@@ -9,6 +9,10 @@ import os
 from datetime import datetime
 import threading
 from http.server import HTTPServer, BaseHTTPRequestHandler
+from dotenv import load_dotenv
+
+# Load environment variables from .env file
+load_dotenv()
 # Import API modules
 from api.models import *
 from api.jobs import init_job_router
@@ -17,6 +21,7 @@ from api.data import init_data_router
 from api.analysis import init_analysis_router
 from api.system import init_system_router
 from api.status import init_status_router
+from api.storage import init_storage_router
 import asyncio
 
 # Import core modules
@@ -799,6 +804,7 @@ data_router = init_data_router()
 analysis_router = init_analysis_router()
 system_router = init_system_router(cleanup_temp_files, job_lock, background_jobs)
 status_router = init_status_router(shutdown_manager, get_processing_time)
+storage_router = init_storage_router()
 
 # Include routers
 app.include_router(job_router)
@@ -807,6 +813,7 @@ app.include_router(data_router)
 app.include_router(analysis_router)
 app.include_router(system_router)
 app.include_router(status_router)
+app.include_router(storage_router)
 
 # Root endpoint
 @app.get("/")

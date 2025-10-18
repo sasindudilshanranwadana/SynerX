@@ -153,7 +153,7 @@ function Dashboard() {
     try {
       // Try to get recent activity from RunPod backend
       try {
-        const apiBase = import.meta.env.DEV ? '/api' : (import.meta.env.VITE_RUNPOD_URL || 'http://localhost:8000');
+        const apiBase = 'http://127.0.0.1:8000';
         const headers: HeadersInit = { 'Content-Type': 'application/json' };
 
         // Add RunPod API key to all requests
@@ -249,8 +249,8 @@ function Dashboard() {
     try {
       // Try to get analytics from RunPod backend first
       try {
-        const apiBase = import.meta.env.DEV ? '/api' : (import.meta.env.VITE_RUNPOD_URL || 'http://localhost:8000');
-        const response = await fetch(`${apiBase}/analytics/summary`, {
+        const apiBase = 'http://127.0.0.1:8000';
+        const response = await fetch(`${apiBase}/analysis/complete`, {
           method: 'GET',
           headers: { 'Content-Type': 'application/json' },
           signal: AbortSignal.timeout(10000)

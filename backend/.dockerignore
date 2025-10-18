@@ -1,0 +1,45 @@
+# Python & virtual env
+venv/
+**/__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Git & editor
+.git/
+.gitignore
+*.swp
+*.swo
+*.log
+.DS_Store
+
+# Large runtime/output dirs not needed in image
+processed/
+temp/
+uploads/
+.cache/
+debugs/
+
+# Jupyter notebooks (keep analysis/ folder but exclude .ipynb)
+**/*.ipynb
+
+# Tests and artifacts
+pytest_cache/
+.coverage
+htmlcov/
+tests/
+test_main.py
+
+# Data samples (avoid shipping large datasets)
+data/
+
+# Frontend/build outputs that might exist
+build/
+dist/
+
+# Node
+node_modules/
+package-lock.json
+
+# Docker
+.dockerignore
