@@ -20,6 +20,9 @@ import Sidebar from '../components/Sidebar';
 import ServerStatusIndicator from '../components/ServerStatusIndicator';
 import { getStoredTheme } from '../lib/theme';
 
+// API Base URL - same pattern as other pages
+const API_BASE = import.meta.env.DEV ? '/api' : (import.meta.env.VITE_RUNPOD_URL || 'http://localhost:8000');
+
 interface VideoFile {
   id: string;
   name: string;
@@ -75,7 +78,7 @@ function Storage() {
       setLoading(true);
       
       // Load storage info
-      const storageResponse = await fetch('http://127.0.0.1:8000/storage/info');
+      const storageResponse = await fetch(`${API_BASE}/storage/info`);
       const storageData = await storageResponse.json();
       
       if (storageData.status === 'success') {
@@ -83,7 +86,7 @@ function Storage() {
       }
       
       // Load video files
-      const videosResponse = await fetch('http://127.0.0.1:8000/storage/videos');
+      const videosResponse = await fetch(`${API_BASE}/storage/videos`);
       const videosData = await videosResponse.json();
       
       if (videosData.status === 'success') {
@@ -171,7 +174,7 @@ function Storage() {
         .filter(v => selectedVideos.includes(v.id))
         .map(v => v.name); // Use the original filename, not the unique ID
       
-      const response = await fetch('http://127.0.0.1:8000/storage/videos/delete', {
+      const response = await fetch(`${API_BASE}/storage/videos/delete`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ video_ids: selectedVideoNames })
@@ -196,7 +199,7 @@ function Storage() {
 
   const handleCleanupTempFiles = async () => {
     try {
-      const response = await fetch('http://127.0.0.1:8000/storage/cleanup', {
+      const response = await fetch(`${API_BASE}/storage/cleanup`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' }
       });
@@ -218,7 +221,7 @@ function Storage() {
 
   const handleDownloadVideo = (video: VideoFile) => {
     // Use backend endpoint for downloading
-    const videoUrl = `http://127.0.0.1:8000/storage/video/${encodeURIComponent(video.name)}/download`;
+    const videoUrl = `${API_BASE}/storage/video/${encodeURIComponent(video.name)}/download`;
     const link = document.createElement('a');
     link.href = videoUrl;
     link.download = video.name;
@@ -611,7 +614,7 @@ function Storage() {
                 preload="metadata"
               >
                 <source 
-                  src={`http://127.0.0.1:8000/storage/video/${encodeURIComponent(selectedVideo.name)}`}
+                  src={`${API_BASE}/storage/video/${encodeURIComponent(selectedVideo.name)}`}
                   type="video/mp4"
                 />
                 Your browser does not support the video tag.
