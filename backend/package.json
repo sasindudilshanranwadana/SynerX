@@ -5,6 +5,7 @@
   "scripts": {
     "dev": "python dev_server.py",
     "start": "uvicorn main:app --host 0.0.0.0 --port 8000",
+    "start:reload": "uvicorn main:app --host 127.0.0.1 --port 8000 --reload",
     "test": "python -m pytest tests/",
     "processor": "python core/video_processor.py",
     "install-deps": "pip install -r requirements.txt"
