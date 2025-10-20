@@ -11,7 +11,8 @@ import {
   BarChart3,
   Eye,
   X,
-  XCircle
+  XCircle,
+  Info
 } from 'lucide-react';
 import Header from '../components/Header';
 import Sidebar from '../components/Sidebar';
@@ -60,6 +61,7 @@ function Storage() {
   const [showVideoModal, setShowVideoModal] = React.useState(false);
   const [selectedVideo, setSelectedVideo] = React.useState<VideoFile | null>(null);
   const [videoBlobUrl, setVideoBlobUrl] = React.useState<string | null>(null);
+  const [signedUrl, setSignedUrl] = React.useState<string | null>(null);
   const [error, setError] = React.useState<string | null>(null);
   const [toast, setToast] = React.useState<{message: string, type: 'success' | 'error'} | null>(null);
 
@@ -254,27 +256,37 @@ function Storage() {
     setShowVideoModal(true);
   };
 
-  // Fetch secured video as blob when modal opens, attach Authorization header
+  // Fetch signed URL first for faster progressive streaming; fallback to blob with auth
   React.useEffect(() => {
     let isCancelled = false;
     const fetchVideoBlob = async () => {
       if (!showVideoModal || !selectedVideo) return;
       try {
+        // Try signed URL
+        const sig = await fetchJSON(`/storage/video/${encodeURIComponent(selectedVideo.name)}/signed?expires_in=300`);
+        if (sig?.status === 'success' && sig.url) {
+          if (isCancelled) return;
+          setSignedUrl(sig.url as string);
+          setVideoBlobUrl(null);
+          return;
+        }
+        // Fallback to auth fetch blob
         const headers = new Headers();
         try {
           const { data: { session } } = await supabase.auth.getSession();
           const userToken = (session as any)?.access_token as string | undefined;
           if (userToken) headers.set('Authorization', `Bearer ${userToken}`);
         } catch {}
-
         const response = await fetch(`${API_BASE}/storage/video/${encodeURIComponent(selectedVideo.name)}`, { headers });
         if (!response.ok) throw new Error('Failed to load video');
         const blob = await response.blob();
         if (isCancelled) return;
         const url = URL.createObjectURL(blob);
+        setSignedUrl(null);
         setVideoBlobUrl(url);
       } catch (e) {
         // Fallback to direct URL; player may still work if public
+        setSignedUrl(null);
         setVideoBlobUrl(null);
       }
     };
@@ -282,10 +294,9 @@ function Storage() {
     fetchVideoBlob();
     return () => {
       isCancelled = true;
-      if (videoBlobUrl) {
-        URL.revokeObjectURL(videoBlobUrl);
-      }
+      if (videoBlobUrl) URL.revokeObjectURL(videoBlobUrl);
       setVideoBlobUrl(null);
+      setSignedUrl(null);
     };
   }, [showVideoModal, selectedVideo]);
 
@@ -670,14 +681,14 @@ function Storage() {
                 controls
                 className="w-full h-auto max-h-96 rounded-lg"
                 preload="metadata"
+                src={signedUrl || videoBlobUrl || undefined}
               >
-                {videoBlobUrl ? (
-                  <source src={videoBlobUrl} type="video/mp4" />
-                ) : (
-                  <source src={`${API_BASE}/storage/video/${encodeURIComponent(selectedVideo.name)}`} type="video/mp4" />
-                )}
                 Your browser does not support the video tag.
               </video>
+              <div className={`mt-2 text-xs flex items-center justify-center gap-2 ${isDark ? 'text-yellow-300/90' : 'text-yellow-700'}`}>
+                <Info className={`w-4 h-4 ${isDark ? 'text-yellow-300/90' : 'text-yellow-600'}`} />
+                <span>Large videos may take a few seconds to start buffering on first play.</span>
+              </div>
             </div>
 
             {/* Footer */}

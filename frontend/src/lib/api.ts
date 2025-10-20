@@ -83,6 +83,12 @@ export const getStreamingVideoUrl = (videoId: number): string => {
   return `${RUNPOD_API_BASE}/data/video/${videoId}`;
 };
 
+export const getSignedStreamingUrl = async (videoId: number, expiresInSeconds: number = 300): Promise<string> => {
+  const data = await fetchJSON(`/data/video/${videoId}/signed?expires_in=${expiresInSeconds}`);
+  if (data.status !== 'success' || !data.url) throw new Error('Failed to get signed URL');
+  return data.url as string;
+};
+
 // Helper function to create chart and capture image
 const getChartImage = async (
   chartType: 'pie' | 'bar' | 'line',

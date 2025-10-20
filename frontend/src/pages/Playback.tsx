@@ -4,7 +4,8 @@ import Header from '../components/Header';
 import Sidebar from '../components/Sidebar';
 import ServerStatusIndicator from '../components/ServerStatusIndicator';
 import { getStoredTheme } from '../lib/theme';
-import { fetchFilteredVideos, fetchVideoSummary, deleteVideoFromRunPod, getStreamingVideoUrl } from '../lib/api';
+import { fetchFilteredVideos, fetchVideoSummary, deleteVideoFromRunPod, getStreamingVideoUrl, getSignedStreamingUrl } from '../lib/api';
+import { supabase } from '../lib/supabase';
 import { formatDateTime, formatDateTimeCompact, formatRelativeTime, getLocalTimezoneAbbreviation } from '../lib/dateUtils';
 import { Chart, registerables } from 'chart.js';
 
@@ -122,6 +123,8 @@ function Playback() {
   // Video refs
   const summaryVideoRef = React.useRef<HTMLVideoElement>(null);
   const modalVideoRef = React.useRef<HTMLVideoElement>(null);
+  const summaryObjectUrlRef = React.useRef<string | null>(null);
+  const modalObjectUrlRef = React.useRef<string | null>(null);
   
   // Notification
   const [notification, setNotification] = React.useState<NotificationState>({
@@ -259,10 +262,14 @@ function Playback() {
       }
       setSummaryData(data);
       
-      // Auto-load video in summary modal
-      setTimeout(() => {
-        if (summaryVideoRef.current) {
-          summaryVideoRef.current.src = getStreamingVideoUrl(videoId);
+      // Prefer signed URL for progressive streaming
+      setTimeout(async () => {
+        try {
+          const signed = await getSignedStreamingUrl(videoId);
+          if (summaryVideoRef.current) summaryVideoRef.current.src = signed;
+        } catch {
+          // Fallback to auth fetch if signed URL fails
+          loadVideoWithAuth(videoId, 'summary');
         }
       }, 100);
       
@@ -284,6 +291,10 @@ function Playback() {
       summaryVideoRef.current.pause();
       summaryVideoRef.current.src = '';
     }
+    if (summaryObjectUrlRef.current) {
+      URL.revokeObjectURL(summaryObjectUrlRef.current);
+      summaryObjectUrlRef.current = null;
+    }
   };
 
   const playVideo = (videoId: number, videoName: string) => {
@@ -292,10 +303,15 @@ function Playback() {
     setVideoModalOpen(true);
     setVideoInfo('Loading video...');
     
-    if (modalVideoRef.current) {
-      const streamingUrl = getStreamingVideoUrl(videoId);
-      modalVideoRef.current.src = streamingUrl;
-    }
+    // Prefer signed URL for progressive streaming
+    (async () => {
+      try {
+        const signed = await getSignedStreamingUrl(videoId);
+        if (modalVideoRef.current) modalVideoRef.current.src = signed;
+      } catch {
+        loadVideoWithAuth(videoId, 'modal');
+      }
+    })();
   };
 
   const closeVideoModal = () => {
@@ -307,6 +323,10 @@ function Playback() {
     if (modalVideoRef.current) {
       modalVideoRef.current.pause();
       modalVideoRef.current.src = '';
+    }
+    if (modalObjectUrlRef.current) {
+      URL.revokeObjectURL(modalObjectUrlRef.current);
+      modalObjectUrlRef.current = null;
     }
   };
 
@@ -365,6 +385,44 @@ function Playback() {
     if (weatherComplianceRateChartRef.current) {
       weatherComplianceRateChartRef.current.destroy();
       weatherComplianceRateChartRef.current = null;
+    }
+  };
+
+  const buildAuthHeaders = async (): Promise<Headers> => {
+    const headers = new Headers();
+    if (import.meta.env.VITE_RUNPOD_API_KEY) {
+      headers.set('Authorization', `Bearer ${import.meta.env.VITE_RUNPOD_API_KEY}`);
+    }
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      const userToken = (session as any)?.access_token as string | undefined;
+      if (userToken) {
+        headers.set('Authorization', `Bearer ${userToken}`);
+      }
+    } catch {}
+    return headers;
+  };
+
+  const loadVideoWithAuth = async (videoId: number, target: 'summary' | 'modal') => {
+    try {
+      const url = getStreamingVideoUrl(videoId);
+      const headers = await buildAuthHeaders();
+      const res = await fetch(url, { headers });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const blob = await res.blob();
+      const objectUrl = URL.createObjectURL(blob);
+      if (target === 'summary') {
+        if (summaryObjectUrlRef.current) URL.revokeObjectURL(summaryObjectUrlRef.current);
+        summaryObjectUrlRef.current = objectUrl;
+        if (summaryVideoRef.current) summaryVideoRef.current.src = objectUrl;
+      } else {
+        if (modalObjectUrlRef.current) URL.revokeObjectURL(modalObjectUrlRef.current);
+        modalObjectUrlRef.current = objectUrl;
+        if (modalVideoRef.current) modalVideoRef.current.src = objectUrl;
+      }
+    } catch (e) {
+      setVideoInfo('Error loading video. Please check the URL.');
+      console.error('Error loading video with auth:', e);
     }
   };
 
@@ -926,7 +984,7 @@ function Playback() {
                   <div>
                     <h2 className="text-xl font-semibold">Video Library</h2>
                     <p className={`text-sm ${isDark ? 'text-gray-400' : 'text-gray-600'}`}>
-                      {filteredVideos.length} of {videoCount} videos {searchTerm && `matching "${searchTerm}"`}
+                      {Math.min(offset + (filteredVideos?.length || 0), videoCount)} of {videoCount} videos {searchTerm && `matching "${searchTerm}"`}
                     </p>
                   </div>
                 </div>
@@ -1386,6 +1444,12 @@ function Playback() {
                   isDark ? 'text-gray-400' : 'text-gray-600'
                 }`}>
                   {videoInfo}
+                </div>
+                <div className={`mt-2 text-xs ${isDark ? 'text-yellow-300/90' : 'text-yellow-700'} flex items-center justify-center gap-2`}>
+                  <Info className={`w-4 h-4 ${isDark ? 'text-yellow-300/90' : 'text-yellow-600'}`} />
+                  <span>
+                    Large videos may take a few seconds to start buffering on first play.
+                  </span>
                 </div>
               </div>
             </div>

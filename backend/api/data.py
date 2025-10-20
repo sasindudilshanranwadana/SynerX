@@ -1,4 +1,4 @@
-from fastapi import APIRouter
+from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import StreamingResponse, JSONResponse
 import time
 from clients.supabase_client import supabase_manager
@@ -374,7 +374,7 @@ def init_data_router():
             return {"status": "error", "error": str(e)}
 
     @router.get("/video/{video_id}")
-    async def stream_video(video_id: str):
+    async def stream_video(video_id: str, request: Request):
         """
         Stream video from R2 through the API
         This creates a persistent URL that works forever
@@ -396,35 +396,83 @@ def init_data_router():
             # Extract filename from URL
             filename = processed_url.split('/')[-1]
             
-            # Get video from R2
+            # Get video from R2 (support HTTP Range)
             r2_client = get_r2_client()
             
             try:
-                # Download video from R2
-                response = r2_client.s3_client.get_object(
-                    Bucket=r2_client.bucket_name,
-                    Key=filename
-                )
-                
-                # Stream the video with proper headers
+                range_header = request.headers.get('range')
+                s3 = r2_client.s3_client
+                bucket = r2_client.bucket_name
+                s3_kwargs = {"Bucket": bucket, "Key": filename}
+                status_code = 200
+                headers = {
+                    "Accept-Ranges": "bytes",
+                    "Cache-Control": "public, max-age=3600",
+                    "Content-Disposition": f"inline; filename=\"{video_name}\""
+                }
+                if range_header and range_header.startswith('bytes='):
+                    # Parse Range: bytes=start-end
+                    try:
+                        range_value = range_header.split('=')[1]
+                        start_str, end_str = (range_value.split('-') + [None])[:2]
+                        start = int(start_str) if start_str else 0
+                        # Get object size for Content-Range
+                        head = s3.head_object(Bucket=bucket, Key=filename)
+                        total = head['ContentLength']
+                        end = int(end_str) if end_str else total - 1
+                        end = min(end, total - 1)
+                        if start > end:
+                            raise ValueError('Invalid range')
+                        s3_kwargs["Range"] = f"bytes={start}-{end}"
+                        status_code = 206
+                        headers.update({
+                            "Content-Range": f"bytes {start}-{end}/{total}",
+                            "Content-Length": str(end - start + 1)
+                        })
+                    except Exception:
+                        # Ignore malformed range; serve full content
+                        pass
+                response = s3.get_object(**s3_kwargs)
+                body = response['Body']
+                media_type = response.get('ContentType', 'video/mp4')
+                if status_code == 200 and 'ContentLength' in response:
+                    headers["Content-Length"] = str(response['ContentLength'])
+
                 def generate():
-                    for chunk in response['Body'].iter_chunks(chunk_size=8192):
+                    for chunk in body.iter_chunks(chunk_size=8192):
                         yield chunk
-                
-                return StreamingResponse(
-                    generate(),
-                    media_type="video/mp4",
-                    headers={
-                        "Accept-Ranges": "bytes",
-                        "Cache-Control": "public, max-age=3600",
-                        "Content-Disposition": f"inline; filename=\"{video_name}\""
-                    }
-                )
+
+                return StreamingResponse(generate(), media_type=media_type, headers=headers, status_code=status_code)
                 
             except Exception as e:
                 raise HTTPException(status_code=500, detail=f"Error streaming video: {str(e)}")
             
         except Exception as e:
             raise HTTPException(status_code=500, detail=f"Error getting video: {str(e)}")
+
+    @router.get("/video/{video_id}/signed")
+    async def get_signed_video_url(video_id: str, expires_in: int = 300):
+        """Return a short-lived signed URL to stream the processed video directly from R2 (supports byte-range and faster start)."""
+        try:
+            result = supabase_manager.client.table("videos").select("processed_url, video_name").eq("id", video_id).execute()
+            if not result.data:
+                raise HTTPException(status_code=404, detail="Video not found")
+            video_data = result.data[0]
+            processed_url = video_data.get('processed_url')
+            if not processed_url:
+                raise HTTPException(status_code=404, detail="No video file available")
+            filename = processed_url.split('/')[-1]
+            r2_client = get_r2_client()
+            s3 = r2_client.s3_client
+            url = s3.generate_presigned_url(
+                ClientMethod='get_object',
+                Params={'Bucket': r2_client.bucket_name, 'Key': filename},
+                ExpiresIn=max(60, min(3600, int(expires_in)))
+            )
+            return {"status": "success", "url": url, "expires_in": max(60, min(3600, int(expires_in)))}
+        except HTTPException:
+            raise
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"Error generating signed URL: {str(e)}")
 
     return router
