@@ -27,6 +27,8 @@ export const fetchFilteredVideos = async (filters: {
   dateTo?: string;
   orderBy?: string;
   orderDesc?: string;
+  limit?: number;
+  offset?: number;
 } = {}) => {
   try {
     let endpoint = '/data/videos/filter';
@@ -35,13 +37,15 @@ export const fetchFilteredVideos = async (filters: {
     if (filters.dateTo) params.set('date_to', filters.dateTo);
     if (filters.orderBy) params.set('order_by', filters.orderBy);
     if (filters.orderDesc) params.set('order_desc', filters.orderDesc);
+    if (typeof filters.limit === 'number') params.set('limit', String(filters.limit));
+    if (typeof filters.offset === 'number') params.set('offset', String(filters.offset));
     
     if (params.toString()) {
       endpoint += '?' + params.toString();
     }
     
     const data = await fetchJSON(endpoint);
-    return data;
+    return data; // includes: data, count (total), limit, offset, next_href, prev_href
   } catch (error) {
     console.error('Error fetching filtered videos:', error);
     throw error;
@@ -77,6 +81,12 @@ export const deleteVideoFromRunPod = async (videoId: number) => {
 
 export const getStreamingVideoUrl = (videoId: number): string => {
   return `${RUNPOD_API_BASE}/data/video/${videoId}`;
+};
+
+export const getSignedStreamingUrl = async (videoId: number, expiresInSeconds: number = 300): Promise<string> => {
+  const data = await fetchJSON(`/data/video/${videoId}/signed?expires_in=${expiresInSeconds}`);
+  if (data.status !== 'success' || !data.url) throw new Error('Failed to get signed URL');
+  return data.url as string;
 };
 
 // Helper function to create chart and capture image
@@ -385,6 +395,9 @@ export const startRunPodProcessing = async (video: Video): Promise<{ job_id: str
   try {
     const formData = new FormData();
     
+    // NOTE: This function path is deprecated in favor of startRunPodProcessingDirect.
+    // Keeping signature for compatibility; backend expects a file Blob.
+    // @ts-expect-error legacy path: `video` here is not a Blob. Use startRunPodProcessingDirect instead.
     formData.append('file', video);
     formData.append('video_id', video.id.toString());
     formData.append('video_name', video.video_name);

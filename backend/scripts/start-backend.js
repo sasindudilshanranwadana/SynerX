@@ -16,20 +16,10 @@ const venvPaths = {
   unix: 'venv/bin/activate'
 };
 
-// Commands for different platforms
-let shellCmd, shellArgs;
-
-if (isWindows) {
-  // Windows - use the full path to python in venv
-  const uvicornPath = path.join(process.cwd(), 'venv', 'Scripts', 'uvicorn.exe');
-  shellCmd = 'cmd';
-  shellArgs = ['/c', `"${uvicornPath}" main:app --host 127.0.0.1 --port 8000 --reload`];
-} else {
-  // Mac/Linux - use the full path to python in venv
-  const uvicornPath = path.join(process.cwd(), 'venv', 'bin', 'uvicorn');
-  shellCmd = 'bash';
-  shellArgs = ['-c', `"${uvicornPath}" main:app --host 127.0.0.1 --port 8000 --reload`];
-}
+// Build uvicorn executable path
+const uvicornExec = isWindows
+  ? path.join(process.cwd(), 'venv', 'Scripts', 'uvicorn.exe')
+  : path.join(process.cwd(), 'venv', 'bin', 'uvicorn');
 
 // Check if virtual environment exists
 const venvDir = path.join(process.cwd(), 'venv');
@@ -54,9 +44,9 @@ if (!fs.existsSync(uvicornPath)) {
 console.log(`🚀 Starting FastAPI backend server...`);
 
 // Start the backend process
-const backendProcess = spawn(shellCmd, shellArgs, {
+const backendProcess = spawn(uvicornExec, ['main:app', '--host', '127.0.0.1', '--port', '8000', '--reload'], {
   stdio: 'inherit',
-  shell: true,
+  shell: false,
   cwd: process.cwd()
 });
 

@@ -6,13 +6,13 @@ import ServerStatusIndicator from '../components/ServerStatusIndicator';
 import jsPDF from 'jspdf';
 import 'jspdf-autotable';
 import { format, parseISO } from 'date-fns';
-import { generatePDFReport } from '../lib/api';
+import { generatePDFReport, fetchJSON } from '../lib/api';
 import { TrackingResult } from '../lib/types';
 import { getStoredTheme } from '../lib/theme';
 import { getAllTrackingResults } from '../lib/database';
 import { formatDateTime, getLocalTimezoneAbbreviation } from '../lib/dateUtils';
 
-const RUNPOD_API_BASE = import.meta.env.VITE_RUNPOD_URL || 'http://localhost:8000';
+// Requests to backend analysis endpoints use fetchJSON to ensure base URL and auth headers
 
 import { fetchTrackingResults, fetchVehicleCounts, generateDetailedReport, downloadCSV } from '../lib/api';
 
@@ -270,15 +270,9 @@ function Analytics() {
     try {
       setLoading(true);
       
-      // Try to get all analytics from RunPod backend first
+      // Try to get all analytics from backend first
       try {
-        const headers: HeadersInit = {};
-        if (import.meta.env.VITE_RUNPOD_API_KEY) {
-          headers['Authorization'] = `Bearer ${import.meta.env.VITE_RUNPOD_API_KEY}`;
-        }
-
-        const response = await fetch(`${RUNPOD_API_BASE}/analysis/complete`, { headers });
-        const analyticsData = await response.json();
+        const analyticsData = await fetchJSON('/analysis/complete');
         
         if (analyticsData.status === 'success' && analyticsData.tracking_results) {
           let filteredData = analyticsData.tracking_results;
@@ -289,8 +283,7 @@ function Analytics() {
           setData(filteredData);
           
           // Load correlation analysis
-          const correlationResponse = await fetch(`${RUNPOD_API_BASE}/analysis/correlation`, { headers });
-          const correlationData = await correlationResponse.json();
+          const correlationData = await fetchJSON('/analysis/correlation');
           
           if (correlationData.status === 'success') {
             setAnalysisData(correlationData.analysis);
@@ -386,13 +379,7 @@ function Analytics() {
       
       // Try to get filtered data from backend
       try {
-        const headers: HeadersInit = {};
-        if (import.meta.env.VITE_RUNPOD_API_KEY) {
-          headers['Authorization'] = `Bearer ${import.meta.env.VITE_RUNPOD_API_KEY}`;
-        }
-
-        const response = await fetch(`${RUNPOD_API_BASE}/data/tracking/filter?${filterParams.toString()}`, { headers });
-        const filteredData = await response.json();
+        const filteredData = await fetchJSON(`/data/tracking/filter?${filterParams.toString()}`);
         
         if (filteredData.status === 'success') {
           setData(filteredData.data);
