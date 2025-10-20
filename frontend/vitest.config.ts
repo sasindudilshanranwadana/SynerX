@@ -7,5 +7,14 @@ export default defineConfig({
     globals: true,
     environment: 'jsdom',
     setupFiles: './src/setupTests.ts',
+    deps: {
+      // This will process `jsdom` and its dependencies through Vitest's transformers
+      inline: [/.*/],
+    },
+    server: {
+      deps: {
+        inline: [/.*/],
+      },
+    },
   },
 });
