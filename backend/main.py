@@ -1,4 +1,4 @@
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from pathlib import Path
@@ -22,6 +22,7 @@ from api.analysis import init_analysis_router
 from api.system import init_system_router
 from api.status import init_status_router
 from api.storage import init_storage_router
+from api.auth import get_current_user
 import asyncio
 
 # Import core modules
@@ -807,13 +808,14 @@ status_router = init_status_router(shutdown_manager, get_processing_time)
 storage_router = init_storage_router()
 
 # Include routers
-app.include_router(job_router)
-app.include_router(video_router)
-app.include_router(data_router)
-app.include_router(analysis_router)
-app.include_router(system_router)
+# Protected routers (require Supabase JWT)
+app.include_router(job_router, dependencies=[Depends(get_current_user)])
+app.include_router(video_router, dependencies=[Depends(get_current_user)])
+app.include_router(data_router, dependencies=[Depends(get_current_user)])
+app.include_router(analysis_router, dependencies=[Depends(get_current_user)])
+app.include_router(system_router, dependencies=[Depends(get_current_user)])
 app.include_router(status_router)
-app.include_router(storage_router)
+app.include_router(storage_router, dependencies=[Depends(get_current_user)])
 
 # Root endpoint
 @app.get("/")

@@ -8,7 +8,8 @@
     "start:reload": "uvicorn main:app --host 127.0.0.1 --port 8000 --reload",
     "test": "python -m pytest tests/",
     "processor": "python core/video_processor.py",
-    "install-deps": "pip install -r requirements.txt"
+    "install-deps": "pip install -r requirements.txt",
+    "get:token": "python tools/get_auth_token.py"
   },
   "keywords": ["fastapi", "yolo", "vehicle-tracking", "computer-vision"],
   "author": "SynerX Team",

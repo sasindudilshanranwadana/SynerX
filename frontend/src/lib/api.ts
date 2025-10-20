@@ -197,19 +197,28 @@ const retryWithBackoff = async <T>(
   throw lastError;
 };
 
-// Robust JSON fetch helper with automatic RunPod URL resolution and cold start retry
+// Robust JSON fetch helper with automatic RunPod URL resolution, Supabase JWT, and cold start retry
 export const fetchJSON = async (url: string, options?: RequestInit, enableRetry: boolean = true) => {
   // If URL is relative, prepend RUNPOD_API_BASE (which is /api in dev, full URL in prod)
   const fullUrl = url.startsWith('http') ? url : `${RUNPOD_API_BASE}${url.startsWith('/') ? url : '/' + url}`;
 
   const fetchFn = async () => {
-    // Add RunPod API key to all requests
-    const headers: HeadersInit = {
-      ...options?.headers,
-    };
+    // Build headers via Headers to avoid type issues
+    const headers = new Headers(options?.headers as any);
 
     if (import.meta.env.VITE_RUNPOD_API_KEY) {
-      headers['Authorization'] = `Bearer ${import.meta.env.VITE_RUNPOD_API_KEY}`;
+      headers.set('Authorization', `Bearer ${import.meta.env.VITE_RUNPOD_API_KEY}`);
+    }
+
+    // Attach Supabase user JWT if present (client-side auth)
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      const userToken = (session as any)?.access_token as string | undefined;
+      if (userToken) {
+        headers.set('Authorization', `Bearer ${userToken}`);
+      }
+    } catch (e) {
+      // Ignore if session fetch fails; request may still succeed for public endpoints
     }
 
     const res = await fetch(fullUrl, { ...options, headers });
@@ -222,13 +231,22 @@ export const fetchJSON = async (url: string, options?: RequestInit, enableRetry:
       console.error('Raw response text:', text);
     }
 
-    try {
+      try {
       const data = text ? JSON.parse(text) : {};
       if (!res.ok) {
         // Create error with response text for cold start detection
         const error: any = new Error(`${res.status} ${data.detail || data.error || res.statusText}`);
         error.response = text;
         error.status = res.status;
+          // On unauthorized, redirect to auth page
+          if (res.status === 401) {
+            try {
+              await supabase.auth.signOut();
+            } catch {}
+            if (typeof window !== 'undefined') {
+              window.location.href = '/auth';
+            }
+          }
         throw error;
       }
       return data;
@@ -237,6 +255,10 @@ export const fetchJSON = async (url: string, options?: RequestInit, enableRetry:
         const error: any = new Error(`${res.status} ${res.statusText}`);
         error.response = text;
         error.status = res.status;
+          if (res.status === 401 && typeof window !== 'undefined') {
+            try { await supabase.auth.signOut(); } catch {}
+            window.location.href = '/auth';
+          }
         throw error;
       }
       throw parseError;
@@ -255,14 +277,21 @@ export const fetchJSON = async (url: string, options?: RequestInit, enableRetry:
 const fetchJSONAlternative = async (url: string, options?: RequestInit) => {
   const fullUrl = url.startsWith('http') ? url : `${RUNPOD_API_BASE}${url.startsWith('/') ? url : '/' + url}`;
 
-  // Add RunPod API key to all requests
-  const headers: HeadersInit = {
-    ...options?.headers,
-  };
+  // Build headers via Headers
+  const headers = new Headers(options?.headers as any);
 
   if (import.meta.env.VITE_RUNPOD_API_KEY) {
-    headers['Authorization'] = `Bearer ${import.meta.env.VITE_RUNPOD_API_KEY}`;
+    headers.set('Authorization', `Bearer ${import.meta.env.VITE_RUNPOD_API_KEY}`);
   }
+
+  // Attach Supabase user JWT if present
+  try {
+    const { data: { session } } = await supabase.auth.getSession();
+    const userToken = (session as any)?.access_token as string | undefined;
+    if (userToken) {
+      headers.set('Authorization', `Bearer ${userToken}`);
+    }
+  } catch {}
 
   const res = await fetch(fullUrl, { ...options, headers });
   
@@ -285,6 +314,10 @@ const fetchJSONAlternative = async (url: string, options?: RequestInit) => {
       // If we can't read the response body, use the status text
     }
     
+    if (res.status === 401 && typeof window !== 'undefined') {
+      try { await supabase.auth.signOut(); } catch {}
+      window.location.href = '/auth';
+    }
     throw new Error(`${res.status} ${errorMessage}`);
   }
   
