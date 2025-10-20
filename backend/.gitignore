@@ -1,8 +1,0 @@
-datasets
-.venv
-.env
-__pycache__
-source
-venv
-processed
-r2_config.js

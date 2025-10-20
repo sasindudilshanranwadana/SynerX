@@ -1,0 +1,69 @@
+import React, { ReactElement } from 'react';
+import { render, RenderOptions } from '@testing-library/react';
+import { BrowserRouter } from 'react-router-dom';
+import { vi } from 'vitest';
+
+interface AllTheProvidersProps {
+  children: React.ReactNode;
+}
+
+const AllTheProviders = ({ children }: AllTheProvidersProps) => {
+  return (
+    <BrowserRouter>
+      {children}
+    </BrowserRouter>
+  );
+};
+
+interface CustomRenderOptions extends Omit<RenderOptions, 'wrapper'> {
+  withRouter?: boolean;
+}
+
+const customRender = (
+  ui: ReactElement,
+  options?: CustomRenderOptions,
+) => {
+  const { withRouter = true, ...renderOptions } = options || {};
+
+  if (withRouter) {
+    return render(ui, { wrapper: AllTheProviders, ...renderOptions });
+  }
+
+  return render(ui, renderOptions);
+};
+
+export * from '@testing-library/react';
+export { customRender as render };
+
+export const mockFetch = (data: any, ok = true, status = 200) => {
+  global.fetch = vi.fn(() =>
+    Promise.resolve({
+      ok,
+      status,
+      json: () => Promise.resolve(data),
+      text: () => Promise.resolve(JSON.stringify(data)),
+    } as Response)
+  );
+};
+
+export const mockWebSocket = () => {
+  const mockWS = {
+    send: vi.fn(),
+    close: vi.fn(),
+    addEventListener: vi.fn(),
+    removeEventListener: vi.fn(),
+    onopen: null,
+    onclose: null,
+    onmessage: null,
+    onerror: null,
+    readyState: 1,
+  };
+
+  global.WebSocket = vi.fn(() => mockWS) as any;
+
+  return mockWS;
+};
+
+export const waitForLoadingToFinish = () => {
+  return new Promise((resolve) => setTimeout(resolve, 0));
+};
