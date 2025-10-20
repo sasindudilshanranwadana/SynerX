@@ -191,6 +191,7 @@ function LandingPage() {
               </a>
               <button
                 onClick={handleThemeToggle}
+                aria-label="Toggle theme"
                 className={`p-2 rounded-lg transition-all duration-300 ${
                   darkMode
                     ? 'bg-neural-800 text-gray-200 hover:bg-neural-700'
@@ -224,6 +225,7 @@ function LandingPage() {
               )}
               <button
                 onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
+                aria-label={mobileMenuOpen ? 'Close mobile menu' : 'Open mobile menu'}
                 className={`md:hidden p-2 rounded-lg transition-all duration-300 ${
                   darkMode
                     ? 'text-gray-300 hover:text-white hover:bg-neural-800'

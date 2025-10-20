@@ -133,11 +133,13 @@ describe('Dashboard component', () => {
     });
   };
 
-  // No changes needed for this test, it should pass now.
   it('renders loading skeletons initially', async () => {
     render(<Dashboard />);
     expect(screen.getAllByTestId('loading-skeleton')).toHaveLength(4);
     expect(screen.getByText('Loading recent activity...')).toBeInTheDocument();
+    
+    // Wait for state updates to finish to avoid act() warnings
+    await runAsyncEffects();
   });
 
   describe('Data Loading Scenarios', () => {
@@ -212,10 +214,16 @@ describe('Dashboard component', () => {
       expect(screen.getByText(/New video uploaded: db-video-1.mp4/i)).toBeInTheDocument();
     });
 
-    // No changes needed for this test
     it('shows error state if all data sources fail', async () => {
       mockFetch.mockRejectedValue(new Error('Backend down'));
-      mockSupabaseSelect.mockResolvedValue({ data: null, error: new Error('DB down') });
+      
+      // FIX #1: The Supabase mock must REJECT to trigger the component's outer catch block.
+      // Resolving with an { error } object does not cause an exception in the component code.
+      mockSupabaseSelect.mockImplementation(() => ({
+        order: vi.fn().mockReturnThis(),
+        limit: vi.fn().mockRejectedValue(new Error('DB down')),
+      }));
+      
       mockGetOverallAnalytics.mockRejectedValue(new Error('DB analytics down'));
 
       render(<Dashboard />);
@@ -264,6 +272,9 @@ describe('Dashboard component', () => {
       await runAsyncEffects();
 
       const sidebar = screen.getByRole('complementary'); // <aside>
+      
+      // FIX #2: The transform class is applied directly to the <aside> element itself,
+      // not its parent or grandparent.
       expect(sidebar).toHaveClass('-translate-x-full');
 
       // Find the mobile header, then the button inside it.
@@ -302,7 +313,6 @@ describe('Dashboard component', () => {
       expect(mockFetch).toHaveBeenCalledTimes(6);
     });
 
-    // No changes needed for this test
     it('updates theme when themeChanged event is fired', async () => {
       (getStoredTheme as Mock).mockReturnValue('light');
       const { container } = render(<Dashboard />);

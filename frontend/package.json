@@ -7,7 +7,8 @@
     "build": "tsc && vite build",
     "preview": "vite preview",
     "test": "vitest",
-    "coverage": "vitest run --coverage"
+    "coverage": "vitest run --coverage",
+    "testui": "vitest --ui"
   },
   "dependencies": {
     "@supabase/auth-ui-react": "^0.4.7",
@@ -35,6 +36,7 @@
     "@types/react-dom": "^18.2.17",
     "@types/react-plotly.js": "^2.6.3",
     "@vitejs/plugin-react": "^4.2.1",
+    "@vitest/ui": "^3.2.4",
     "autoprefixer": "^10.4.17",
     "concurrently": "^8.2.2",
     "jsdom": "^27.0.1",
