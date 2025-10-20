@@ -38,6 +38,11 @@ To execute all frontend tests, run:
 ```bash
 npm run test
 ```
+To execute all frontend tests using an UI, run:
+
+```bash
+npm run test:ui
+```
 
 To enable watch mode for live test reloading:
 
