@@ -438,7 +438,10 @@ function Dashboard() {
         <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4 lg:gap-6 mb-8">
           {loading ? (
             Array(4).fill(null).map((_, index) => (
-              <div key={index} className={`p-6 rounded-xl animate-pulse border ${
+              <div 
+                key={index} 
+                data-testid="loading-skeleton"
+                className={`p-6 rounded-xl animate-pulse border ${
                 isDark 
                   ? 'bg-[#151F32] border-[#1E293B]' 
                   : 'bg-white border-gray-200 shadow-lg'

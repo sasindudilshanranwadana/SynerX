@@ -38,22 +38,23 @@ describe('ServerStatusIndicator component', () => {
   it('transitions to "connected" state on successful API response', async () => {
     mockFetch.mockResolvedValue({
       ok: true,
-      json: () => Promise.resolve({ message: "SynerX API is running!", status: "ok" }),
+      // FIX: Mock the .text() method to return a JSON string, as this is what the component uses.
+      text: () => Promise.resolve(JSON.stringify({ message: "SynerX API is running!", status: "ok" })),
     });
     render(<ServerStatusIndicator />);
 
     await act(async () => {
+      // Advance timers to trigger the initial check
       await vi.advanceTimersByTimeAsync(0);
     });
     
-    // UPDATE: Check for the new text
     expect(screen.getByText('RunPod Connected')).toBeInTheDocument();
-    // VERIFY: Ensure it's calling the correct development endpoint
     expect(mockFetch).toHaveBeenCalledWith('/api/', expect.any(Object));
   });
 
   it('transitions to "error" state on a failed API response', async () => {
-    mockFetch.mockResolvedValue({ ok: false });
+    // FIX: Mock the .text() method for the failure case as well.
+    mockFetch.mockResolvedValue({ ok: false, text: () => Promise.resolve('Server Error') });
     render(<ServerStatusIndicator />);
 
     await act(async () => {
@@ -87,7 +88,8 @@ describe('ServerStatusIndicator component', () => {
     // First call is successful
     mockFetch.mockResolvedValue({
       ok: true,
-      json: () => Promise.resolve({ message: "SynerX API is running!", status: "ok" }),
+      // FIX: Mock the .text() method here as well.
+      text: () => Promise.resolve(JSON.stringify({ message: "SynerX API is running!", status: "ok" })),
     });
     render(<ServerStatusIndicator />);
     
