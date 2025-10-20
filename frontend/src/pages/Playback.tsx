@@ -86,6 +86,9 @@ function Playback() {
   const [loading, setLoading] = React.useState(false);
   const [statusMessage, setStatusMessage] = React.useState('');
   const [videoCount, setVideoCount] = React.useState(0);
+  // Pagination state
+  const [limit, setLimit] = React.useState<number>(25);
+  const [offset, setOffset] = React.useState<number>(0);
   
   // Filter states
   const [dateFrom, setDateFrom] = React.useState('');
@@ -128,6 +131,7 @@ function Playback() {
   });
   
   const notificationTimeoutRef = React.useRef<NodeJS.Timeout>();
+  const pagesCacheRef = React.useRef<Map<string, { data: Video[]; count: number }>>(new Map());
 
   React.useEffect(() => {
     const handleThemeChange = () => {
@@ -136,9 +140,8 @@ function Playback() {
     
     window.addEventListener('themeChanged', handleThemeChange);
     
-    // Set default date range and load videos
-    setDefaultDateRange(7);
-    loadVideos();
+    // Load first page without applying default date filters
+    fetchAndSetPage(0);
     
     return () => {
       window.removeEventListener('themeChanged', handleThemeChange);
@@ -176,17 +179,39 @@ function Playback() {
     setDateFrom(fromStr);
   };
 
-  const loadVideos = async () => {
+  const buildPageKey = (targetOffset: number) =>
+    JSON.stringify({ dateFrom, dateTo, orderBy, orderDesc, limit, offset: targetOffset });
+
+  const fetchAndSetPage = async (targetOffset: number, withSuccessToast: boolean = false) => {
+    const key = buildPageKey(targetOffset);
+    const cached = pagesCacheRef.current.get(key);
+    if (cached) {
+      setVideos(cached.data || []);
+      setVideoCount(cached.count || 0);
+    }
+
     setLoading(true);
     setStatusMessage('Loading videos...');
     try {
-      const data = await fetchFilteredVideos();
+      const data = await fetchFilteredVideos({
+        dateFrom: dateFrom || undefined,
+        dateTo: dateTo || undefined,
+        orderBy,
+        orderDesc,
+        limit,
+        offset: targetOffset
+      });
       if (data.status !== 'success') {
         throw new Error(data.error || 'Failed to load videos');
       }
       setVideos(data.data || []);
       setVideoCount(data.count || 0);
+      setOffset(targetOffset);
+      pagesCacheRef.current.set(key, { data: data.data || [], count: data.count || 0 });
       setStatusMessage('');
+      if (withSuccessToast) {
+        showNotification('Filters applied successfully', 'success', 3000);
+      }
     } catch (error: any) {
       const errorMsg = getErrorMessage(error);
       setStatusMessage(`Error: ${errorMsg}`);
@@ -197,32 +222,29 @@ function Playback() {
   };
 
   const applyFilters = async () => {
-    setLoading(true);
-    setStatusMessage('Applying filters...');
-    try {
-      const filters = {
-        dateFrom: dateFrom || undefined,
-        dateTo: dateTo || undefined,
-        orderBy: orderBy || undefined,
-        orderDesc: orderDesc || undefined,
-      };
-      
-      const data = await fetchFilteredVideos(filters);
-      if (data.status !== 'success') {
-        throw new Error(data.error || 'Failed to apply filters');
-      }
-      setVideos(data.data || []);
-      setVideoCount(data.count || 0);
-      setStatusMessage('');
-      showNotification('Filters applied successfully', 'success', 3000);
-    } catch (error: any) {
-      const errorMsg = getErrorMessage(error);
-      setStatusMessage(`Error: ${errorMsg}`);
-      showNotification(errorMsg, 'error');
-    } finally {
-      setLoading(false);
-    }
+    // Reset pagination and cache when filters are (re)applied
+    pagesCacheRef.current.clear();
+    await fetchAndSetPage(0, true);
   };
+
+  const totalPages = Math.max(1, Math.ceil((videoCount || 0) / (limit || 1)));
+  const currentPage = Math.min(totalPages, Math.floor((offset || 0) / (limit || 1)) + 1);
+  const goToPage = async (page: number) => {
+    const clamped = Math.max(1, Math.min(totalPages, page));
+    const newOffset = (clamped - 1) * limit;
+    await fetchAndSetPage(newOffset);
+  };
+
+  const pageWindow = React.useMemo(() => {
+    const windowSize = 5;
+    const pages: number[] = [];
+    let start = Math.max(1, currentPage - Math.floor(windowSize / 2));
+    let end = Math.min(totalPages, start + windowSize - 1);
+    // Adjust start if near the end
+    start = Math.max(1, Math.min(start, Math.max(1, end - windowSize + 1)));
+    for (let p = start; p <= end; p++) pages.push(p);
+    return pages;
+  }, [currentPage, totalPages]);
 
   const openSummary = async (videoId: number, name: string) => {
     setSummaryModalOpen(true);
@@ -802,7 +824,7 @@ function Playback() {
               </div>
             </div>
             
-            <div className="flex items-center justify-between">
+              <div className="flex items-center justify-between">
               <div className="flex items-center gap-3">
                 <button
                   onClick={applyFilters}
@@ -813,7 +835,7 @@ function Playback() {
                   Apply Filters
                 </button>
                 <button
-                  onClick={loadVideos}
+                  onClick={() => { pagesCacheRef.current.clear(); fetchAndSetPage(0); }}
                   disabled={loading}
                   className={`px-6 py-3 rounded-lg transition-all duration-200 flex items-center gap-2 font-medium ${
                     isDark 
@@ -824,6 +846,58 @@ function Playback() {
                   <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
                   Refresh
                 </button>
+              </div>
+              <div className="flex items-center gap-4">
+                {/* Numbered pagination */}
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => goToPage(1)}
+                    disabled={currentPage <= 1 || loading}
+                    className={`px-3 py-2 rounded-lg text-sm font-medium ${isDark ? 'bg-[#1E293B] text-gray-300 border border-[#2D3B4E]' : 'bg-gray-100 text-gray-700 border border-gray-300'} disabled:opacity-50`}
+                  >
+                    First
+                  </button>
+                  <button
+                    onClick={() => goToPage(currentPage - 1)}
+                    disabled={currentPage <= 1 || loading}
+                    className={`px-3 py-2 rounded-lg text-sm font-medium ${isDark ? 'bg-[#1E293B] text-gray-300 border border-[#2D3B4E]' : 'bg-gray-100 text-gray-700 border border-gray-300'} disabled:opacity-50`}
+                  >
+                    Prev
+                  </button>
+                  {pageWindow.map(p => (
+                    <button
+                      key={p}
+                      onClick={() => goToPage(p)}
+                      disabled={loading}
+                      className={`px-3 py-2 rounded-lg text-sm font-medium border ${
+                        p === currentPage
+                          ? 'bg-primary-500 text-white border-primary-500'
+                          : isDark
+                            ? 'bg-[#1E293B] text-gray-300 border-[#2D3B4E]'
+                            : 'bg-gray-100 text-gray-700 border-gray-300'
+                      }`}
+                    >
+                      {p}
+                    </button>
+                  ))}
+                  <button
+                    onClick={() => goToPage(currentPage + 1)}
+                    disabled={currentPage >= totalPages || loading}
+                    className={`px-3 py-2 rounded-lg text-sm font-medium ${isDark ? 'bg-[#1E293B] text-gray-300 border border-[#2D3B4E]' : 'bg-gray-100 text-gray-700 border border-gray-300'} disabled:opacity-50`}
+                  >
+                    Next
+                  </button>
+                  <button
+                    onClick={() => goToPage(totalPages)}
+                    disabled={currentPage >= totalPages || loading}
+                    className={`px-3 py-2 rounded-lg text-sm font-medium ${isDark ? 'bg-[#1E293B] text-gray-300 border border-[#2D3B4E]' : 'bg-gray-100 text-gray-700 border border-gray-300'} disabled:opacity-50`}
+                  >
+                    Last
+                  </button>
+                </div>
+                <div className={`text-xs ${isDark ? 'text-gray-400' : 'text-gray-600'}`}>
+                  {videoCount > 0 ? `Page ${currentPage} of ${totalPages} • Showing ${Math.min(offset + 1, videoCount)}–${Math.min(offset + (videos?.length || 0), videoCount)} of ${videoCount}` : ''}
+                </div>
               </div>
               {statusMessage && (
                 <div className={`text-sm font-medium ${

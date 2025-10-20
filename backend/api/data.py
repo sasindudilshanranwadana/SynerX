@@ -1,5 +1,6 @@
 from fastapi import APIRouter
-from fastapi.responses import StreamingResponse
+from fastapi.responses import StreamingResponse, JSONResponse
+import time
 from clients.supabase_client import supabase_manager
 from clients.r2_storage_client import get_r2_client
 
@@ -7,6 +8,10 @@ router = APIRouter(prefix="/data", tags=["Data"])
 
 def init_data_router():
     """Initialize the data router"""
+    # Simple in-memory caches with short TTL to stabilize pagination and reduce refetches
+    videos_cache = {}
+    # Default cache TTL set to 1 minute; can be overridden per-request via cache_ttl query param
+    VIDEOS_CACHE_TTL_SECONDS = 60
     
     @router.get("/tracking")
     async def get_tracking_data(limit: int = 100):
@@ -270,37 +275,88 @@ def init_data_router():
 
     @router.get("/videos/filter")
     async def filter_videos(
-        limit: int = 100,
+        limit: int = 25,
+        offset: int = 0,
         date_from: str = None,  # YYYY-MM-DD
         date_to: str = None,    # YYYY-MM-DD
         order_by: str = "created_at",
         order_desc: bool = True,
+        cache_ttl: int = None,
+        no_cache: bool = False,
     ):
-        """Filter videos by date range and ordering."""
+        """Filter videos by date range and ordering with pagination."""
         try:
-            q = supabase_manager.client.table("videos").select("*")
+            effective_ttl = VIDEOS_CACHE_TTL_SECONDS if cache_ttl is None else max(0, int(cache_ttl))
+            # Serve from cache when available and fresh
+            cache_key = f"{date_from}|{date_to}|{order_by}|{order_desc}|{limit}|{offset}"
+            now = time.time()
+            cached = videos_cache.get(cache_key)
+            if not no_cache and effective_ttl > 0 and cached and (now - cached["ts"]) <= effective_ttl:
+                return JSONResponse(content=cached["payload"], headers={
+                    "Cache-Control": f"public, max-age={effective_ttl}"
+                })
+
+            # Base filtered query for data page
+            data_q = supabase_manager.client.table("videos").select("*")
             if date_from:
-                q = q.gte("created_at", f"{date_from} 00:00:00")
+                data_q = data_q.gte("created_at", f"{date_from} 00:00:00")
             if date_to:
-                q = q.lte("created_at", f"{date_to} 23:59:59")
+                data_q = data_q.lte("created_at", f"{date_to} 23:59:59")
 
-            q = q.order(order_by, desc=order_desc).limit(limit)
-            res = q.execute()
-            data = res.data or []
+            data_q = data_q.order(order_by, desc=order_desc).range(offset, offset + max(0, limit) - 1)
+            data_res = data_q.execute()
+            data = data_res.data or []
 
-            return {
+            # Separate count query (without range) to get total rows after filters
+            count_q = supabase_manager.client.table("videos").select("id")
+            if date_from:
+                count_q = count_q.gte("created_at", f"{date_from} 00:00:00")
+            if date_to:
+                count_q = count_q.lte("created_at", f"{date_to} 23:59:59")
+            # Order not needed for count
+            count_res = count_q.execute()
+            total_count = len(count_res.data or [])
+
+            # Build pagination hrefs
+            def build_href(new_offset: int):
+                params = []
+                if date_from:
+                    params.append(("date_from", date_from))
+                if date_to:
+                    params.append(("date_to", date_to))
+                if order_by:
+                    params.append(("order_by", order_by))
+                params.append(("order_desc", str(order_desc).lower()))
+                params.append(("limit", str(limit)))
+                params.append(("offset", str(max(0, new_offset))))
+                query = "&".join([f"{k}={v}" for k, v in params])
+                return f"/data/videos/filter?{query}"
+
+            next_offset = offset + limit
+            prev_offset = max(0, offset - limit)
+            has_next = next_offset < total_count
+            has_prev = offset > 0
+
+            payload = {
                 "status": "success",
                 "table": "videos",
-                "count": len(data),
+                "count": total_count,
                 "limit": limit,
-                "filters_applied": {
-                    "date_from": date_from,
-                    "date_to": date_to,
-                    "order_by": order_by,
-                    "order_desc": order_desc,
-                },
+                "offset": offset,
+                "order_by": order_by,
+                "order_desc": order_desc,
+                "next_href": build_href(next_offset) if has_next else None,
+                "prev_href": build_href(prev_offset) if has_prev else None,
                 "data": data,
             }
+
+            # Store in cache when enabled
+            if not no_cache and effective_ttl > 0:
+                videos_cache[cache_key] = {"ts": now, "payload": payload}
+
+            # Set appropriate cache headers
+            headers = {"Cache-Control": f"public, max-age={effective_ttl}"} if (not no_cache and effective_ttl > 0) else {"Cache-Control": "no-store"}
+            return JSONResponse(content=payload, headers=headers)
         except Exception as e:
             print(f"[ERROR] Failed to filter videos: {e}")
             return {"status": "error", "error": str(e), "data": []}
