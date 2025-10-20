@@ -6,11 +6,9 @@ import {
   AlertTriangle, 
   CheckCircle, 
   Clock, 
-  FileVideo, 
-  Folder,
+  FileVideo,
   RefreshCw,
   BarChart3,
-  Settings,
   Eye,
   X,
   XCircle
@@ -19,16 +17,18 @@ import Header from '../components/Header';
 import Sidebar from '../components/Sidebar';
 import ServerStatusIndicator from '../components/ServerStatusIndicator';
 import { getStoredTheme } from '../lib/theme';
+import { fetchJSON } from '../lib/api';
+import { supabase } from '../lib/supabase';
 
-// API Base URL - same pattern as other pages
-const API_BASE = import.meta.env.DEV ? '/api' : (import.meta.env.VITE_RUNPOD_URL || 'http://localhost:8000');
+// Use Vite dev proxy in development; backend is mounted at /api
+const API_BASE = import.meta.env.DEV ? '/api' : (import.meta.env.VITE_BACKEND_URL || 'http://127.0.0.1:8000');
 
 interface VideoFile {
   id: string;
   name: string;
   size: number; // in bytes
   created_at: string;
-  status: 'processed' | 'processing' | 'failed' | 'temp';
+  status: 'processed' | 'processing' | 'failed' | 'temp' | 'interrupted';
   duration?: number;
   resolution?: string;
   path: string;
@@ -59,6 +59,7 @@ function Storage() {
   const [showCleanupModal, setShowCleanupModal] = React.useState(false);
   const [showVideoModal, setShowVideoModal] = React.useState(false);
   const [selectedVideo, setSelectedVideo] = React.useState<VideoFile | null>(null);
+  const [videoBlobUrl, setVideoBlobUrl] = React.useState<string | null>(null);
   const [error, setError] = React.useState<string | null>(null);
   const [toast, setToast] = React.useState<{message: string, type: 'success' | 'error'} | null>(null);
 
@@ -78,16 +79,14 @@ function Storage() {
       setLoading(true);
       
       // Load storage info
-      const storageResponse = await fetch(`${API_BASE}/storage/info`);
-      const storageData = await storageResponse.json();
+      const storageData = await fetchJSON('/storage/info');
       
       if (storageData.status === 'success') {
         setStorageInfo(storageData.data);
       }
       
       // Load video files
-      const videosResponse = await fetch(`${API_BASE}/storage/videos`);
-      const videosData = await videosResponse.json();
+      const videosData = await fetchJSON('/storage/videos');
       
       if (videosData.status === 'success') {
         setVideos(videosData.data);
@@ -129,6 +128,8 @@ function Storage() {
         return <Clock className="w-4 h-4 text-yellow-500" />;
       case 'failed':
         return <AlertTriangle className="w-4 h-4 text-red-500" />;
+      case 'interrupted':
+        return <AlertTriangle className="w-4 h-4 text-orange-500" />;
       case 'temp':
         return <FileVideo className="w-4 h-4 text-orange-500" />;
       default:
@@ -141,7 +142,8 @@ function Storage() {
       processed: 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200',
       processing: 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200',
       failed: 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200',
-      temp: 'bg-orange-100 text-orange-800 dark:bg-orange-900 dark:text-orange-200'
+      temp: 'bg-orange-100 text-orange-800 dark:bg-orange-900 dark:text-orange-200',
+      interrupted: 'bg-orange-100 text-orange-800 dark:bg-orange-900 dark:text-orange-200'
     };
     
     return (
@@ -149,6 +151,11 @@ function Storage() {
         {status.charAt(0).toUpperCase() + status.slice(1)}
       </span>
     );
+  };
+
+  const getDisplayStatus = (video: VideoFile): VideoFile['status'] => {
+    if (video.name.toLowerCase().includes('interrupted')) return 'interrupted';
+    return video.status;
   };
 
   const handleSelectVideo = (videoId: string) => {
@@ -174,13 +181,11 @@ function Storage() {
         .filter(v => selectedVideos.includes(v.id))
         .map(v => v.name); // Use the original filename, not the unique ID
       
-      const response = await fetch(`${API_BASE}/storage/videos/delete`, {
+      const result = await fetchJSON('/storage/videos/delete', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ video_ids: selectedVideoNames })
       });
-      
-      const result = await response.json();
       
       if (result.status === 'success') {
         setVideos(prev => prev.filter(v => !selectedVideos.includes(v.id)));
@@ -199,12 +204,10 @@ function Storage() {
 
   const handleCleanupTempFiles = async () => {
     try {
-      const response = await fetch(`${API_BASE}/storage/cleanup`, {
+      const result = await fetchJSON('/storage/cleanup', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' }
       });
-      
-      const result = await response.json();
       
       if (result.status === 'success') {
         setShowCleanupModal(false);
@@ -219,22 +222,77 @@ function Storage() {
     }
   };
 
-  const handleDownloadVideo = (video: VideoFile) => {
-    // Use backend endpoint for downloading
-    const videoUrl = `${API_BASE}/storage/video/${encodeURIComponent(video.name)}/download`;
-    const link = document.createElement('a');
-    link.href = videoUrl;
-    link.download = video.name;
-    link.target = '_blank';
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
+  const handleDownloadVideo = async (video: VideoFile) => {
+    try {
+      const headers = new Headers();
+      try {
+        const { data: { session } } = await supabase.auth.getSession();
+        const userToken = (session as any)?.access_token as string | undefined;
+        if (userToken) {
+          headers.set('Authorization', `Bearer ${userToken}`);
+        }
+      } catch {}
+      const response = await fetch(`${API_BASE}/storage/video/${encodeURIComponent(video.name)}/download`, { headers });
+      if (!response.ok) throw new Error('Download failed');
+      const blob = await response.blob();
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = video.name;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+    } catch (e) {
+      showToast('Failed to download video', 'error');
+    }
   };
 
   const handleViewVideo = (video: VideoFile) => {
     // Open video in modal
     setSelectedVideo(video);
     setShowVideoModal(true);
+  };
+
+  // Fetch secured video as blob when modal opens, attach Authorization header
+  React.useEffect(() => {
+    let isCancelled = false;
+    const fetchVideoBlob = async () => {
+      if (!showVideoModal || !selectedVideo) return;
+      try {
+        const headers = new Headers();
+        try {
+          const { data: { session } } = await supabase.auth.getSession();
+          const userToken = (session as any)?.access_token as string | undefined;
+          if (userToken) headers.set('Authorization', `Bearer ${userToken}`);
+        } catch {}
+
+        const response = await fetch(`${API_BASE}/storage/video/${encodeURIComponent(selectedVideo.name)}`, { headers });
+        if (!response.ok) throw new Error('Failed to load video');
+        const blob = await response.blob();
+        if (isCancelled) return;
+        const url = URL.createObjectURL(blob);
+        setVideoBlobUrl(url);
+      } catch (e) {
+        // Fallback to direct URL; player may still work if public
+        setVideoBlobUrl(null);
+      }
+    };
+
+    fetchVideoBlob();
+    return () => {
+      isCancelled = true;
+      if (videoBlobUrl) {
+        URL.revokeObjectURL(videoBlobUrl);
+      }
+      setVideoBlobUrl(null);
+    };
+  }, [showVideoModal, selectedVideo]);
+
+  const closeVideoModal = () => {
+    if (videoBlobUrl) URL.revokeObjectURL(videoBlobUrl);
+    setVideoBlobUrl(null);
+    setShowVideoModal(false);
   };
 
   const showToast = (message: string, type: 'success' | 'error') => {
@@ -248,8 +306,8 @@ function Storage() {
   if (loading) {
     return (
       <div className="min-h-screen bg-gray-50 dark:bg-gray-900">
-        <Header sidebarOpen={sidebarOpen} setSidebarOpen={setSidebarOpen} />
-        <Sidebar sidebarOpen={sidebarOpen} setSidebarOpen={setSidebarOpen} />
+        <Header title="Storage" onToggleSidebar={() => setSidebarOpen(s => !s)} isSidebarOpen={sidebarOpen} />
+        <Sidebar activePath="/storage" isOpen={sidebarOpen} onClose={() => setSidebarOpen(false)} />
         <div className="flex items-center justify-center h-96">
           <div className="flex items-center gap-3">
             <RefreshCw className="w-6 h-6 animate-spin text-primary-500" />
@@ -262,8 +320,8 @@ function Storage() {
 
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-900">
-      <Header sidebarOpen={sidebarOpen} setSidebarOpen={setSidebarOpen} />
-      <Sidebar sidebarOpen={sidebarOpen} setSidebarOpen={setSidebarOpen} />
+      <Header title="Storage" onToggleSidebar={() => setSidebarOpen(s => !s)} isSidebarOpen={sidebarOpen} />
+      <Sidebar activePath="/storage" isOpen={sidebarOpen} onClose={() => setSidebarOpen(false)} />
       
       <div className="p-6 ml-0 lg:ml-64">
         <div className="max-w-7xl mx-auto">
@@ -464,7 +522,7 @@ function Storage() {
                       </td>
                       <td className="px-4 py-4">
                         <div className="flex items-center gap-3">
-                          {getStatusIcon(video.status)}
+                          {getStatusIcon(getDisplayStatus(video))}
                           <div>
                             <div className="font-medium text-sm">{video.name}</div>
                             <div className="text-xs text-gray-500">{video.path}</div>
@@ -472,7 +530,7 @@ function Storage() {
                         </div>
                       </td>
                       <td className="px-4 py-4">
-                        {getStatusBadge(video.status)}
+                        {getStatusBadge(getDisplayStatus(video))}
                       </td>
                       <td className="px-4 py-4 text-sm font-mono">
                         {formatBytes(video.size)}
@@ -599,7 +657,7 @@ function Storage() {
                 </p>
               </div>
               <button
-                onClick={() => setShowVideoModal(false)}
+                onClick={closeVideoModal}
                 className="p-2 text-gray-500 hover:text-gray-700 dark:hover:text-gray-300"
               >
                 <XCircle className="w-6 h-6" />
@@ -613,10 +671,11 @@ function Storage() {
                 className="w-full h-auto max-h-96 rounded-lg"
                 preload="metadata"
               >
-                <source 
-                  src={`${API_BASE}/storage/video/${encodeURIComponent(selectedVideo.name)}`}
-                  type="video/mp4"
-                />
+                {videoBlobUrl ? (
+                  <source src={videoBlobUrl} type="video/mp4" />
+                ) : (
+                  <source src={`${API_BASE}/storage/video/${encodeURIComponent(selectedVideo.name)}`} type="video/mp4" />
+                )}
                 Your browser does not support the video tag.
               </video>
             </div>

@@ -25,23 +25,18 @@ def init_storage_router():
             r2_client = get_r2_client()
             
             # Get all files first to identify temp files
-            print(f"[STORAGE INFO] Attempting to connect to R2...")
             all_files = r2_client.list_videos()
-            print(f"[STORAGE INFO] Retrieved {len(all_files)} files from R2")
             if all_files:
-                print(f"[STORAGE INFO] Sample files: {[f['Key'] for f in all_files[:3]]}")
                 # Calculate total size manually to verify
                 manual_total = sum(f['Size'] for f in all_files)
-                print(f"[STORAGE INFO] Manual total size: {manual_total} bytes ({manual_total / (1024*1024*1024):.2f} GB)")
             else:
-                print(f"[STORAGE INFO] No files found in R2 bucket")
+                pass
             
             # Get R2 storage usage
             usage_stats = r2_client.get_storage_usage()
-            print(f"[STORAGE INFO] Usage stats: {usage_stats}")
             
             if usage_stats is None:
-                print("[STORAGE INFO] Usage stats is None, using file-based calculation")
+                
                 # Calculate usage from files if usage_stats fails
                 total_size = sum(file_obj['Size'] for file_obj in all_files)
                 usage_stats = {
@@ -53,16 +48,13 @@ def init_storage_router():
             temp_size = 0
             
             # Identify temporary files (files that don't start with "processed_" AND don't contain "interrupted")
-            print(f"[STORAGE INFO] Found {len(all_files)} files in R2")
             for file_obj in all_files:
                 file_name = file_obj['Key']
-                print(f"[STORAGE INFO] Checking file: {file_name}")
                 
                 # Temp files are: files that don't start with "processed_" AND don't contain "interrupted"
                 is_temp = not file_name.startswith('processed_') and 'interrupted' not in file_name.lower()
                 
                 if is_temp:
-                    print(f"[STORAGE INFO] ✅ Temp file detected: {file_name}")
                     temp_files.append({
                         "path": file_name,
                         "size": file_obj['Size'],
@@ -70,9 +62,9 @@ def init_storage_router():
                     })
                     temp_size += file_obj['Size']
                 else:
-                    print(f"[STORAGE INFO] ✅ Processed file: {file_name}")
+                    pass
             
-            print(f"[STORAGE INFO] Total temp files: {len(temp_files)}, temp size: {temp_size}")
+            
             
             # R2 free tier is 10GB
             total_gb = 10.0
@@ -190,14 +182,11 @@ def init_storage_router():
             
             for video_id in video_ids:
                 try:
-                    print(f"[DELETE] Attempting to delete: {video_id}")
                     success = r2_client.delete_video(video_id)
                     if success:
                         deleted_files.append(video_id)
-                        print(f"[DELETE] ✅ Successfully deleted: {video_id}")
                     else:
                         failed_deletions.append(f"Failed to delete {video_id}")
-                        print(f"[DELETE] ❌ Failed to delete: {video_id}")
                 except Exception as e:
                     failed_deletions.append(f"Failed to delete {video_id}: {str(e)}")
                     print(f"[DELETE] ❌ Exception deleting {video_id}: {str(e)}")
@@ -246,13 +235,12 @@ def init_storage_router():
                         if success:
                             cleaned_files.append(file_name)
                             freed_space += file_size
-                            print(f"[CLEANUP] ✅ Deleted temp file: {file_name}")
                         else:
-                            print(f"[CLEANUP] ❌ Failed to delete: {file_name}")
+                            pass
                     except Exception as e:
                         print(f"[CLEANUP] ❌ Exception deleting {file_name}: {e}")
                 else:
-                    print(f"[CLEANUP] ✅ Keeping processed file: {file_name}")
+                    pass
             
             return {
                 "status": "success",

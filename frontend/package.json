@@ -1,7 +1,7 @@
 {
   "type": "module",
   "scripts": {
-    "dev": "concurrently --kill-others -n \"FRONTEND,BACKEND\" -c \"cyan,magenta\" \"npm run frontend\" \"npm run backend\"",
+    "dev": "concurrently --kill-others-on-fail -n \"FRONTEND,BACKEND\" -c \"cyan,magenta\" \"npm run frontend\" \"npm run backend\"",
     "frontend": "vite",
     "backend": "cd ../backend && node scripts/start-backend.js",
     "build": "tsc && vite build",
