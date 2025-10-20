@@ -717,11 +717,12 @@ function Playback() {
             
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-6 gap-4 mb-4">
               <div className="lg:col-span-2">
-                <label className={`block text-sm font-medium mb-2 ${isDark ? 'text-gray-300' : 'text-gray-700'}`}>
+                <label htmlFor="video-search" className={`block text-sm font-medium mb-2 ${isDark ? 'text-gray-300' : 'text-gray-700'}`}>
                   <Search className="w-4 h-4 inline mr-2" />
                   Search Videos
                 </label>
                 <input
+                  id="video-search" // Add ID for accessibility
                   type="text"
                   value={searchTerm}
                   onChange={(e) => setSearchTerm(e.target.value)}
@@ -734,11 +735,12 @@ function Playback() {
                 />
               </div>
               <div>
-                <label className={`block text-sm font-medium mb-2 ${isDark ? 'text-gray-300' : 'text-gray-700'}`}>
+                <label htmlFor="date-from" className={`block text-sm font-medium mb-2 ${isDark ? 'text-gray-300' : 'text-gray-700'}`}>
                   <Calendar className="w-4 h-4 inline mr-2" />
                   From Date
                 </label>
                 <input
+                  id="date-from"
                   type="date"
                   value={dateFrom}
                   onChange={(e) => setDateFrom(e.target.value)}
@@ -750,11 +752,12 @@ function Playback() {
                 />
               </div>
               <div>
-                <label className={`block text-sm font-medium mb-2 ${isDark ? 'text-gray-300' : 'text-gray-700'}`}>
+                <label htmlFor="date-to" className={`block text-sm font-medium mb-2 ${isDark ? 'text-gray-300' : 'text-gray-700'}`}>
                   <Calendar className="w-4 h-4 inline mr-2" />
                   To Date
                 </label>
                 <input
+                  id="date-to"
                   type="date"
                   value={dateTo}
                   onChange={(e) => setDateTo(e.target.value)}
@@ -766,10 +769,11 @@ function Playback() {
                 />
               </div>
               <div>
-                <label className={`block text-sm font-medium mb-2 ${isDark ? 'text-gray-300' : 'text-gray-700'}`}>
+                <label htmlFor="sort-by" className={`block text-sm font-medium mb-2 ${isDark ? 'text-gray-300' : 'text-gray-700'}`}>
                   Sort By
                 </label>
                 <select
+                  id="sort-by"
                   value={orderBy}
                   onChange={(e) => setOrderBy(e.target.value)}
                   className={`w-full px-4 py-3 rounded-lg border transition-all duration-200 ${
@@ -784,10 +788,11 @@ function Playback() {
                 </select>
               </div>
               <div>
-                <label className={`block text-sm font-medium mb-2 ${isDark ? 'text-gray-300' : 'text-gray-700'}`}>
+                <label htmlFor="order" className={`block text-sm font-medium mb-2 ${isDark ? 'text-gray-300' : 'text-gray-700'}`}>
                   Order
                 </label>
                 <select
+                  id="order"
                   value={orderDesc}
                   onChange={(e) => setOrderDesc(e.target.value)}
                   className={`w-full px-4 py-3 rounded-lg border transition-all duration-200 ${
@@ -1015,6 +1020,7 @@ function Playback() {
               </div>
               <button
                 onClick={closeSummary}
+                aria-label="Close summary modal"
                 className={`p-2 rounded-lg transition-colors ${
                   isDark ? 'hover:bg-[#1E293B] text-gray-300' : 'hover:bg-gray-100 text-gray-700'
                 }`}
@@ -1286,6 +1292,7 @@ function Playback() {
               </div>
               <button
                 onClick={closeVideoModal}
+                aria-label="Close video player"
                 className={`p-2 rounded-lg transition-colors ${
                   isDark ? 'hover:bg-[#1E293B] text-gray-300' : 'hover:bg-gray-100 text-gray-700'
                 }`}
