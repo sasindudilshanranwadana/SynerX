@@ -22,12 +22,12 @@ npm install
 
 ## 2. Configuration
 
-Vitest is used as the test runner and React Testing Library for UI assertions. Tests are colocated with components and use the `.test.tsx` file extension.
+Vitest is used as the test runner and React Testing Library for UI assertions. Tests are colocated in `__tests__` folder next to the components tested and use the `.test.tsx` file extension.
 
 - Configured via `vite.config.ts` and Vitest setup files
 - Example test locations:
-  - `src/components/UploadForm.test.tsx`
-  - `src/components/Sidebar.test.tsx`
+  - `src/components/__tests__/UploadForm.test.tsx`
+  - `src/components/__tests__/Sidebar.test.tsx`
 
 ---
 
@@ -50,9 +50,6 @@ If coverage is configured:
 ```bash
 npx vitest run --coverage
 ```
-
-Output will appear in the `/coverage` folder.
-
 ---
 
 ## 4. Test Suite Breakdown
@@ -98,3 +95,5 @@ This test suite helps ensure that all major UI components work as expected under
 
 Remember to add new `.test.tsx` files when introducing new components.
 <img width="1127" height="989" alt="image" src="https://github.com/user-attachments/assets/fd4f26cd-0bc2-4908-8e21-43307346fd4d" />
+<img width="2940" height="1604" alt="image" src="https://github.com/user-attachments/assets/e32fde9b-ce8f-48ea-a464-d328c88714a2" />
+
