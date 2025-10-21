@@ -99,6 +99,7 @@ function UploadPage() {
   const [streamStatus, setStreamStatus] = React.useState('Connecting...');
 
   const [runpodConnected, setRunpodConnected] = React.useState(false);
+  const [runpodUrlAvailable, setRunpodUrlAvailable] = React.useState(false);
   const [connectionStatus, setConnectionStatus] = React.useState<'connecting' | 'connected' | 'disconnected' | 'error'>('connecting');
   const [connectionError, setConnectionError] = React.useState<string>('');
 
@@ -124,13 +125,18 @@ function UploadPage() {
     window.addEventListener('themeChanged', handleThemeChange);
     window.addEventListener('beforeunload', handleBeforeUnload);
 
+    checkRunPodUrl();
     startJobsSocket();
+
+    // Check RunPod URL availability every 30 seconds
+    const urlCheckInterval = setInterval(checkRunPodUrl, 30000);
 
     return () => {
       window.removeEventListener('themeChanged', handleThemeChange);
       window.removeEventListener('beforeunload', handleBeforeUnload);
       shouldReconnectRef.current = false;
       clearNotificationTimeout();
+      clearInterval(urlCheckInterval);
       if (jobsWSRef.current) {
         jobsWSRef.current.close();
       }
@@ -145,6 +151,29 @@ function UploadPage() {
   const clearNotificationTimeout = () => {
     if (notificationTimeoutRef.current) {
       clearTimeout(notificationTimeoutRef.current);
+    }
+  };
+
+  const checkRunPodUrl = async () => {
+    try {
+      const runpodUrl = import.meta.env.VITE_RUNPOD_URL || 'http://localhost:8000';
+      const response = await fetch(`${runpodUrl}/`, {
+        method: 'GET',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+      });
+      
+      if (response.ok) {
+        setRunpodUrlAvailable(true);
+        console.log('RunPod URL is available');
+      } else {
+        setRunpodUrlAvailable(false);
+        console.log('RunPod URL is not responding');
+      }
+    } catch (error) {
+      setRunpodUrlAvailable(false);
+      console.log('RunPod URL is not available:', error);
     }
   };
 
@@ -560,14 +589,14 @@ function UploadPage() {
                 <button
                   onClick={() => fileInputRef.current?.click()}
                   className={`px-4 sm:px-6 py-2 rounded-lg transition-colors text-sm sm:text-base ${
-                    !runpodConnected
+                    !runpodConnected || !runpodUrlAvailable
                       ? 'bg-gray-600 cursor-not-allowed opacity-50'
                       : 'bg-primary-500 hover:bg-primary-600 text-white'
                   }`}
-                  disabled={!runpodConnected}
-                  title={!runpodConnected ? 'RunPod server not connected' : ''}
+                  disabled={!runpodConnected || !runpodUrlAvailable}
+                  title={!runpodConnected ? 'WebSocket not connected' : !runpodUrlAvailable ? 'RunPod URL not available' : ''}
                 >
-                  {!runpodConnected ? 'Server Disconnected' : 'Select Video to Upload'}
+                  {!runpodConnected ? 'WebSocket Disconnected' : !runpodUrlAvailable ? 'RunPod URL Unavailable' : 'Select Video to Upload'}
                 </button>
               </div>
             )}

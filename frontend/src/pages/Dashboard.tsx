@@ -1,16 +1,14 @@
 import React from 'react';
-import { Link } from 'react-router-dom';
 import { getOverallAnalytics } from '../lib/database';
 import { supabase } from '../lib/supabase';
 import { getStoredTheme } from '../lib/theme';
 import { formatDateTime, formatRelativeTime } from '../lib/dateUtils';
 import ServerStatusIndicator from '../components/ServerStatusIndicator';
+import Header from '../components/Header';
+import Sidebar from '../components/Sidebar';
 import {
   Activity, Camera, Clock,
-  Home, LogOut, Settings, Upload,
-  BarChart2,
-  Play,
-  Database, Brain, Menu, X
+  Database, Brain
 } from 'lucide-react';
 
 interface SystemStatus {
@@ -45,8 +43,6 @@ function Dashboard() {
   const [recentActivity, setRecentActivity] = React.useState<RecentActivity[]>([
     { event: 'Loading recent activity...', time: 'Just now', type: 'info' }
   ]);
-  const [isWarmingUp, setIsWarmingUp] = React.useState(false);
-  const [warmupAttempt, setWarmupAttempt] = React.useState(0);
 
   React.useEffect(() => {
     const getUser = async () => {
@@ -313,22 +309,7 @@ function Dashboard() {
     }
   };
 
-  const navItems = [
-    { icon: <Home className="w-5 h-5" />, label: 'Home', path: '/' },
-    { icon: <BarChart2 className="w-5 h-5" />, label: 'Dashboard', path: '/dashboard', active: true },
-    { icon: <Upload className="w-5 h-5" />, label: 'Video Upload', path: '/upload' },
-    { icon: <Activity className="w-5 h-5" />, label: 'Analytics', path: '/analytics' },
-    { icon: <Play className="w-5 h-5" />, label: 'Video Playback', path: '/playback' },
-    { icon: <Settings className="w-5 h-5" />, label: 'Settings', path: '/settings' }
-  ];
 
-  const handleSignOut = async () => {
-    try {
-      await supabase.auth.signOut();
-    } catch (error) {
-      console.error('Error signing out:', error);
-    }
-  };
 
   return (
     <div className={`min-h-screen ${
@@ -336,93 +317,9 @@ function Dashboard() {
     }`}>
       <ServerStatusIndicator />
 
-      {/* Mobile Header */}
-      <div className={`lg:hidden fixed top-0 left-0 right-0 z-50 p-4 border-b ${
-        isDark 
-          ? 'bg-[#151F32] border-[#1E293B]' 
-          : 'bg-white border-gray-200'
-      }`}>
-        <div className="flex items-center justify-between">
-          <button onClick={() => setSidebarOpen(!sidebarOpen)} className="p-2">
-            {sidebarOpen ? <X className="w-6 h-6" /> : <Menu className="w-6 h-6" />}
-          </button>
-          <span className="text-xl font-bold">Project 49</span>
-          <img
-            src={user?.user_metadata?.avatar_url || `https://ui-avatars.com/api/?name=${user?.email || 'User'}&background=0B1121&color=fff`}
-            alt="Profile"
-            className="w-8 h-8 rounded-full border-2 border-primary-500"
-          />
-        </div>
-      </div>
 
-      {/* Sidebar */}
-      <aside className={`fixed top-0 left-0 h-full w-64 transform transition-transform duration-300 ease-in-out z-40 border-r ${
-        isDark 
-          ? 'bg-[#151F32] border-[#1E293B]' 
-          : 'bg-white border-gray-200'
-      } ${
-        sidebarOpen ? 'translate-x-0' : '-translate-x-full'} lg:translate-x-0`}>
-        {/* User Profile */}
-        <div className={`p-6 mt-14 lg:mt-0 border-b ${
-          isDark ? 'border-[#1E293B]' : 'border-gray-200'
-        }`}>
-          <div className="flex items-center gap-3">
-            <img
-              src={user?.user_metadata?.avatar_url || `https://ui-avatars.com/api/?name=${user?.email || 'User'}&background=0B1121&color=fff`}
-              alt="Profile"
-              className="w-12 h-12 rounded-full border-2 border-primary-500"
-            />
-            <div>
-              <h2 className="font-semibold">{user?.user_metadata?.full_name || 'User'}</h2>
-              <p className={`text-sm truncate max-w-[150px] ${
-                isDark ? 'text-gray-400' : 'text-gray-600'
-              }`}>{user?.email}</p>
-            </div>
-          </div>
-        </div>
-
-        {/* Navigation */}
-        <nav className="p-4 overflow-y-auto h-[calc(100vh-200px)]">
-          {navItems.map((item, index) => (
-            <Link
-              key={index}
-              to={item.path}
-              onClick={() => setSidebarOpen(false)}
-              className={`flex items-center gap-3 px-4 py-3 rounded-lg mb-1 transition-colors ${
-                item.active 
-                  ? 'bg-primary-500/20 text-primary-500' 
-                  : isDark
-                  ? 'hover:bg-[#1E293B] text-gray-400 hover:text-white'
-                  : 'hover:bg-gray-100 text-gray-600 hover:text-gray-900'
-              }`}
-            >
-              {item.icon}
-              {item.label}
-            </Link>
-          ))}
-        </nav>
-
-        {/* Sign Out Button */}
-        <div className="absolute bottom-0 w-full p-4">
-          <button
-            onClick={handleSignOut}
-            className={`flex items-center gap-2 w-full px-4 py-2 rounded-lg text-red-500 transition-colors ${
-              isDark ? 'hover:bg-red-500/10' : 'hover:bg-red-50'
-            }`}
-          >
-            <LogOut className="w-5 h-5" />
-            Sign Out
-          </button>
-        </div>
-      </aside>
-
-      {/* Overlay */}
-      {sidebarOpen && (
-        <div 
-          className="fixed inset-0 bg-black bg-opacity-50 z-30 lg:hidden"
-          onClick={() => setSidebarOpen(false)}
-        />
-      )}
+      <Header title="Dashboard" onToggleSidebar={() => setSidebarOpen(s => !s)} isSidebarOpen={sidebarOpen} />
+      <Sidebar activePath="/dashboard" isOpen={sidebarOpen} onClose={() => setSidebarOpen(false)} />
 
       {/* Main Content */}
       <main className="lg:ml-64 p-4 lg:p-8 mt-16 lg:mt-0">
