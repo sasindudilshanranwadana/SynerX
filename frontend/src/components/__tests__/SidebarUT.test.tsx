@@ -8,7 +8,7 @@ import { getStoredTheme } from '../../lib/theme';
 // Mock the child Navigation component
 // We can check that it receives the correct props from Sidebar.
 const MockedNavigation = vi.fn();
-vi.mock('./Navigation', () => ({
+vi.mock('../Navigation', () => ({
   default: (props: any) => {
     // This makes the mock function callable and allows us to inspect its calls
     MockedNavigation(props);
@@ -18,7 +18,7 @@ vi.mock('./Navigation', () => ({
 }));
 
 // Mock the theme function
-vi.mock('../lib/theme', () => ({
+vi.mock('../../lib/theme', () => ({
   getStoredTheme: vi.fn(),
 }));
 

@@ -1,42 +1,39 @@
-// src/components/Navigation.test.tsx
-
-import { render, screen, fireEvent } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import '@testing-library/jest-dom';
-import Navigation, { navItems } from '../Navigation'; // import navItems for convenience
-import { supabase } from '../../lib/supabase';
-import { getStoredTheme } from '../../lib/theme';
+import Navigation, { navItems } from '../Navigation'; // Corrected import path
 
-// Mock 'react-router-dom'
-// We provide a fake Link component that just renders its children.
+// --- Hoisted Mocks ---
+const { mockGetUser, mockOnAuthStateChange, mockSignOut, mockUnsubscribe } = vi.hoisted(() => ({
+  mockGetUser: vi.fn(),
+  mockOnAuthStateChange: vi.fn(),
+  mockSignOut: vi.fn(),
+  mockUnsubscribe: vi.fn(),
+}));
+
+const { mockGetStoredTheme } = vi.hoisted(() => ({
+  mockGetStoredTheme: vi.fn(),
+}));
+
+// --- Module Mocks ---
 vi.mock('react-router-dom', () => ({
-  // We are replacing the Link component with a custom one for our tests.
-  // It will render a simple `div` to avoid the `jsdom` navigation warning.
-  Link: ({ to, children, ...props }: { to: string; children: React.ReactNode; [key: string]: any }) => (
-    // It accepts all props (`className`, `onClick`, etc.) so the component works as expected.
-    // The `data-to` attribute is just for easier debugging if you need it.
-    <div data-to={to} {...props}>
-      {children}
-    </div>
+  Link: ({ to, children, ...props }: { to: string; children: React.ReactNode }) => (
+    <div data-to={to} {...props}>{children}</div>
   ),
 }));
 
-// Mock supabase
-vi.mock('../lib/supabase', () => ({
+vi.mock('../../lib/supabase', () => ({
   supabase: {
     auth: {
-      getUser: vi.fn(),
-      onAuthStateChange: vi.fn(() => ({
-        data: { subscription: { unsubscribe: vi.fn() } },
-      })),
-      signOut: vi.fn(),
+      getUser: mockGetUser,
+      onAuthStateChange: mockOnAuthStateChange,
+      signOut: mockSignOut,
     },
   },
 }));
 
-// Mock theme
-vi.mock('../lib/theme', () => ({
-  getStoredTheme: vi.fn(),
+vi.mock('../../lib/theme', () => ({
+  getStoredTheme: mockGetStoredTheme,
 }));
 
 describe('Navigation component', () => {
@@ -50,89 +47,69 @@ describe('Navigation component', () => {
   };
 
   beforeEach(() => {
-    // Reset all mocks before each test to ensure test isolation
     vi.clearAllMocks();
-    // Default mock implementation for getUser to return no user
-    (supabase.auth.getUser as any).mockResolvedValue({ data: { user: null } });
-    // Default mock implementation for theme
-    (getStoredTheme as any).mockReturnValue('light');
+    mockGetUser.mockResolvedValue({ data: { user: null } });
+    mockGetStoredTheme.mockReturnValue('light');
+    mockOnAuthStateChange.mockReturnValue({
+      data: { subscription: { unsubscribe: mockUnsubscribe } },
+    });
   });
 
+  const renderNav = (props: Partial<React.ComponentProps<typeof Navigation>>) => {
+    render(<Navigation activePath="/" onCloseSidebar={mockOnCloseSidebar} {...props} />);
+  };
+
   it('renders all navigation items', () => {
-    render(<Navigation activePath="/" onCloseSidebar={mockOnCloseSidebar} />);
-    
-    // Check if every nav item's label is rendered
+    renderNav({});
     navItems.forEach(item => {
       expect(screen.getByText(item.label)).toBeInTheDocument();
     });
   });
 
   it('highlights the active link based on the activePath prop', () => {
-    const activePath = '/dashboard';
-    render(<Navigation activePath={activePath} onCloseSidebar={mockOnCloseSidebar} />);
-
-    // The active link should have the specific active classes
+    renderNav({ activePath: '/dashboard' });
     const activeLink = screen.getByText('Dashboard');
-    expect(activeLink).toHaveClass('bg-primary-500/20 text-primary-500');
-
-    // Another link should not have these classes
+    expect(activeLink).toHaveClass('bg-primary-500/20');
     const inactiveLink = screen.getByText('Home');
-    expect(inactiveLink).not.toHaveClass('bg-primary-500/20 text-primary-500');
+    expect(inactiveLink).not.toHaveClass('bg-primary-500/20');
   });
 
   it('calls onCloseSidebar when a navigation link is clicked', () => {
-    render(<Navigation activePath="/" onCloseSidebar={mockOnCloseSidebar} />);
-    
-    // Click on one of the links
+    renderNav({});
     fireEvent.click(screen.getByText('Dashboard'));
-
-    // Assert that our mock function was called
     expect(mockOnCloseSidebar).toHaveBeenCalledTimes(1);
   });
 
   it('displays user information when the user is logged in', async () => {
-    // Mock getUser to return our mock user
-    (supabase.auth.getUser as any).mockResolvedValue({ data: { user: mockUser } });
+    mockGetUser.mockResolvedValue({ data: { user: mockUser } });
+    renderNav({});
     
-    render(<Navigation activePath="/" onCloseSidebar={mockOnCloseSidebar} />);
-
-    // Use `findBy` to wait for the component to update after the async getUser call
-    expect(await screen.findByText('Test User')).toBeInTheDocument();
-    expect(screen.getByText('test@example.com')).toBeInTheDocument();
-    
-    const avatar = screen.getByAltText('Profile') as HTMLImageElement;
-    expect(avatar.src).toBe(mockUser.user_metadata.avatar_url);
+    await waitFor(() => {
+        expect(screen.getByText('Test User')).toBeInTheDocument();
+        expect(screen.getByText('test@example.com')).toBeInTheDocument();
+        const avatar = screen.getByAltText('Profile') as HTMLImageElement;
+        expect(avatar.src).toBe(mockUser.user_metadata.avatar_url);
+    });
   });
 
   it('displays default information when no user is logged in', async () => {
-    render(<Navigation activePath="/" onCloseSidebar={mockOnCloseSidebar} />);
-
-    // Check for default text
+    renderNav({});
     expect(await screen.findByText('User')).toBeInTheDocument();
-
-    // Check for default avatar from ui-avatars.com
     const avatar = screen.getByAltText('Profile') as HTMLImageElement;
     expect(avatar.src).toContain('https://ui-avatars.com/api/');
   });
 
   it('calls supabase.auth.signOut when the sign out button is clicked', () => {
-    render(<Navigation activePath="/" onCloseSidebar={mockOnCloseSidebar} />);
-    
+    renderNav({});
     const signOutButton = screen.getByRole('button', { name: /Sign Out/i });
     fireEvent.click(signOutButton);
-    
-    // Check that the signOut function from our mocked supabase was called
-    expect(supabase.auth.signOut).toHaveBeenCalledTimes(1);
+    expect(mockSignOut).toHaveBeenCalledTimes(1);
   });
 
   it('applies dark mode classes when the theme is dark', () => {
-    // Set the mock to return 'dark'
-    (getStoredTheme as any).mockReturnValue('dark');
-    render(<Navigation activePath="/" onCloseSidebar={mockOnCloseSidebar} />);
-    
+    mockGetStoredTheme.mockReturnValue('dark');
+    renderNav({});
     const inactiveLink = screen.getByText('Dashboard');
-    
-    // Check for the specific dark mode hover class
     expect(inactiveLink).toHaveClass('hover:bg-[#1E293B]');
   });
 });

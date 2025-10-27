@@ -1,6 +1,7 @@
 import { render, screen, fireEvent, act, waitFor } from '@testing-library/react';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import Playback from '../Playback';
+import { MemoryRouter } from 'react-router-dom'; // Added import
 
 // --- Mock HTMLCanvasElement and HTMLMediaElement ---
 Object.defineProperty(HTMLCanvasElement.prototype, 'getContext', {
@@ -56,7 +57,7 @@ const { mockFetchFilteredVideos, mockFetchVideoSummary, mockDeleteVideoFromRunPo
 });
 
 // --- Module Mocks ---
-vi.mock('../lib/api', () => ({
+vi.mock('../../lib/api', () => ({
     fetchFilteredVideos: mockFetchFilteredVideos,
     fetchVideoSummary: mockFetchVideoSummary,
     deleteVideoFromRunPod: mockDeleteVideoFromRunPod,
@@ -68,10 +69,10 @@ vi.mock('chart.js', () => ({
     registerables: []
 }));
 
-vi.mock('../lib/theme', () => ({ getStoredTheme: () => 'dark' }));
-vi.mock('../components/Header', () => ({ default: () => <header>Header Mock</header> }));
-vi.mock('../components/Sidebar', () => ({ default: () => <aside>Sidebar Mock</aside> }));
-vi.mock('../components/ServerStatusIndicator', () => ({ default: () => <div>Server Status Mock</div> }));
+vi.mock('../../lib/theme', () => ({ getStoredTheme: () => 'dark' }));
+vi.mock('../../components/Header', () => ({ default: () => <header>Header Mock</header> }));
+vi.mock('../../components/Sidebar', () => ({ default: () => <aside>Sidebar Mock</aside> }));
+vi.mock('../../components/ServerStatusIndicator', () => ({ default: () => <div>Server Status Mock</div> }));
 
 // --- Mock Data ---
 const mockVideos = [ 
@@ -101,7 +102,11 @@ describe('Playback Component', () => {
     });
 
     it('renders initial layout and loads videos successfully', async () => {
-        render(<Playback />);
+        render(
+            <MemoryRouter>
+                <Playback />
+            </MemoryRouter>
+        );
         
         await act(async () => {
             await vi.runOnlyPendingTimersAsync();
@@ -112,7 +117,11 @@ describe('Playback Component', () => {
     
     it('displays an error message if initial video load fails', async () => {
         mockFetchFilteredVideos.mockRejectedValue(new Error('NetworkError'));
-        render(<Playback />);
+        render(
+            <MemoryRouter>
+                <Playback />
+            </MemoryRouter>
+        );
         
         await act(async () => {
             await vi.runOnlyPendingTimersAsync();
@@ -122,7 +131,11 @@ describe('Playback Component', () => {
     });
 
     it('filters videos based on search term', async () => {
-        render(<Playback />);
+        render(
+            <MemoryRouter>
+                <Playback />
+            </MemoryRouter>
+        );
         
         await act(async () => {
             await vi.runOnlyPendingTimersAsync();
@@ -136,7 +149,11 @@ describe('Playback Component', () => {
     });
 
     it('applies filters and reloads data when "Apply Filters" is clicked', async () => {
-        render(<Playback />);
+        render(
+            <MemoryRouter>
+                <Playback />
+            </MemoryRouter>
+        );
         
         await act(async () => {
             await vi.runOnlyPendingTimersAsync();
@@ -154,7 +171,11 @@ describe('Playback Component', () => {
     
     describe('Summary Modal', () => {
         it('opens, fetches data, and displays summary when "Analytics" is clicked', async () => {
-            render(<Playback />);
+            render(
+                <MemoryRouter>
+                    <Playback />
+                </MemoryRouter>
+            );
             
             // Process initial timers
             await act(async () => {
@@ -178,7 +199,11 @@ describe('Playback Component', () => {
         });
 
         it('closes the modal and cleans up resources', async () => {
-            render(<Playback />);
+            render(
+                <MemoryRouter>
+                    <Playback />
+                </MemoryRouter>
+            );
             
             // Process initial load
             await act(async () => {
@@ -220,7 +245,11 @@ describe('Playback Component', () => {
 
     describe('Delete Functionality', () => {
         it('opens confirmation modal and deletes video upon confirmation', async () => {
-            render(<Playback />);
+            render(
+                <MemoryRouter>
+                    <Playback />
+                </MemoryRouter>
+            );
             
             await act(async () => {
                 await vi.runOnlyPendingTimersAsync();
@@ -242,7 +271,11 @@ describe('Playback Component', () => {
         });
 
         it('closes confirmation modal on cancel', async () => {
-            render(<Playback />);
+            render(
+                <MemoryRouter>
+                    <Playback />
+                </MemoryRouter>
+            );
             
             await act(async () => {
                 await vi.runOnlyPendingTimersAsync();

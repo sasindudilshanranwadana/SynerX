@@ -6,7 +6,7 @@ import ServerStatusIndicator from '../ServerStatusIndicator';
 import { getStoredTheme } from '../../lib/theme';
 
 // Mocks remain the same and are still necessary
-vi.mock('../lib/theme', () => ({
+vi.mock('../../lib/theme', () => ({
   getStoredTheme: vi.fn(),
 }));
 
