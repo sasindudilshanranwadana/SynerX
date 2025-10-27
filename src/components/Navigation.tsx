@@ -6,6 +6,7 @@ import {
   Upload, 
   Activity, 
   Play,
+  HardDrive,
   Settings, 
   LogOut 
 } from 'lucide-react';
@@ -23,6 +24,7 @@ export const navItems = [
   { icon: <Upload className="w-5 h-5" />, label: 'Video Upload', path: '/upload' },
   { icon: <Activity className="w-5 h-5" />, label: 'Analytics', path: '/analytics' },
   { icon: <Play className="w-5 h-5" />, label: 'Video Playback', path: '/playback' },
+  { icon: <HardDrive className="w-5 h-5" />, label: 'Storage', path: '/storage' },
   { icon: <Settings className="w-5 h-5" />, label: 'Settings', path: '/settings' }
 ];
 
@@ -31,8 +33,12 @@ function Navigation({ activePath, onCloseSidebar }: NavigationProps) {
   const [isDark, setIsDark] = React.useState(() => getStoredTheme() === 'dark');
 
   React.useEffect(() => {
+    // Get user immediately without waiting
     supabase.auth.getUser().then(({ data: { user } }) => {
       setUser(user);
+    }).catch(() => {
+      // If auth fails, still show navigation
+      setUser(null);
     });
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
@@ -94,6 +100,7 @@ function Navigation({ activePath, onCloseSidebar }: NavigationProps) {
                 ? 'hover:bg-[#1E293B] text-gray-400 hover:text-white'
                 : 'hover:bg-gray-100 text-gray-600 hover:text-gray-900'
             }`}
+            style={{ opacity: 1, visibility: 'visible' }}
           >
             {item.icon}
             {item.label}

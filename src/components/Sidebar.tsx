@@ -22,12 +22,18 @@ function Sidebar({ activePath, isOpen, onClose }: SidebarProps) {
 
   return (
     <>
-      <aside className={`fixed top-0 left-0 h-full w-64 transform transition-transform duration-300 ease-in-out z-40 border-r ${
+      <aside className={`fixed top-0 left-0 h-full w-64 z-40 border-r ${
         isDark 
           ? 'bg-[#151F32] border-[#1E293B]' 
           : 'bg-white border-gray-200'
       } ${
-        isOpen ? 'translate-x-0' : '-translate-x-full'} lg:translate-x-0`}>
+        isOpen ? 'translate-x-0' : '-translate-x-full'} lg:translate-x-0 lg:block`}
+      style={{ 
+        display: 'block',
+        visibility: 'visible',
+        opacity: 1,
+        transform: 'translateX(0)'
+      }}>
         <Navigation activePath={activePath} onCloseSidebar={onClose} />
       </aside>
 
@@ -36,6 +42,7 @@ function Sidebar({ activePath, isOpen, onClose }: SidebarProps) {
         <div 
           className="fixed inset-0 bg-black bg-opacity-50 z-30 lg:hidden"
           onClick={onClose}
+          role="dialog"
         />
       )}
     </>

@@ -27,6 +27,8 @@ export const fetchFilteredVideos = async (filters: {
   dateTo?: string;
   orderBy?: string;
   orderDesc?: string;
+  limit?: number;
+  offset?: number;
 } = {}) => {
   try {
     let endpoint = '/data/videos/filter';
@@ -35,13 +37,15 @@ export const fetchFilteredVideos = async (filters: {
     if (filters.dateTo) params.set('date_to', filters.dateTo);
     if (filters.orderBy) params.set('order_by', filters.orderBy);
     if (filters.orderDesc) params.set('order_desc', filters.orderDesc);
+    if (typeof filters.limit === 'number') params.set('limit', String(filters.limit));
+    if (typeof filters.offset === 'number') params.set('offset', String(filters.offset));
     
     if (params.toString()) {
       endpoint += '?' + params.toString();
     }
     
     const data = await fetchJSON(endpoint);
-    return data;
+    return data; // includes: data, count (total), limit, offset, next_href, prev_href
   } catch (error) {
     console.error('Error fetching filtered videos:', error);
     throw error;
@@ -77,6 +81,12 @@ export const deleteVideoFromRunPod = async (videoId: number) => {
 
 export const getStreamingVideoUrl = (videoId: number): string => {
   return `${RUNPOD_API_BASE}/data/video/${videoId}`;
+};
+
+export const getSignedStreamingUrl = async (videoId: number, expiresInSeconds: number = 300): Promise<string> => {
+  const data = await fetchJSON(`/data/video/${videoId}/signed?expires_in=${expiresInSeconds}`);
+  if (data.status !== 'success' || !data.url) throw new Error('Failed to get signed URL');
+  return data.url as string;
 };
 
 // Helper function to create chart and capture image
@@ -197,19 +207,28 @@ const retryWithBackoff = async <T>(
   throw lastError;
 };
 
-// Robust JSON fetch helper with automatic RunPod URL resolution and cold start retry
+// Robust JSON fetch helper with automatic RunPod URL resolution, Supabase JWT, and cold start retry
 export const fetchJSON = async (url: string, options?: RequestInit, enableRetry: boolean = true) => {
   // If URL is relative, prepend RUNPOD_API_BASE (which is /api in dev, full URL in prod)
   const fullUrl = url.startsWith('http') ? url : `${RUNPOD_API_BASE}${url.startsWith('/') ? url : '/' + url}`;
 
   const fetchFn = async () => {
-    // Add RunPod API key to all requests
-    const headers: HeadersInit = {
-      ...options?.headers,
-    };
+    // Build headers via Headers to avoid type issues
+    const headers = new Headers(options?.headers as any);
 
     if (import.meta.env.VITE_RUNPOD_API_KEY) {
-      headers['Authorization'] = `Bearer ${import.meta.env.VITE_RUNPOD_API_KEY}`;
+      headers.set('Authorization', `Bearer ${import.meta.env.VITE_RUNPOD_API_KEY}`);
+    }
+
+    // Attach Supabase user JWT if present (client-side auth)
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      const userToken = (session as any)?.access_token as string | undefined;
+      if (userToken) {
+        headers.set('Authorization', `Bearer ${userToken}`);
+      }
+    } catch (e) {
+      // Ignore if session fetch fails; request may still succeed for public endpoints
     }
 
     const res = await fetch(fullUrl, { ...options, headers });
@@ -222,13 +241,22 @@ export const fetchJSON = async (url: string, options?: RequestInit, enableRetry:
       console.error('Raw response text:', text);
     }
 
-    try {
+      try {
       const data = text ? JSON.parse(text) : {};
       if (!res.ok) {
         // Create error with response text for cold start detection
         const error: any = new Error(`${res.status} ${data.detail || data.error || res.statusText}`);
         error.response = text;
         error.status = res.status;
+          // On unauthorized, redirect to auth page
+          if (res.status === 401) {
+            try {
+              await supabase.auth.signOut();
+            } catch {}
+            if (typeof window !== 'undefined') {
+              window.location.href = '/auth';
+            }
+          }
         throw error;
       }
       return data;
@@ -237,6 +265,10 @@ export const fetchJSON = async (url: string, options?: RequestInit, enableRetry:
         const error: any = new Error(`${res.status} ${res.statusText}`);
         error.response = text;
         error.status = res.status;
+          if (res.status === 401 && typeof window !== 'undefined') {
+            try { await supabase.auth.signOut(); } catch {}
+            window.location.href = '/auth';
+          }
         throw error;
       }
       throw parseError;
@@ -255,14 +287,21 @@ export const fetchJSON = async (url: string, options?: RequestInit, enableRetry:
 const fetchJSONAlternative = async (url: string, options?: RequestInit) => {
   const fullUrl = url.startsWith('http') ? url : `${RUNPOD_API_BASE}${url.startsWith('/') ? url : '/' + url}`;
 
-  // Add RunPod API key to all requests
-  const headers: HeadersInit = {
-    ...options?.headers,
-  };
+  // Build headers via Headers
+  const headers = new Headers(options?.headers as any);
 
   if (import.meta.env.VITE_RUNPOD_API_KEY) {
-    headers['Authorization'] = `Bearer ${import.meta.env.VITE_RUNPOD_API_KEY}`;
+    headers.set('Authorization', `Bearer ${import.meta.env.VITE_RUNPOD_API_KEY}`);
   }
+
+  // Attach Supabase user JWT if present
+  try {
+    const { data: { session } } = await supabase.auth.getSession();
+    const userToken = (session as any)?.access_token as string | undefined;
+    if (userToken) {
+      headers.set('Authorization', `Bearer ${userToken}`);
+    }
+  } catch {}
 
   const res = await fetch(fullUrl, { ...options, headers });
   
@@ -285,6 +324,10 @@ const fetchJSONAlternative = async (url: string, options?: RequestInit) => {
       // If we can't read the response body, use the status text
     }
     
+    if (res.status === 401 && typeof window !== 'undefined') {
+      try { await supabase.auth.signOut(); } catch {}
+      window.location.href = '/auth';
+    }
     throw new Error(`${res.status} ${errorMessage}`);
   }
   
@@ -352,6 +395,9 @@ export const startRunPodProcessing = async (video: Video): Promise<{ job_id: str
   try {
     const formData = new FormData();
     
+    // NOTE: This function path is deprecated in favor of startRunPodProcessingDirect.
+    // Keeping signature for compatibility; backend expects a file Blob.
+    // @ts-expect-error legacy path: `video` here is not a Blob. Use startRunPodProcessingDirect instead.
     formData.append('file', video);
     formData.append('video_id', video.id.toString());
     formData.append('video_name', video.video_name);

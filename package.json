@@ -1,9 +1,14 @@
 {
   "type": "module",
   "scripts": {
-    "dev": "vite",
+    "dev": "concurrently --kill-others-on-fail -n \"FRONTEND,BACKEND\" -c \"cyan,magenta\" \"npm run frontend\" \"npm run backend\"",
+    "frontend": "vite",
+    "backend": "cd ../backend && node scripts/start-backend.js",
     "build": "tsc && vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "test": "vitest",
+    "coverage": "vitest run --coverage",
+    "testui": "vitest --ui"
   },
   "dependencies": {
     "@supabase/auth-ui-react": "^0.4.7",
@@ -25,14 +30,21 @@
     "recharts": "^2.12.0"
   },
   "devDependencies": {
+    "@testing-library/jest-dom": "^6.9.1",
+    "@testing-library/react": "^16.3.0",
+    "@types/papaparse": "^5.3.16",
     "@types/react": "^18.2.43",
     "@types/react-dom": "^18.2.17",
     "@types/react-plotly.js": "^2.6.3",
     "@vitejs/plugin-react": "^4.2.1",
+    "@vitest/ui": "^3.2.4",
     "autoprefixer": "^10.4.17",
+    "concurrently": "^8.2.2",
+    "jsdom": "^27.0.1",
     "postcss": "^8.4.35",
     "tailwindcss": "^3.4.1",
     "typescript": "^5.2.2",
-    "vite": "^5.0.8"
+    "vite": "^5.0.8",
+    "vitest": "^3.2.4"
   }
 }

@@ -4,7 +4,8 @@ import Header from '../components/Header';
 import Sidebar from '../components/Sidebar';
 import ServerStatusIndicator from '../components/ServerStatusIndicator';
 import { getStoredTheme } from '../lib/theme';
-import { fetchFilteredVideos, fetchVideoSummary, deleteVideoFromRunPod, getStreamingVideoUrl } from '../lib/api';
+import { fetchFilteredVideos, fetchVideoSummary, deleteVideoFromRunPod, getStreamingVideoUrl, getSignedStreamingUrl } from '../lib/api';
+import { supabase } from '../lib/supabase';
 import { formatDateTime, formatDateTimeCompact, formatRelativeTime, getLocalTimezoneAbbreviation } from '../lib/dateUtils';
 import { Chart, registerables } from 'chart.js';
 
@@ -86,6 +87,9 @@ function Playback() {
   const [loading, setLoading] = React.useState(false);
   const [statusMessage, setStatusMessage] = React.useState('');
   const [videoCount, setVideoCount] = React.useState(0);
+  // Pagination state
+  const [limit, setLimit] = React.useState<number>(25);
+  const [offset, setOffset] = React.useState<number>(0);
   
   // Filter states
   const [dateFrom, setDateFrom] = React.useState('');
@@ -119,6 +123,8 @@ function Playback() {
   // Video refs
   const summaryVideoRef = React.useRef<HTMLVideoElement>(null);
   const modalVideoRef = React.useRef<HTMLVideoElement>(null);
+  const summaryObjectUrlRef = React.useRef<string | null>(null);
+  const modalObjectUrlRef = React.useRef<string | null>(null);
   
   // Notification
   const [notification, setNotification] = React.useState<NotificationState>({
@@ -128,6 +134,7 @@ function Playback() {
   });
   
   const notificationTimeoutRef = React.useRef<NodeJS.Timeout>();
+  const pagesCacheRef = React.useRef<Map<string, { data: Video[]; count: number }>>(new Map());
 
   React.useEffect(() => {
     const handleThemeChange = () => {
@@ -136,9 +143,8 @@ function Playback() {
     
     window.addEventListener('themeChanged', handleThemeChange);
     
-    // Set default date range and load videos
-    setDefaultDateRange(7);
-    loadVideos();
+    // Load first page without applying default date filters
+    fetchAndSetPage(0);
     
     return () => {
       window.removeEventListener('themeChanged', handleThemeChange);
@@ -176,17 +182,39 @@ function Playback() {
     setDateFrom(fromStr);
   };
 
-  const loadVideos = async () => {
+  const buildPageKey = (targetOffset: number) =>
+    JSON.stringify({ dateFrom, dateTo, orderBy, orderDesc, limit, offset: targetOffset });
+
+  const fetchAndSetPage = async (targetOffset: number, withSuccessToast: boolean = false) => {
+    const key = buildPageKey(targetOffset);
+    const cached = pagesCacheRef.current.get(key);
+    if (cached) {
+      setVideos(cached.data || []);
+      setVideoCount(cached.count || 0);
+    }
+
     setLoading(true);
     setStatusMessage('Loading videos...');
     try {
-      const data = await fetchFilteredVideos();
+      const data = await fetchFilteredVideos({
+        dateFrom: dateFrom || undefined,
+        dateTo: dateTo || undefined,
+        orderBy,
+        orderDesc,
+        limit,
+        offset: targetOffset
+      });
       if (data.status !== 'success') {
         throw new Error(data.error || 'Failed to load videos');
       }
       setVideos(data.data || []);
       setVideoCount(data.count || 0);
+      setOffset(targetOffset);
+      pagesCacheRef.current.set(key, { data: data.data || [], count: data.count || 0 });
       setStatusMessage('');
+      if (withSuccessToast) {
+        showNotification('Filters applied successfully', 'success', 3000);
+      }
     } catch (error: any) {
       const errorMsg = getErrorMessage(error);
       setStatusMessage(`Error: ${errorMsg}`);
@@ -197,32 +225,29 @@ function Playback() {
   };
 
   const applyFilters = async () => {
-    setLoading(true);
-    setStatusMessage('Applying filters...');
-    try {
-      const filters = {
-        dateFrom: dateFrom || undefined,
-        dateTo: dateTo || undefined,
-        orderBy: orderBy || undefined,
-        orderDesc: orderDesc || undefined,
-      };
-      
-      const data = await fetchFilteredVideos(filters);
-      if (data.status !== 'success') {
-        throw new Error(data.error || 'Failed to apply filters');
-      }
-      setVideos(data.data || []);
-      setVideoCount(data.count || 0);
-      setStatusMessage('');
-      showNotification('Filters applied successfully', 'success', 3000);
-    } catch (error: any) {
-      const errorMsg = getErrorMessage(error);
-      setStatusMessage(`Error: ${errorMsg}`);
-      showNotification(errorMsg, 'error');
-    } finally {
-      setLoading(false);
-    }
+    // Reset pagination and cache when filters are (re)applied
+    pagesCacheRef.current.clear();
+    await fetchAndSetPage(0, true);
   };
+
+  const totalPages = Math.max(1, Math.ceil((videoCount || 0) / (limit || 1)));
+  const currentPage = Math.min(totalPages, Math.floor((offset || 0) / (limit || 1)) + 1);
+  const goToPage = async (page: number) => {
+    const clamped = Math.max(1, Math.min(totalPages, page));
+    const newOffset = (clamped - 1) * limit;
+    await fetchAndSetPage(newOffset);
+  };
+
+  const pageWindow = React.useMemo(() => {
+    const windowSize = 5;
+    const pages: number[] = [];
+    let start = Math.max(1, currentPage - Math.floor(windowSize / 2));
+    let end = Math.min(totalPages, start + windowSize - 1);
+    // Adjust start if near the end
+    start = Math.max(1, Math.min(start, Math.max(1, end - windowSize + 1)));
+    for (let p = start; p <= end; p++) pages.push(p);
+    return pages;
+  }, [currentPage, totalPages]);
 
   const openSummary = async (videoId: number, name: string) => {
     setSummaryModalOpen(true);
@@ -237,10 +262,14 @@ function Playback() {
       }
       setSummaryData(data);
       
-      // Auto-load video in summary modal
-      setTimeout(() => {
-        if (summaryVideoRef.current) {
-          summaryVideoRef.current.src = getStreamingVideoUrl(videoId);
+      // Prefer signed URL for progressive streaming
+      setTimeout(async () => {
+        try {
+          const signed = await getSignedStreamingUrl(videoId);
+          if (summaryVideoRef.current) summaryVideoRef.current.src = signed;
+        } catch {
+          // Fallback to auth fetch if signed URL fails
+          loadVideoWithAuth(videoId, 'summary');
         }
       }, 100);
       
@@ -262,6 +291,10 @@ function Playback() {
       summaryVideoRef.current.pause();
       summaryVideoRef.current.src = '';
     }
+    if (summaryObjectUrlRef.current) {
+      URL.revokeObjectURL(summaryObjectUrlRef.current);
+      summaryObjectUrlRef.current = null;
+    }
   };
 
   const playVideo = (videoId: number, videoName: string) => {
@@ -270,10 +303,15 @@ function Playback() {
     setVideoModalOpen(true);
     setVideoInfo('Loading video...');
     
-    if (modalVideoRef.current) {
-      const streamingUrl = getStreamingVideoUrl(videoId);
-      modalVideoRef.current.src = streamingUrl;
-    }
+    // Prefer signed URL for progressive streaming
+    (async () => {
+      try {
+        const signed = await getSignedStreamingUrl(videoId);
+        if (modalVideoRef.current) modalVideoRef.current.src = signed;
+      } catch {
+        loadVideoWithAuth(videoId, 'modal');
+      }
+    })();
   };
 
   const closeVideoModal = () => {
@@ -285,6 +323,10 @@ function Playback() {
     if (modalVideoRef.current) {
       modalVideoRef.current.pause();
       modalVideoRef.current.src = '';
+    }
+    if (modalObjectUrlRef.current) {
+      URL.revokeObjectURL(modalObjectUrlRef.current);
+      modalObjectUrlRef.current = null;
     }
   };
 
@@ -343,6 +385,44 @@ function Playback() {
     if (weatherComplianceRateChartRef.current) {
       weatherComplianceRateChartRef.current.destroy();
       weatherComplianceRateChartRef.current = null;
+    }
+  };
+
+  const buildAuthHeaders = async (): Promise<Headers> => {
+    const headers = new Headers();
+    if (import.meta.env.VITE_RUNPOD_API_KEY) {
+      headers.set('Authorization', `Bearer ${import.meta.env.VITE_RUNPOD_API_KEY}`);
+    }
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      const userToken = (session as any)?.access_token as string | undefined;
+      if (userToken) {
+        headers.set('Authorization', `Bearer ${userToken}`);
+      }
+    } catch {}
+    return headers;
+  };
+
+  const loadVideoWithAuth = async (videoId: number, target: 'summary' | 'modal') => {
+    try {
+      const url = getStreamingVideoUrl(videoId);
+      const headers = await buildAuthHeaders();
+      const res = await fetch(url, { headers });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const blob = await res.blob();
+      const objectUrl = URL.createObjectURL(blob);
+      if (target === 'summary') {
+        if (summaryObjectUrlRef.current) URL.revokeObjectURL(summaryObjectUrlRef.current);
+        summaryObjectUrlRef.current = objectUrl;
+        if (summaryVideoRef.current) summaryVideoRef.current.src = objectUrl;
+      } else {
+        if (modalObjectUrlRef.current) URL.revokeObjectURL(modalObjectUrlRef.current);
+        modalObjectUrlRef.current = objectUrl;
+        if (modalVideoRef.current) modalVideoRef.current.src = objectUrl;
+      }
+    } catch (e) {
+      setVideoInfo('Error loading video. Please check the URL.');
+      console.error('Error loading video with auth:', e);
     }
   };
 
@@ -717,11 +797,12 @@ function Playback() {
             
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-6 gap-4 mb-4">
               <div className="lg:col-span-2">
-                <label className={`block text-sm font-medium mb-2 ${isDark ? 'text-gray-300' : 'text-gray-700'}`}>
+                <label htmlFor="video-search" className={`block text-sm font-medium mb-2 ${isDark ? 'text-gray-300' : 'text-gray-700'}`}>
                   <Search className="w-4 h-4 inline mr-2" />
                   Search Videos
                 </label>
                 <input
+                  id="video-search" // Add ID for accessibility
                   type="text"
                   value={searchTerm}
                   onChange={(e) => setSearchTerm(e.target.value)}
@@ -734,11 +815,12 @@ function Playback() {
                 />
               </div>
               <div>
-                <label className={`block text-sm font-medium mb-2 ${isDark ? 'text-gray-300' : 'text-gray-700'}`}>
+                <label htmlFor="date-from" className={`block text-sm font-medium mb-2 ${isDark ? 'text-gray-300' : 'text-gray-700'}`}>
                   <Calendar className="w-4 h-4 inline mr-2" />
                   From Date
                 </label>
                 <input
+                  id="date-from"
                   type="date"
                   value={dateFrom}
                   onChange={(e) => setDateFrom(e.target.value)}
@@ -750,11 +832,12 @@ function Playback() {
                 />
               </div>
               <div>
-                <label className={`block text-sm font-medium mb-2 ${isDark ? 'text-gray-300' : 'text-gray-700'}`}>
+                <label htmlFor="date-to" className={`block text-sm font-medium mb-2 ${isDark ? 'text-gray-300' : 'text-gray-700'}`}>
                   <Calendar className="w-4 h-4 inline mr-2" />
                   To Date
                 </label>
                 <input
+                  id="date-to"
                   type="date"
                   value={dateTo}
                   onChange={(e) => setDateTo(e.target.value)}
@@ -766,10 +849,11 @@ function Playback() {
                 />
               </div>
               <div>
-                <label className={`block text-sm font-medium mb-2 ${isDark ? 'text-gray-300' : 'text-gray-700'}`}>
+                <label htmlFor="sort-by" className={`block text-sm font-medium mb-2 ${isDark ? 'text-gray-300' : 'text-gray-700'}`}>
                   Sort By
                 </label>
                 <select
+                  id="sort-by"
                   value={orderBy}
                   onChange={(e) => setOrderBy(e.target.value)}
                   className={`w-full px-4 py-3 rounded-lg border transition-all duration-200 ${
@@ -784,10 +868,11 @@ function Playback() {
                 </select>
               </div>
               <div>
-                <label className={`block text-sm font-medium mb-2 ${isDark ? 'text-gray-300' : 'text-gray-700'}`}>
+                <label htmlFor="order" className={`block text-sm font-medium mb-2 ${isDark ? 'text-gray-300' : 'text-gray-700'}`}>
                   Order
                 </label>
                 <select
+                  id="order"
                   value={orderDesc}
                   onChange={(e) => setOrderDesc(e.target.value)}
                   className={`w-full px-4 py-3 rounded-lg border transition-all duration-200 ${
@@ -802,7 +887,7 @@ function Playback() {
               </div>
             </div>
             
-            <div className="flex items-center justify-between">
+              <div className="flex items-center justify-between">
               <div className="flex items-center gap-3">
                 <button
                   onClick={applyFilters}
@@ -813,7 +898,7 @@ function Playback() {
                   Apply Filters
                 </button>
                 <button
-                  onClick={loadVideos}
+                  onClick={() => { pagesCacheRef.current.clear(); fetchAndSetPage(0); }}
                   disabled={loading}
                   className={`px-6 py-3 rounded-lg transition-all duration-200 flex items-center gap-2 font-medium ${
                     isDark 
@@ -824,6 +909,58 @@ function Playback() {
                   <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
                   Refresh
                 </button>
+              </div>
+              <div className="flex items-center gap-4">
+                {/* Numbered pagination */}
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => goToPage(1)}
+                    disabled={currentPage <= 1 || loading}
+                    className={`px-3 py-2 rounded-lg text-sm font-medium ${isDark ? 'bg-[#1E293B] text-gray-300 border border-[#2D3B4E]' : 'bg-gray-100 text-gray-700 border border-gray-300'} disabled:opacity-50`}
+                  >
+                    First
+                  </button>
+                  <button
+                    onClick={() => goToPage(currentPage - 1)}
+                    disabled={currentPage <= 1 || loading}
+                    className={`px-3 py-2 rounded-lg text-sm font-medium ${isDark ? 'bg-[#1E293B] text-gray-300 border border-[#2D3B4E]' : 'bg-gray-100 text-gray-700 border border-gray-300'} disabled:opacity-50`}
+                  >
+                    Prev
+                  </button>
+                  {pageWindow.map(p => (
+                    <button
+                      key={p}
+                      onClick={() => goToPage(p)}
+                      disabled={loading}
+                      className={`px-3 py-2 rounded-lg text-sm font-medium border ${
+                        p === currentPage
+                          ? 'bg-primary-500 text-white border-primary-500'
+                          : isDark
+                            ? 'bg-[#1E293B] text-gray-300 border-[#2D3B4E]'
+                            : 'bg-gray-100 text-gray-700 border-gray-300'
+                      }`}
+                    >
+                      {p}
+                    </button>
+                  ))}
+                  <button
+                    onClick={() => goToPage(currentPage + 1)}
+                    disabled={currentPage >= totalPages || loading}
+                    className={`px-3 py-2 rounded-lg text-sm font-medium ${isDark ? 'bg-[#1E293B] text-gray-300 border border-[#2D3B4E]' : 'bg-gray-100 text-gray-700 border border-gray-300'} disabled:opacity-50`}
+                  >
+                    Next
+                  </button>
+                  <button
+                    onClick={() => goToPage(totalPages)}
+                    disabled={currentPage >= totalPages || loading}
+                    className={`px-3 py-2 rounded-lg text-sm font-medium ${isDark ? 'bg-[#1E293B] text-gray-300 border border-[#2D3B4E]' : 'bg-gray-100 text-gray-700 border border-gray-300'} disabled:opacity-50`}
+                  >
+                    Last
+                  </button>
+                </div>
+                <div className={`text-xs ${isDark ? 'text-gray-400' : 'text-gray-600'}`}>
+                  {videoCount > 0 ? `Page ${currentPage} of ${totalPages} • Showing ${Math.min(offset + 1, videoCount)}–${Math.min(offset + (videos?.length || 0), videoCount)} of ${videoCount}` : ''}
+                </div>
               </div>
               {statusMessage && (
                 <div className={`text-sm font-medium ${
@@ -852,7 +989,7 @@ function Playback() {
                   <div>
                     <h2 className="text-xl font-semibold">Video Library</h2>
                     <p className={`text-sm ${isDark ? 'text-gray-400' : 'text-gray-600'}`}>
-                      {filteredVideos.length} of {videoCount} videos {searchTerm && `matching "${searchTerm}"`}
+                      {Math.min(offset + (filteredVideos?.length || 0), videoCount)} of {videoCount} videos {searchTerm && `matching "${searchTerm}"`}
                     </p>
                   </div>
                 </div>
@@ -1015,6 +1152,7 @@ function Playback() {
               </div>
               <button
                 onClick={closeSummary}
+                aria-label="Close summary modal"
                 className={`p-2 rounded-lg transition-colors ${
                   isDark ? 'hover:bg-[#1E293B] text-gray-300' : 'hover:bg-gray-100 text-gray-700'
                 }`}
@@ -1286,6 +1424,7 @@ function Playback() {
               </div>
               <button
                 onClick={closeVideoModal}
+                aria-label="Close video player"
                 className={`p-2 rounded-lg transition-colors ${
                   isDark ? 'hover:bg-[#1E293B] text-gray-300' : 'hover:bg-gray-100 text-gray-700'
                 }`}
@@ -1312,6 +1451,12 @@ function Playback() {
                   isDark ? 'text-gray-400' : 'text-gray-600'
                 }`}>
                   {videoInfo}
+                </div>
+                <div className={`mt-2 text-xs ${isDark ? 'text-yellow-300/90' : 'text-yellow-700'} flex items-center justify-center gap-2`}>
+                  <Info className={`w-4 h-4 ${isDark ? 'text-yellow-300/90' : 'text-yellow-600'}`} />
+                  <span>
+                    Large videos may take a few seconds to start buffering on first play.
+                  </span>
                 </div>
               </div>
             </div>

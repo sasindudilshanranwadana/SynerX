@@ -1,18 +1,18 @@
 import React from 'react';
-import { Activity, Download, RefreshCw, Calendar, Filter } from 'lucide-react';
+import { Activity, Download, RefreshCw, Calendar, Filter, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight } from 'lucide-react';
 import Header from '../components/Header';
 import Sidebar from '../components/Sidebar';
 import ServerStatusIndicator from '../components/ServerStatusIndicator';
 import jsPDF from 'jspdf';
 import 'jspdf-autotable';
 import { format, parseISO } from 'date-fns';
-import { generatePDFReport } from '../lib/api';
+import { generatePDFReport, fetchJSON } from '../lib/api';
 import { TrackingResult } from '../lib/types';
 import { getStoredTheme } from '../lib/theme';
 import { getAllTrackingResults } from '../lib/database';
 import { formatDateTime, getLocalTimezoneAbbreviation } from '../lib/dateUtils';
 
-const RUNPOD_API_BASE = import.meta.env.VITE_RUNPOD_URL || 'http://localhost:8000';
+// Requests to backend analysis endpoints use fetchJSON to ensure base URL and auth headers
 
 import { fetchTrackingResults, fetchVehicleCounts, generateDetailedReport, downloadCSV } from '../lib/api';
 
@@ -57,6 +57,10 @@ function Analytics() {
   const [weatherFilter, setWeatherFilter] = React.useState('');
   const [vehicleFilter, setVehicleFilter] = React.useState('');
   const [complianceFilter, setComplianceFilter] = React.useState('');
+  
+  // Pagination states
+  const [currentPage, setCurrentPage] = React.useState(1);
+  const [itemsPerPage, setItemsPerPage] = React.useState(10);
 
   // Stats
   const [stats, setStats] = React.useState({
@@ -266,15 +270,9 @@ function Analytics() {
     try {
       setLoading(true);
       
-      // Try to get all analytics from RunPod backend first
+      // Try to get all analytics from backend first
       try {
-        const headers: HeadersInit = {};
-        if (import.meta.env.VITE_RUNPOD_API_KEY) {
-          headers['Authorization'] = `Bearer ${import.meta.env.VITE_RUNPOD_API_KEY}`;
-        }
-
-        const response = await fetch(`${RUNPOD_API_BASE}/analytics/all`, { headers });
-        const analyticsData = await response.json();
+        const analyticsData = await fetchJSON('/analysis/complete');
         
         if (analyticsData.status === 'success' && analyticsData.tracking_results) {
           let filteredData = analyticsData.tracking_results;
@@ -285,8 +283,7 @@ function Analytics() {
           setData(filteredData);
           
           // Load correlation analysis
-          const correlationResponse = await fetch(`${RUNPOD_API_BASE}/correlation-analysis/`, { headers });
-          const correlationData = await correlationResponse.json();
+          const correlationData = await fetchJSON('/analysis/correlation');
           
           if (correlationData.status === 'success') {
             setAnalysisData(correlationData.analysis);
@@ -352,10 +349,59 @@ function Analytics() {
   };
 
   const applyFilters = async () => {
-    if (data.length === 0) return;
-    
     try {
-      // Apply filters to existing data
+      setLoading(true);
+      
+      // Build filter parameters for backend
+      const filterParams = new URLSearchParams();
+      filterParams.append('limit', '1000');
+      
+      if (weatherFilter) {
+        filterParams.append('weather_condition', weatherFilter);
+      }
+      if (vehicleFilter) {
+        filterParams.append('vehicle_type', vehicleFilter);
+      }
+      if (complianceFilter !== '') {
+        filterParams.append('compliance', complianceFilter);
+      }
+      
+      // Add date filters
+      if (dateFilter !== 'all') {
+        const dateRange = getDateRange();
+        if (dateRange.start) {
+          filterParams.append('date_from', dateRange.start.toISOString().split('T')[0]);
+        }
+        if (dateRange.end) {
+          filterParams.append('date_to', dateRange.end.toISOString().split('T')[0]);
+        }
+      }
+      
+      // Try to get filtered data from backend
+      try {
+        const filteredData = await fetchJSON(`/data/tracking/filter?${filterParams.toString()}`);
+        
+        if (filteredData.status === 'success') {
+          setData(filteredData.data);
+          
+          // Recalculate analysis with filtered data
+          if (filteredData.data.length > 0) {
+            const clientAnalysis = calculateClientSideAnalysis(filteredData.data);
+            setAnalysisData(clientAnalysis);
+            updateStats(filteredData.data.length, filteredData.data, clientAnalysis);
+          } else {
+            setAnalysisData(null);
+            updateStats(0, [], null);
+          }
+          
+          setError(null);
+          return;
+        }
+      } catch (backendError) {
+        console.log('Backend filtering not available, falling back to client-side filtering');
+      }
+      
+      // Fallback: Apply filters to existing data (client-side)
       let filteredData = [...data];
       
       if (weatherFilter) {
@@ -379,8 +425,12 @@ function Analytics() {
         setAnalysisData(null);
         updateStats(0, [], null);
       }
+      
+      setError(null);
     } catch (err: any) {
       setError('Unable to apply filters. Please try again.');
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -391,7 +441,84 @@ function Analytics() {
     setDateFilter('all');
     setCustomStartDate('');
     setCustomEndDate('');
+    setCurrentPage(1);
     loadAllAnalytics();
+  };
+
+  // Pagination helpers
+  const getPaginatedData = () => {
+    const startIndex = (currentPage - 1) * itemsPerPage;
+    const endIndex = startIndex + itemsPerPage;
+    return data.slice(startIndex, endIndex);
+  };
+
+  const totalPages = Math.ceil(data.length / itemsPerPage);
+
+  const goToPage = (page: number) => {
+    setCurrentPage(Math.max(1, Math.min(page, totalPages)));
+  };
+
+  // Badge components
+  const getComplianceBadge = (compliance: number) => {
+    if (compliance === 1) {
+      return (
+        <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200">
+          <span className="w-1.5 h-1.5 bg-green-400 rounded-full mr-1.5"></span>
+          Compliant
+        </span>
+      );
+    }
+    return (
+      <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200">
+        <span className="w-1.5 h-1.5 bg-red-400 rounded-full mr-1.5"></span>
+        Non-Compliant
+      </span>
+    );
+  };
+
+  const getVehicleTypeBadge = (vehicleType: string) => {
+    const colors = {
+      car: 'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200',
+      truck: 'bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-200',
+      bus: 'bg-orange-100 text-orange-800 dark:bg-orange-900 dark:text-orange-200',
+      motorcycle: 'bg-pink-100 text-pink-800 dark:bg-pink-900 dark:text-pink-200',
+    };
+    
+    return (
+      <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${colors[vehicleType as keyof typeof colors] || 'bg-gray-100 text-gray-800 dark:bg-gray-900 dark:text-gray-200'}`}>
+        {vehicleType.charAt(0).toUpperCase() + vehicleType.slice(1)}
+      </span>
+    );
+  };
+
+  const getWeatherBadge = (weather: string) => {
+    const weatherIcons = {
+      clear: '☀️',
+      cloudy: '☁️',
+      foggy: '🌫️',
+      rainy: '🌧️',
+      snowy: '❄️',
+    };
+    
+    return (
+      <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-800 dark:bg-gray-900 dark:text-gray-200">
+        {weatherIcons[weather as keyof typeof weatherIcons] || '🌤️'} {weather || 'Unknown'}
+      </span>
+    );
+  };
+
+  const getStatusBadge = (status: string) => {
+    const statusColors = {
+      moving: 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200',
+      stationary: 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200',
+      stopped: 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200',
+    };
+    
+    return (
+      <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${statusColors[status as keyof typeof statusColors] || 'bg-gray-100 text-gray-800 dark:bg-gray-900 dark:text-gray-200'}`}>
+        {status.charAt(0).toUpperCase() + status.slice(1)}
+      </span>
+    );
   };
 
   const getDateFilterLabel = () => {
@@ -826,24 +953,72 @@ function Analytics() {
                 </div>
               </div>
 
-              {/* Heatmap Section */}
+              {/* Enhanced Heatmap Section */}
               <div className={`p-6 rounded-xl ${
                 isDark 
                   ? 'bg-[#151F32]' 
                   : 'bg-white shadow-lg border border-gray-200'
               }`}>
-                <h2 className="text-lg font-semibold mb-6">🔥 Correlation Heatmap</h2>
-                <div className="space-y-8">
-                  <div>
-                    <h3 className="text-md font-medium mb-4">Weather vs Vehicle Type Heatmap</h3>
-                    <div className="overflow-x-auto">
-                      <div id="weatherVehicleHeatmap" className="min-h-[200px] min-w-[400px] border rounded-lg p-4"></div>
+                <div className="flex items-center justify-between mb-6">
+                  <h2 className="text-lg font-semibold">🔥 Advanced Correlation Heatmaps</h2>
+                  <div className="flex items-center gap-2">
+                    <div className={`text-xs px-2 py-1 rounded-full ${isDark ? 'bg-gray-700 text-gray-300' : 'bg-gray-100 text-gray-600'}`}>
+                      Interactive
+                    </div>
+                    <div className={`text-xs px-2 py-1 rounded-full ${isDark ? 'bg-gray-700 text-gray-300' : 'bg-gray-100 text-gray-600'}`}>
+                      Real-time
                     </div>
                   </div>
-                  <div>
-                    <h3 className="text-md font-medium mb-4">Time vs Weather Heatmap</h3>
+                </div>
+                
+                <div className="space-y-8">
+                  {/* Weather vs Vehicle Type Heatmap */}
+                  <div className="space-y-4">
+                    <div className="flex items-center justify-between">
+                      <h3 className="text-md font-medium">Weather vs Vehicle Type Compliance</h3>
+                      <div className="flex items-center gap-4 text-xs">
+                        <div className="flex items-center gap-1">
+                          <div className="w-3 h-3 bg-green-500 rounded"></div>
+                          <span>High Compliance</span>
+                        </div>
+                        <div className="flex items-center gap-1">
+                          <div className="w-3 h-3 bg-yellow-500 rounded"></div>
+                          <span>Medium</span>
+                        </div>
+                        <div className="flex items-center gap-1">
+                          <div className="w-3 h-3 bg-red-500 rounded"></div>
+                          <span>Low Compliance</span>
+                        </div>
+                      </div>
+                    </div>
                     <div className="overflow-x-auto">
-                      <div id="timeWeatherHeatmap" className="min-h-[200px] min-w-[600px] border rounded-lg p-4"></div>
+                      <div id="weatherVehicleHeatmap" className="min-h-[300px] min-w-[500px] border rounded-lg p-4 bg-gradient-to-br from-gray-50 to-gray-100 dark:from-gray-800 dark:to-gray-900"></div>
+                    </div>
+                  </div>
+                  
+                  {/* Time vs Weather Heatmap */}
+                  <div className="space-y-4">
+                    <div className="flex items-center justify-between">
+                      <h3 className="text-md font-medium">Hourly Compliance Patterns</h3>
+                      <div className="text-xs text-gray-500">
+                        Shows compliance rates by hour and weather conditions
+                      </div>
+                    </div>
+                    <div className="overflow-x-auto">
+                      <div id="timeWeatherHeatmap" className="min-h-[300px] min-w-[700px] border rounded-lg p-4 bg-gradient-to-br from-gray-50 to-gray-100 dark:from-gray-800 dark:to-gray-900"></div>
+                    </div>
+                  </div>
+                  
+                  {/* Vehicle Type vs Hour Heatmap */}
+                  <div className="space-y-4">
+                    <div className="flex items-center justify-between">
+                      <h3 className="text-md font-medium">Vehicle Type vs Hour Analysis</h3>
+                      <div className="text-xs text-gray-500">
+                        Compliance rates by vehicle type and time of day
+                      </div>
+                    </div>
+                    <div className="overflow-x-auto">
+                      <div id="vehicleHourHeatmap" className="min-h-[300px] min-w-[600px] border rounded-lg p-4 bg-gradient-to-br from-gray-50 to-gray-100 dark:from-gray-800 dark:to-gray-900"></div>
                     </div>
                   </div>
                 </div>
@@ -885,47 +1060,211 @@ function Analytics() {
                   ? 'bg-[#151F32]' 
                   : 'bg-white shadow-lg border border-gray-200'
               }`}>
-                <h2 className="text-lg font-semibold mb-6">📊 Raw Data</h2>
-                <div className="overflow-x-auto">
-                  <table className="w-full">
-                    <thead>
-                      <tr className={`border-b ${isDark ? 'border-gray-700' : 'border-gray-200'}`}>
-                        <th className={`text-left py-3 px-4 font-medium ${isDark ? 'text-gray-300' : 'text-gray-700'}`}>ID</th>
-                        <th className={`text-left py-3 px-4 font-medium ${isDark ? 'text-gray-300' : 'text-gray-700'}`}>Vehicle Type</th>
-                        <th className={`text-left py-3 px-4 font-medium ${isDark ? 'text-gray-300' : 'text-gray-700'}`}>Status</th>
-                        <th className={`text-left py-3 px-4 font-medium ${isDark ? 'text-gray-300' : 'text-gray-700'}`}>Compliance</th>
-                        <th className={`text-left py-3 px-4 font-medium ${isDark ? 'text-gray-300' : 'text-gray-700'}`}>Reaction Time</th>
-                        <th className={`text-left py-3 px-4 font-medium ${isDark ? 'text-gray-300' : 'text-gray-700'}`}>Weather</th>
-                        <th className={`text-left py-3 px-4 font-medium ${isDark ? 'text-gray-300' : 'text-gray-700'}`}>Temperature</th>
-                        <th className={`text-left py-3 px-4 font-medium ${isDark ? 'text-gray-300' : 'text-gray-700'}`}>Date</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {data.slice(0, 50).map((item, index) => (
-                        <tr key={index} className={`border-b ${isDark ? 'border-gray-700' : 'border-gray-200'}`}>
-                          <td className={`py-3 px-4 ${isDark ? 'text-gray-300' : 'text-gray-700'}`}>{item.tracker_id}</td>
-                          <td className={`py-3 px-4 ${isDark ? 'text-gray-300' : 'text-gray-700'}`}>{item.vehicle_type}</td>
-                          <td className={`py-3 px-4 ${isDark ? 'text-gray-300' : 'text-gray-700'}`}>{item.status}</td>
-                          <td className={`py-3 px-4 ${isDark ? 'text-gray-300' : 'text-gray-700'}`}>
-                            {item.compliance === 1 ? '✅' : '❌'}
-                          </td>
-                          <td className={`py-3 px-4 ${isDark ? 'text-gray-300' : 'text-gray-700'}`}>
-                            {item.reaction_time || '-'}
-                          </td>
-                          <td className={`py-3 px-4 ${isDark ? 'text-gray-300' : 'text-gray-700'}`}>
-                            {item.weather_condition || '-'}
-                          </td>
-                          <td className={`py-3 px-4 ${isDark ? 'text-gray-300' : 'text-gray-700'}`}>
-                            {item.temperature ? `${item.temperature}°C` : '-'}
-                          </td>
-                          <td className={`py-3 px-4 ${isDark ? 'text-gray-300' : 'text-gray-700'}`}>
-                            {formatDateTime(item.date)}
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
+                <div className="flex items-center justify-between mb-6">
+                  <h2 className="text-lg font-semibold">📊 Raw Data</h2>
+                  <div className="flex items-center gap-4">
+                    <div className="flex items-center gap-2">
+                      <label className={`text-sm font-medium ${isDark ? 'text-gray-300' : 'text-gray-700'}`}>
+                        Show:
+                      </label>
+                      <select
+                        value={itemsPerPage}
+                        onChange={(e) => {
+                          setItemsPerPage(Number(e.target.value));
+                          setCurrentPage(1);
+                        }}
+                        className={`px-3 py-1 rounded-lg border text-sm ${
+                          isDark 
+                            ? 'bg-[#1E293B] border-[#334155] text-white' 
+                            : 'bg-white border-gray-300 text-gray-900'
+                        }`}
+                      >
+                        <option value={5}>5</option>
+                        <option value={10}>10</option>
+                        <option value={25}>25</option>
+                        <option value={50}>50</option>
+                        <option value={100}>100</option>
+                      </select>
+                    </div>
+                    <div className={`text-sm ${isDark ? 'text-gray-400' : 'text-gray-600'}`}>
+                      Showing {((currentPage - 1) * itemsPerPage) + 1} to {Math.min(currentPage * itemsPerPage, data.length)} of {data.length} entries
+                    </div>
+                  </div>
                 </div>
+
+                {/* Modern Data Table */}
+                <div className="overflow-x-auto">
+                  <div className="min-w-[1200px]">
+                    {/* Table Header */}
+                    <div className={`grid grid-cols-12 gap-2 px-6 py-4 border-b-2 ${isDark ? 'border-gray-600' : 'border-gray-300'} font-bold text-sm uppercase tracking-wide`}>
+                      <div className="col-span-2 text-left">ID</div>
+                      <div className="col-span-2 text-left">Vehicle</div>
+                      <div className="col-span-1 text-center">Status</div>
+                      <div className="col-span-2 text-center">Compliance</div>
+                      <div className="col-span-1 text-center">Time</div>
+                      <div className="col-span-1 text-center">Weather</div>
+                      <div className="col-span-1 text-center">Temp</div>
+                      <div className="col-span-2 text-left">Date</div>
+                    </div>
+                    
+                    {/* Table Body */}
+                    <div className="divide-y divide-gray-200 dark:divide-gray-700">
+                      {getPaginatedData().map((item, index) => (
+                        <div key={index} className={`grid grid-cols-12 gap-2 px-6 py-4 hover:bg-opacity-50 transition-all duration-200 ${
+                          isDark 
+                            ? 'hover:bg-gray-800' 
+                            : 'hover:bg-gray-50'
+                        }`}>
+                          {/* ID Column */}
+                          <div className="col-span-2 flex items-center">
+                            <div className={`font-mono text-sm font-medium ${isDark ? 'text-gray-200' : 'text-gray-800'}`}>
+                              #{item.tracker_id}
+                            </div>
+                          </div>
+                          
+                          {/* Vehicle Type Column */}
+                          <div className="col-span-2 flex items-center">
+                            {getVehicleTypeBadge(item.vehicle_type)}
+                          </div>
+                          
+                          {/* Status Column */}
+                          <div className="col-span-1 flex items-center justify-center">
+                            {getStatusBadge(item.status)}
+                          </div>
+                          
+                          {/* Compliance Column */}
+                          <div className="col-span-2 flex items-center justify-center">
+                            {getComplianceBadge(item.compliance)}
+                          </div>
+                          
+                          {/* Reaction Time Column */}
+                          <div className="col-span-1 flex items-center justify-center">
+                            {item.reaction_time ? (
+                              <div className={`text-center font-mono text-sm font-medium ${isDark ? 'text-gray-200' : 'text-gray-800'}`}>
+                                {item.reaction_time.toFixed(2)}s
+                              </div>
+                            ) : (
+                              <div className={`text-center text-sm ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>
+                                -
+                              </div>
+                            )}
+                          </div>
+                          
+                          {/* Weather Column */}
+                          <div className="col-span-1 flex items-center justify-center">
+                            {getWeatherBadge(item.weather_condition)}
+                          </div>
+                          
+                          {/* Temperature Column */}
+                          <div className="col-span-1 flex items-center justify-center">
+                            {item.temperature ? (
+                              <div className={`text-center font-mono text-sm font-medium ${isDark ? 'text-gray-200' : 'text-gray-800'}`}>
+                                {item.temperature}°C
+                              </div>
+                            ) : (
+                              <div className={`text-center text-sm ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>
+                                -
+                              </div>
+                            )}
+                          </div>
+                          
+                          {/* Date Column */}
+                          <div className="col-span-2 flex items-center">
+                            <div className="flex flex-col">
+                              <div className={`text-sm font-medium ${isDark ? 'text-gray-200' : 'text-gray-800'}`}>
+                                {formatDateTime(item.date)}
+                              </div>
+                              <div className={`text-xs ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>
+                                {getLocalTimezoneAbbreviation()}
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+
+                {/* Pagination */}
+                {totalPages > 1 && (
+                  <div className="flex items-center justify-between mt-6 pt-4 border-t border-gray-200 dark:border-gray-700">
+                    <div className={`text-sm ${isDark ? 'text-gray-400' : 'text-gray-600'}`}>
+                      Page {currentPage} of {totalPages}
+                    </div>
+                    
+                    <div className="flex items-center gap-2">
+                      <button
+                        onClick={() => goToPage(1)}
+                        disabled={currentPage === 1}
+                        className={`p-2 rounded-lg transition-colors ${
+                          currentPage === 1
+                            ? `${isDark ? 'bg-gray-800 text-gray-600' : 'bg-gray-100 text-gray-400'} cursor-not-allowed`
+                            : `${isDark ? 'bg-gray-700 hover:bg-gray-600 text-gray-300' : 'bg-white hover:bg-gray-50 text-gray-700'} border border-gray-300 dark:border-gray-600`
+                        }`}
+                      >
+                        <ChevronsLeft className="w-4 h-4" />
+                      </button>
+                      
+                      <button
+                        onClick={() => goToPage(currentPage - 1)}
+                        disabled={currentPage === 1}
+                        className={`p-2 rounded-lg transition-colors ${
+                          currentPage === 1
+                            ? `${isDark ? 'bg-gray-800 text-gray-600' : 'bg-gray-100 text-gray-400'} cursor-not-allowed`
+                            : `${isDark ? 'bg-gray-700 hover:bg-gray-600 text-gray-300' : 'bg-white hover:bg-gray-50 text-gray-700'} border border-gray-300 dark:border-gray-600`
+                        }`}
+                      >
+                        <ChevronLeft className="w-4 h-4" />
+                      </button>
+                      
+                      {/* Page numbers */}
+                      <div className="flex items-center gap-1">
+                        {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
+                          const pageNum = Math.max(1, Math.min(totalPages - 4, currentPage - 2)) + i;
+                          if (pageNum > totalPages) return null;
+                          
+                          return (
+                            <button
+                              key={pageNum}
+                              onClick={() => goToPage(pageNum)}
+                              className={`px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
+                                currentPage === pageNum
+                                  ? 'bg-primary-500 text-white'
+                                  : `${isDark ? 'bg-gray-700 hover:bg-gray-600 text-gray-300' : 'bg-white hover:bg-gray-50 text-gray-700'} border border-gray-300 dark:border-gray-600`
+                              }`}
+                            >
+                              {pageNum}
+                            </button>
+                          );
+                        })}
+                      </div>
+                      
+                      <button
+                        onClick={() => goToPage(currentPage + 1)}
+                        disabled={currentPage === totalPages}
+                        className={`p-2 rounded-lg transition-colors ${
+                          currentPage === totalPages
+                            ? `${isDark ? 'bg-gray-800 text-gray-600' : 'bg-gray-100 text-gray-400'} cursor-not-allowed`
+                            : `${isDark ? 'bg-gray-700 hover:bg-gray-600 text-gray-300' : 'bg-white hover:bg-gray-50 text-gray-700'} border border-gray-300 dark:border-gray-600`
+                        }`}
+                      >
+                        <ChevronRight className="w-4 h-4" />
+                      </button>
+                      
+                      <button
+                        onClick={() => goToPage(totalPages)}
+                        disabled={currentPage === totalPages}
+                        className={`p-2 rounded-lg transition-colors ${
+                          currentPage === totalPages
+                            ? `${isDark ? 'bg-gray-800 text-gray-600' : 'bg-gray-100 text-gray-400'} cursor-not-allowed`
+                            : `${isDark ? 'bg-gray-700 hover:bg-gray-600 text-gray-300' : 'bg-white hover:bg-gray-50 text-gray-700'} border border-gray-300 dark:border-gray-600`
+                        }`}
+                      >
+                        <ChevronsRight className="w-4 h-4" />
+                      </button>
+                    </div>
+                  </div>
+                )}
               </div>
             </div>
           ) : (
@@ -1188,49 +1527,82 @@ function ChartRenderer({ analysisData, isDark }: { analysisData: AnalysisData; i
     loadCharts();
   }, [analysisData, isDark]);
 
-  // Create heatmaps
+  // Enhanced heatmap rendering with better visual design
   React.useEffect(() => {
+    if (!analysisData) return;
+
+    // Helper function to get color based on compliance rate
+    const getComplianceColor = (rate: number) => {
+      if (rate >= 0.8) return { bg: 'bg-green-500', text: 'text-white', intensity: 1 };
+      if (rate >= 0.6) return { bg: 'bg-yellow-500', text: 'text-white', intensity: 0.8 };
+      if (rate >= 0.4) return { bg: 'bg-orange-500', text: 'text-white', intensity: 0.6 };
+      return { bg: 'bg-red-500', text: 'text-white', intensity: 0.4 };
+    };
+
+    // Helper function to create interactive cell
+    const createCell = (value: number, label: string, tooltip: string) => {
+      const cell = document.createElement('div');
+      const color = getComplianceColor(value);
+      cell.className = `${color.bg} ${color.text} text-xs font-medium p-3 text-center rounded-lg min-w-[60px] min-h-[50px] flex items-center justify-center cursor-pointer hover:scale-105 transition-all duration-200 shadow-sm hover:shadow-md`;
+      cell.textContent = `${(value * 100).toFixed(0)}%`;
+      cell.title = tooltip;
+      
+      // Add hover effect
+      cell.addEventListener('mouseenter', () => {
+        cell.style.transform = 'scale(1.05)';
+        cell.style.zIndex = '10';
+      });
+      cell.addEventListener('mouseleave', () => {
+        cell.style.transform = 'scale(1)';
+        cell.style.zIndex = '1';
+      });
+      
+      return cell;
+    };
+
     // Weather vs Vehicle Type Heatmap
     const weatherVehicleContainer = document.getElementById('weatherVehicleHeatmap');
-    if (weatherVehicleContainer && analysisData) {
+    if (weatherVehicleContainer) {
       weatherVehicleContainer.innerHTML = '';
       
       const weatherTypes = Object.keys(analysisData.weather_analysis.weather_compliance);
       const vehicleTypes = Object.keys(analysisData.basic_correlations.vehicle_type_compliance);
 
-      // Create heatmap grid
       const grid = document.createElement('div');
-      grid.className = 'grid gap-1';
-      grid.style.gridTemplateColumns = `repeat(${weatherTypes.length + 1}, minmax(80px, 1fr))`;
+      grid.className = 'grid gap-2';
+      grid.style.gridTemplateColumns = `120px repeat(${weatherTypes.length}, 1fr)`;
 
       // Header row
-      grid.appendChild(document.createElement('div')); // Empty corner
+      const emptyCorner = document.createElement('div');
+      emptyCorner.className = 'flex items-center justify-center p-2';
+      grid.appendChild(emptyCorner);
+
       weatherTypes.forEach(weather => {
-        const cell = document.createElement('div');
-        cell.className = `text-xs font-medium p-2 text-center break-words ${isDark ? 'text-gray-300' : 'text-gray-700'}`;
-        cell.textContent = weather;
-        grid.appendChild(cell);
+        const header = document.createElement('div');
+        header.className = `text-xs font-bold p-2 text-center rounded-lg ${isDark ? 'bg-gray-700 text-gray-200' : 'bg-gray-200 text-gray-800'} min-w-[80px]`;
+        header.textContent = weather.charAt(0).toUpperCase() + weather.slice(1);
+        grid.appendChild(header);
       });
 
       // Data rows
       vehicleTypes.forEach(vehicle => {
         // Row label
         const label = document.createElement('div');
-        label.className = `text-xs font-medium p-2 break-words ${isDark ? 'text-gray-300' : 'text-gray-700'}`;
-        label.textContent = vehicle;
+        label.className = `text-xs font-bold p-2 text-center ${isDark ? 'text-gray-200' : 'text-gray-800'} flex items-center justify-center`;
+        label.textContent = vehicle.charAt(0).toUpperCase() + vehicle.slice(1);
         grid.appendChild(label);
 
         // Data cells
         weatherTypes.forEach(weather => {
-          const weatherCompliance = analysisData.weather_analysis.weather_compliance[weather].mean;
-          const vehicleCompliance = analysisData.basic_correlations.vehicle_type_compliance[vehicle].mean;
+          const weatherCompliance = analysisData.weather_analysis.weather_compliance[weather]?.mean || 0;
+          const vehicleCompliance = analysisData.basic_correlations.vehicle_type_compliance[vehicle]?.mean || 0;
           const correlation = (weatherCompliance + vehicleCompliance) / 2;
 
-          const cell = document.createElement('div');
-          cell.className = 'text-xs p-2 text-center text-white rounded min-w-[60px]';
-          cell.style.backgroundColor = `rgba(52, 152, 219, ${correlation})`;
-          cell.textContent = `${(correlation * 100).toFixed(0)}%`;
-          cell.title = `Weather: ${weather}, Vehicle: ${vehicle}, Correlation: ${(correlation * 100).toFixed(1)}%`;
+          const cell = createCell(
+            correlation,
+            `${(correlation * 100).toFixed(0)}%`,
+            `${vehicle} in ${weather}: ${(correlation * 100).toFixed(1)}% compliance`
+          );
           grid.appendChild(cell);
         });
       });
@@ -1240,50 +1612,102 @@ function ChartRenderer({ analysisData, isDark }: { analysisData: AnalysisData; i
 
     // Time vs Weather Heatmap
     const timeWeatherContainer = document.getElementById('timeWeatherHeatmap');
-    if (timeWeatherContainer && analysisData) {
+    if (timeWeatherContainer) {
       timeWeatherContainer.innerHTML = '';
       
-      const hours = Object.keys(analysisData.basic_correlations.hour_compliance);
+      const hours = Object.keys(analysisData.basic_correlations.hour_compliance).sort((a, b) => parseInt(a) - parseInt(b));
       const weatherTypes = Object.keys(analysisData.weather_analysis.weather_compliance);
 
-      // Create heatmap grid
       const grid = document.createElement('div');
-      grid.className = 'grid gap-1';
-      grid.style.gridTemplateColumns = `repeat(${Math.min(hours.length + 1, 13)}, minmax(50px, 1fr))`;
+      grid.className = 'grid gap-2';
+      grid.style.gridTemplateColumns = `120px repeat(${Math.min(hours.length, 12)}, 1fr)`;
 
       // Header row
-      grid.appendChild(document.createElement('div')); // Empty corner
+      const emptyCorner = document.createElement('div');
+      emptyCorner.className = 'flex items-center justify-center p-2';
+      grid.appendChild(emptyCorner);
+
       hours.slice(0, 12).forEach(hour => {
-        const cell = document.createElement('div');
-        cell.className = `text-xs font-medium p-1 text-center ${isDark ? 'text-gray-300' : 'text-gray-700'}`;
-        cell.textContent = `${hour}:00`;
-        grid.appendChild(cell);
+        const header = document.createElement('div');
+        header.className = `text-xs font-bold p-2 text-center rounded-lg ${isDark ? 'bg-gray-700 text-gray-200' : 'bg-gray-200 text-gray-800'} min-w-[60px]`;
+        header.textContent = `${hour}:00`;
+        grid.appendChild(header);
       });
 
       // Data rows
       weatherTypes.forEach(weather => {
         // Row label
         const label = document.createElement('div');
-        label.className = `text-xs font-medium p-1 break-words ${isDark ? 'text-gray-300' : 'text-gray-700'}`;
-        label.textContent = weather;
+        label.className = `text-xs font-bold p-2 text-center ${isDark ? 'text-gray-200' : 'text-gray-800'} flex items-center justify-center`;
+        label.textContent = weather.charAt(0).toUpperCase() + weather.slice(1);
         grid.appendChild(label);
 
         // Data cells
         hours.slice(0, 12).forEach(hour => {
-          const hourCompliance = analysisData.basic_correlations.hour_compliance[hour].mean;
-          const weatherCompliance = analysisData.weather_analysis.weather_compliance[weather].mean;
+          const hourCompliance = analysisData.basic_correlations.hour_compliance[hour]?.mean || 0;
+          const weatherCompliance = analysisData.weather_analysis.weather_compliance[weather]?.mean || 0;
           const correlation = (hourCompliance + weatherCompliance) / 2;
 
-          const cell = document.createElement('div');
-          cell.className = 'text-xs p-1 text-center text-white rounded min-w-[40px]';
-          cell.style.backgroundColor = `rgba(231, 76, 60, ${correlation})`;
-          cell.textContent = `${(correlation * 100).toFixed(0)}%`;
-          cell.title = `Hour: ${hour}:00, Weather: ${weather}, Correlation: ${(correlation * 100).toFixed(1)}%`;
+          const cell = createCell(
+            correlation,
+            `${(correlation * 100).toFixed(0)}%`,
+            `${weather} at ${hour}:00: ${(correlation * 100).toFixed(1)}% compliance`
+          );
           grid.appendChild(cell);
         });
       });
 
       timeWeatherContainer.appendChild(grid);
+    }
+
+    // Vehicle Type vs Hour Heatmap (Real Data)
+    const vehicleHourContainer = document.getElementById('vehicleHourHeatmap');
+    if (vehicleHourContainer) {
+      vehicleHourContainer.innerHTML = '';
+      
+      const hours = Object.keys(analysisData.basic_correlations.hour_compliance).sort((a, b) => parseInt(a) - parseInt(b));
+      const vehicleTypes = Object.keys(analysisData.basic_correlations.vehicle_type_compliance);
+
+      const grid = document.createElement('div');
+      grid.className = 'grid gap-2';
+      grid.style.gridTemplateColumns = `120px repeat(${Math.min(hours.length, 12)}, 1fr)`;
+
+      // Header row
+      const emptyCorner = document.createElement('div');
+      emptyCorner.className = 'flex items-center justify-center p-2';
+      grid.appendChild(emptyCorner);
+
+      hours.slice(0, 12).forEach(hour => {
+        const header = document.createElement('div');
+        header.className = `text-xs font-bold p-2 text-center rounded-lg ${isDark ? 'bg-gray-700 text-gray-200' : 'bg-gray-200 text-gray-800'} min-w-[60px]`;
+        header.textContent = `${hour}:00`;
+        grid.appendChild(header);
+      });
+
+      // Data rows
+      vehicleTypes.forEach(vehicle => {
+        // Row label
+        const label = document.createElement('div');
+        label.className = `text-xs font-bold p-2 text-center ${isDark ? 'text-gray-200' : 'text-gray-800'} flex items-center justify-center`;
+        label.textContent = vehicle.charAt(0).toUpperCase() + vehicle.slice(1);
+        grid.appendChild(label);
+
+        // Data cells (real data from hour_compliance and vehicle_type_compliance)
+        hours.slice(0, 12).forEach(hour => {
+          const hourCompliance = analysisData.basic_correlations.hour_compliance[hour]?.mean || 0;
+          const vehicleCompliance = analysisData.basic_correlations.vehicle_type_compliance[vehicle]?.mean || 0;
+          const correlation = (hourCompliance + vehicleCompliance) / 2;
+
+          const cell = createCell(
+            correlation,
+            `${(correlation * 100).toFixed(0)}%`,
+            `${vehicle} at ${hour}:00: ${(correlation * 100).toFixed(1)}% compliance`
+          );
+          grid.appendChild(cell);
+        });
+      });
+
+      vehicleHourContainer.appendChild(grid);
     }
   }, [analysisData, isDark]);
 
