@@ -1,6 +1,6 @@
 import { render, screen, fireEvent, act, waitFor } from '@testing-library/react';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import Settings from './Settings';
+import Settings from '../Settings';
 
 // --- Hoisted Mocks ---
 const { mockGetUser, mockOnAuthStateChange, mockUpdateUser, mockResetPasswordForEmail } = vi.hoisted(() => {

@@ -2,8 +2,8 @@
 
 import { render, screen, fireEvent, act, within } from '@testing-library/react';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import Analytics from './Analytics';
-import { TrackingResult } from '../lib/types';
+import Analytics from '../Analytics';
+import { TrackingResult } from '../../lib/types';
 
 // --- Mocks ---
 

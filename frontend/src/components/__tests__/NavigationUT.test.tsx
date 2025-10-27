@@ -3,9 +3,9 @@
 import { render, screen, fireEvent } from '@testing-library/react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import '@testing-library/jest-dom';
-import Navigation, { navItems } from './Navigation'; // import navItems for convenience
-import { supabase } from '../lib/supabase';
-import { getStoredTheme } from '../lib/theme';
+import Navigation, { navItems } from '../Navigation'; // import navItems for convenience
+import { supabase } from '../../lib/supabase';
+import { getStoredTheme } from '../../lib/theme';
 
 // Mock 'react-router-dom'
 // We provide a fake Link component that just renders its children.

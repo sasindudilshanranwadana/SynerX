@@ -1,9 +1,9 @@
 // src/components/Header.test.tsx
 import { render, screen, fireEvent } from '@testing-library/react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import Header from './Header';
-import { supabase } from '../lib/supabase';
-import { getStoredTheme } from '../lib/theme';
+import Header from '../Header';
+import { supabase } from '../../lib/supabase';
+import { getStoredTheme } from '../../lib/theme';
 
 // Mock the dependencies
 vi.mock('../lib/supabase', () => ({

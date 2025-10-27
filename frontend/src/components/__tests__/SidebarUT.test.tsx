@@ -2,8 +2,8 @@
 
 import { render, screen, fireEvent } from '@testing-library/react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import Sidebar from './Sidebar';
-import { getStoredTheme } from '../lib/theme';
+import Sidebar from '../Sidebar';
+import { getStoredTheme } from '../../lib/theme';
 
 // Mock the child Navigation component
 // We can check that it receives the correct props from Sidebar.

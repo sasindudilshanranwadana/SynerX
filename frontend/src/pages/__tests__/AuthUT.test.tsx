@@ -3,7 +3,7 @@
 import React from 'react';
 import { render, screen, fireEvent, act } from '@testing-library/react';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import Auth from './Auth';
+import Auth from '../Auth';
 
 import ReCAPTCHA from 'react-google-recaptcha';
 import { LinkProps } from 'react-router-dom';

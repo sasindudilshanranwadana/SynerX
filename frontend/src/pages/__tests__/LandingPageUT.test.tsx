@@ -1,6 +1,6 @@
 import { render, screen, fireEvent, act, within } from '@testing-library/react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import LandingPage from './LandingPage';
+import LandingPage from '../LandingPage';
 
 // --- Mocks ---
 

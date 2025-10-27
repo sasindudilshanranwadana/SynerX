@@ -1,8 +1,8 @@
 import { render, screen, fireEvent, act, within } from '@testing-library/react';
 import { describe, it, expect, vi, beforeEach, afterEach, Mock } from 'vitest';
-import Dashboard from './Dashboard';
+import Dashboard from '../Dashboard';
 
-import { getStoredTheme } from '../lib/theme';
+import { getStoredTheme } from '../../lib/theme';
 
 // --- Mocks ---
 

@@ -2,8 +2,8 @@
 
 import { render, screen, act } from '@testing-library/react';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import ServerStatusIndicator from './ServerStatusIndicator';
-import { getStoredTheme } from '../lib/theme';
+import ServerStatusIndicator from '../ServerStatusIndicator';
+import { getStoredTheme } from '../../lib/theme';
 
 // Mocks remain the same and are still necessary
 vi.mock('../lib/theme', () => ({
