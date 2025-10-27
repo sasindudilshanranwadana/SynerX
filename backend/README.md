@@ -49,16 +49,29 @@ pip install -r requirements.txt
 
 ### 4. Environment Setup
 
-Create a `.env` file in the `backend` directory:
+Create a `.env` file in the `backend` directory by copying the example:
+
+```bash
+cp .env.example .env
+```
+
+Then edit `.env` with your actual credentials:
 
 ```env
 # Supabase Configuration
-SUPABASE_URL=https://your-project.supabase.co
-SUPABASE_KEY=your-supabase-anon-key
-GCS_BUCKET_NAME=your-supabase-storage-name
+SUPABASE_URL=your_supabase_project_url_here
+SUPABASE_KEY=your_supabase_anon_key_here
+SUPABASE_EMAIL=your_email@example.com
+SUPABASE_PASSWORD=your_password_here
 
-# Optional: Weather API Key
-WEATHER_API_KEY=your-openweathermap-api-key
+# Weather API Configuration
+WEATHER_API_KEY=your_openweathermap_api_key_here
+
+# Cloudflare R2 Storage Configuration
+CLOUDFLARE_ACCOUNT_ID=your_cloudflare_account_id_here
+R2_ACCESS_KEY_ID=your_r2_access_key_id_here
+R2_SECRET_ACCESS_KEY=your_r2_secret_access_key_here
+R2_BUCKET_NAME=your_r2_bucket_name_here
 ```
 
 ### 5. Model Setup
@@ -282,20 +295,17 @@ Edit `config/config.py` to customize:
 ```bash
 # 1. Set up environment
 cp .env.example .env
-# Edit .env with your Supabase credentials
+# Edit .env with your Supabase and Cloudflare R2 credentials
 
-# 2. Configure video path in config/config.py
-VIDEO_PATH = "path/to/your/video.mp4"
-
-# 3. Start FastAPI server
+# 2. Start FastAPI server
 uvicorn main:app --reload
 
-# 4. Open web interface
+# 3. Open web interface
 # http://localhost:8000/docs
 
-# 5. Upload video via /upload-video endpoint
-# 6. Monitor processing status via /status endpoint
-# 7. Stop processing via /shutdown endpoint if needed
+# 4. Upload video via /upload-video endpoint
+# 5. Monitor processing status via /status endpoint
+# 6. Stop processing via /shutdown endpoint if needed
 ```
 
 ## 🔧 Troubleshooting
