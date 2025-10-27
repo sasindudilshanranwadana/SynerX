@@ -34,7 +34,7 @@ from clients.supabase_client import supabase_manager
 # Import middleware
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
-from starlette.responses import Response, FileResponse
+from starlette.responses import Response
 
 # Create organized temp directories within backend folder (Docker-compatible)
 TEMP_DIR = Path("temp")
@@ -850,13 +850,6 @@ async def health_check():
         }
 
 
-@app.get("/videos", include_in_schema=False)
-async def videos_page():
-    return FileResponse("videos_dashboard.html")
-
-@app.get("/jobs", include_in_schema=False)
-async def jobs_page():
-    return FileResponse("jobs_dashboard.html")
 
 # WebSocket endpoint
 @app.websocket("/ws/video-stream/{client_id}")
@@ -1120,55 +1113,6 @@ def run_health_server():
 # Start the health server in a background thread when the app starts
 health_thread = threading.Thread(target=run_health_server, daemon=True)
 health_thread.start()
-
-@app.post("/runsync")
-async def runsync_job(request: Request):
-    """
-    This is the synchronous endpoint that RunPod will call to execute a job.
-    """
-    job = await request.json()
-    job_input = job.get('input', {})
-    
-    # --- This logic is adapted from the previous rp_handler.py ---
-    video_path_str = job_input.get("video_path")
-    if not video_path_str:
-        return Response(content='{"error": "Missing \'video_path\' in job input."}', status_code=400, media_type="application/json")
-
-    original_filename = job_input.get("original_filename", Path(video_path_str).name)
-    raw_path = Path(video_path_str)
-
-    if not raw_path.exists():
-        return Response(content=f'{{"error": "Input video not found at path: {video_path_str}"}}', status_code=404, media_type="application/json")
-
-    job_id = str(uuid.uuid4())
-    suffix = raw_path.suffix
-    analytic_path = TEMP_PROCESSING_DIR / f"{raw_path.stem}_processed{suffix}"
-
-    with job_lock:
-        background_jobs[job_id] = {
-            "status": "queued", "progress": 0, "message": "Initializing worker...",
-            "error": None, "start_time": time.time(), "file_name": original_filename,
-            "result": None, "video_id": None
-        }
-
-    job_data = {
-        'job_id': job_id, 'raw_path': raw_path, 'analytic_path': analytic_path,
-        'suffix': suffix, 'start_time': background_jobs[job_id]["start_time"],
-    }
-    
-    print(f"[RUNPOD] Starting job {job_id} for video {original_filename}")
-    
-    try:
-        # Call your existing function directly
-        process_single_job(job_data)
-        with job_lock:
-            final_status = background_jobs[job_id]
-            del background_jobs[job_id]
-        return final_status
-    except Exception as e:
-        print(f"[RUNPOD] Job {job_id} failed with an error: {e}")
-        return {"status": "failed", "error": str(e)}
-
 
 
 if __name__ == "__main__":
