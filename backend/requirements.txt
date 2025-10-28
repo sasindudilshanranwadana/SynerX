@@ -39,6 +39,9 @@ requests>=2.32.0
 # Testing
 pytest>=8.4.0
 
+# Plate Blurring
+dill>=0.4.0
+
 # Optional: Image processing (will fallback to PIL if not available)
 opencv-python-headless>=4.11.0  # Headless OpenCV (no GUI dependencies)
 
