@@ -48,7 +48,7 @@ class VideoProcessor:
         self.vehicle_tracker = None
         self.data_manager = None
         self.model = None
-        # self.plate_model = None  # TEMPORARILY DISABLED
+        self.plate_model = None  # TEMPORARILY DISABLED
         self.tracker = None
         self.polygon_zone = None
         self.stop_zone = None
@@ -281,9 +281,9 @@ class VideoProcessor:
         self.tracker = sv.ByteTrack(frame_rate=self.video_info.fps)
 
         # TEMPORARILY DISABLED - License plate model for performance
-        # self.plate_model = YOLO(Config.LICENSE_PLATE_MODEL_PATH)
-        # self.plate_model.to(device)
-        # self.plate_model.fuse()
+        self.plate_model = YOLO(Config.LICENSE_PLATE_MODEL_PATH)
+        self.plate_model.to(device)
+        self.plate_model.fuse()
         
         print(f"[INFO] Models loaded on {device.upper()} with performance optimizations")
     
@@ -304,9 +304,22 @@ class VideoProcessor:
         """
         Finds and blurs license plates using a dedicated YOLO model.
         This is the accurate method for high-angle footage.
-        TEMPORARILY DISABLED FOR PERFORMANCE
         """
-        # TEMPORARILY DISABLED - Return frame as-is for better performance
+        # Run the dedicated plate model on the frame
+        plate_results = self.plate_model(frame, verbose=False)[0]
+        plate_detections = sv.Detections.from_ultralytics(plate_results)
+
+        # Loop through the detected plates and blur them
+        for box in plate_detections.xyxy:
+            x1, y1, x2, y2 = map(int, box)
+            
+            # The array slicing is now correctly in (y, x) order.
+            roi = frame[y1:y2, x1:x2]
+
+            if roi.size > 0:
+                blurred_roi = cv2.GaussianBlur(roi, (23, 23), 30)
+                frame[y1:y2, x1:x2] = blurred_roi
+                
         return frame
 
 
@@ -421,8 +434,12 @@ class VideoProcessor:
                 # For skipped frames, use the exact same detections and labels
                 # This ensures labels stay in the same position and don't flicker
 
-            # License plate blurring is temporarily disabled for performance
-            processed_frame = frame.copy()
+            # License plate blurring is enabled, change config if needed disabled
+
+            if Config.ENABLE_LICENSE_PLATE_BLURRING:
+                processed_frame = self.blur_license_plates(frame.copy())
+            else:
+                processed_frame = frame.copy()
             
             # Apply tracker ID offset for global uniqueness with safety check
             if hasattr(detections, 'tracker_id') and detections.tracker_id is not None and len(detections.tracker_id) > 0:
