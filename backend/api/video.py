@@ -5,6 +5,8 @@ import uuid
 import time
 import os
 from datetime import datetime
+import boto3
+from botocore.exceptions import ClientError
 
 def init_video_router(background_jobs, job_lock, job_queue, queue_lock, start_queue_processor, 
                      shutdown_manager, set_processing_start_time, TEMP_UPLOADS_DIR, OUTPUT_DIR):
@@ -12,95 +14,107 @@ def init_video_router(background_jobs, job_lock, job_queue, queue_lock, start_qu
     
     router = APIRouter(prefix="/video", tags=["Video Processing"])
     
-    @router.post("/upload")
-    async def upload_video(
-        file: UploadFile = File(..., description="Video file to upload and process")
-    ):
-        """
-        Upload a video file for processing
-        
-        Uploads a video file and automatically adds it to the processing queue.
-        
-        Args:
-            file: Video file to upload (supports common video formats)
-        
-        Returns:
-            dict: Job information including job ID and queue position
-        """
-        try:
-            # Reset shutdown flag for this request
-            shutdown_manager.reset_shutdown_flag()
-            
-            # Set processing start time
-            set_processing_start_time()
-            
-            start_time = time.time()
-            print("[UPLOAD] Step 1: File received")
-            
-            # 1. Upload directly to R2 (no temp files!)
-            suffix = Path(file.filename).suffix or ".mp4"
-            
-            print(f"[UPLOAD] Step 2: Uploading directly to R2 (no temp files)...")
-            upload_start = time.time()
-            
-            # Upload directly from file stream to R2
-            from clients.r2_storage_client import R2StorageClient
-            r2_client = R2StorageClient()
-            r2_url = r2_client.upload_video_from_stream(file.file, file.filename)
-            
-            upload_time = time.time() - upload_start
-            print(f"[UPLOAD] R2 upload took {upload_time:.2f}s")
-            
-            if not r2_url:
-                raise HTTPException(status_code=500, detail="Failed to upload to R2 storage")
-            
-            print(f"[UPLOAD] Step 3: R2 upload successful: {r2_url}")
-
-            # 2. Create job ID
-            job_id = str(uuid.uuid4())
-            analytic_path = OUTPUT_DIR / f"{job_id}_out{suffix}"
-            
-            # Initialize job status
-            with job_lock:
-                background_jobs[job_id] = {
-                    "status": "uploaded", # Initial status is 'uploaded', not 'queued'
-                    "start_time": time.time(),
-                    "file_name": file.filename,
-                    "r2_url": r2_url,
-                    "progress": 0,
-                    "message": "Video uploaded to R2, awaiting processing trigger...",
-                    "result": None,
-                    "error": None,
-                    "video_id": None
-                }
-                print(f"[UPLOAD] Job {job_id} created with status: uploaded")
-            
-            # Just upload, don't add to queue yet
-            print(f"[UPLOAD] Step 3: Video uploaded to R2, ready for processing")
-            
-            # Return job ID for manual processing trigger
-            return {
-                "status": "uploaded",
-                "job_id": job_id,
-                "message": "Video uploaded to R2, ready for processing",
-                "file_name": file.filename,
-                "r2_url": r2_url
-            }
-        except Exception as e:
-            print(f"[UPLOAD] Error: {e}")
-            # Best-effort cleanup of temp file if it was created
-            try:
-                from pathlib import Path as _Path
-                if 'raw_path' in locals():
-                    _p = _Path(str(raw_path))
-                    if _p.exists():
-                        _p.unlink()
-                        print(f"[UPLOAD] Cleaned temp file after failure: {_p}")
-            except Exception as _ce:
-                print(f"[UPLOAD] Warning: failed to cleanup temp file: {_ce}")
-            import traceback
-            traceback.print_exc()
-            raise HTTPException(status_code=500, detail=f"Upload failed: {str(e)}")
+    # DEPRECATED: Server-side upload endpoint - COMMENTED OUT
+    # This endpoint is no longer used because:
+    # - Server-side uploads cause slow upload issues on RunPod
+    # - RunPod has bandwidth limitations that slow down large file uploads
+    # - Server resources are wasted on file transfer instead of processing
+    # 
+    # NEW APPROACH: Client-side upload + WebSocket communication
+    # - Frontend uploads directly to Cloudflare R2 storage
+    # - Frontend sends job info to backend via WebSocket
+    # - Backend processes video from R2 URL (no file transfer needed)
+    # - Much faster and more efficient for RunPod environments
+    
+    # @router.post("/upload")
+    # async def upload_video(
+    #     file: UploadFile = File(..., description="Video file to upload and process")
+    # ):
+    #     """
+    #     Upload a video file for processing
+    #     
+    #     Uploads a video file and automatically adds it to the processing queue.
+    #     
+    #     Args:
+    #         file: Video file to upload (supports common video formats)
+    #     
+    #     Returns:
+    #         dict: Job information including job ID and queue position
+    #     """
+    #     try:
+    #         # Reset shutdown flag for this request
+    #         shutdown_manager.reset_shutdown_flag()
+    #         
+    #         # Set processing start time
+    #         set_processing_start_time()
+    #         
+    #         start_time = time.time()
+    #         print("[UPLOAD] Step 1: File received")
+    #         
+    #         # 1. Upload directly to R2 (no temp files!)
+    #         suffix = Path(file.filename).suffix or ".mp4"
+    #         
+    #         print(f"[UPLOAD] Step 2: Uploading directly to R2 (no temp files)...")
+    #         upload_start = time.time()
+    #         
+    #         # Upload directly from file stream to R2
+    #         from clients.r2_storage_client import R2StorageClient
+    #         r2_client = R2StorageClient()
+    #         r2_url = r2_client.upload_video_from_stream(file.file, file.filename)
+    #         
+    #         upload_time = time.time() - upload_start
+    #         print(f"[UPLOAD] R2 upload took {upload_time:.2f}s")
+    #         
+    #         if not r2_url:
+    #             raise HTTPException(status_code=500, detail="Failed to upload to R2 storage")
+    #         
+    #         print(f"[UPLOAD] Step 3: R2 upload successful: {r2_url}")
+    # 
+    #         # 2. Create job ID
+    #         job_id = str(uuid.uuid4())
+    #         analytic_path = OUTPUT_DIR / f"{job_id}_out{suffix}"
+    #         
+    #         # Initialize job status
+    #         with job_lock:
+    #             background_jobs[job_id] = {
+    #                 "status": "uploaded", # Initial status is 'uploaded', not 'queued'
+    #                 "start_time": time.time(),
+    #                 "file_name": file.filename,
+    #                 "r2_url": r2_url,
+    #                 "progress": 0,
+    #                 "message": "Video uploaded to R2, awaiting processing trigger...",
+    #                 "result": None,
+    #                 "error": None,
+    #                 "video_id": None
+    #             }
+    #             print(f"[UPLOAD] Job {job_id} created with status: uploaded")
+    #         
+    #         # Just upload, don't add to queue yet
+    #         print(f"[UPLOAD] Step 3: Video uploaded to R2, ready for processing")
+    #         
+    #         # Return job ID for manual processing trigger
+    #         return {
+    #             "status": "uploaded",
+    #             "job_id": job_id,
+    #             "message": "Video uploaded to R2, ready for processing",
+    #             "file_name": file.filename,
+    #             "r2_url": r2_url
+    #         }
+    #     except Exception as e:
+    #         print(f"[UPLOAD] Error: {e}")
+    #         # Best-effort cleanup of temp file if it was created
+    #         try:
+    #             from pathlib import Path as _Path
+    #             if 'raw_path' in locals():
+    #                 _p = _Path(str(raw_path))
+    #                 if _p.exists():
+    #                     _p.unlink()
+    #                     print(f"[UPLOAD] Cleaned temp file after failure: {_p}")
+    #         except Exception as _ce:
+    #             print(f"[UPLOAD] Warning: failed to cleanup temp file: {_ce}")
+    #         import traceback
+    #         traceback.print_exc()
+    #         raise HTTPException(status_code=500, detail=f"Upload failed: {str(e)}")
 
     @router.get("/stream/{job_id}")
     async def stream_video(job_id: str):

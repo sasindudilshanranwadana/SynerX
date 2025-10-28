@@ -14,6 +14,8 @@ import {
   getProcessingJobsByStatus
 } from './database';
 import { Video, TrackingResultInsert, VehicleCountInsert, Job, JobsResponse } from './types';
+import { uploadVideoToR2, generateJobId, UploadProgress, R2UploadResult } from './r2Upload';
+import { wsClient, JobMessage } from './websocketClient';
 import jsPDF from 'jspdf';
 import 'jspdf-autotable';
 import { format, parseISO } from 'date-fns';
@@ -412,30 +414,78 @@ export const saveVehicleCounts = async (
   await insertVehicleCounts(vehicleCounts);
 };
 
-// RunPod Job Management Functions
-export const startRunPodProcessing = async (video: Video): Promise<{ job_id: string; queue_position: number }> => {
+// Upload video directly to R2 using AWS SDK (true client-side upload)
+export const uploadVideoToR2Direct = async (
+  file: File,
+  onProgress?: (progress: number) => void
+): Promise<{ success: boolean; url?: string; error?: string }> => {
   try {
-    // Check authentication status before attempting upload
-    await requireAuthentication();
+    // Import AWS SDK dynamically to avoid issues
+    const AWS = (window as any).AWS;
+    if (!AWS) {
+      throw new Error('AWS SDK not loaded');
+    }
 
-    const formData = new FormData();
-    
-    // NOTE: This function path is deprecated in favor of startRunPodProcessingDirect.
-    // Keeping signature for compatibility; backend expects a file Blob.
-    // @ts-expect-error legacy path: `video` here is not a Blob. Use startRunPodProcessingDirect instead.
-    formData.append('file', video);
-    formData.append('video_id', video.id.toString());
-    formData.append('video_name', video.video_name);
-    
-    const data = await fetchJSON('/video/upload', {
-      method: 'POST',
-      body: formData,
+    // R2 configuration - use environment variables only
+    const R2_ACCOUNT_ID = import.meta.env.VITE_CLOUDFLARE_ACCOUNT_ID;
+    const R2_ACCESS_KEY_ID = import.meta.env.VITE_R2_ACCESS_KEY_ID;
+    const R2_SECRET_ACCESS_KEY = import.meta.env.VITE_R2_SECRET_ACCESS_KEY;
+    const R2_BUCKET_NAME = import.meta.env.VITE_R2_BUCKET_NAME;
+
+    // Validate required environment variables
+    if (!R2_ACCOUNT_ID || !R2_ACCESS_KEY_ID || !R2_SECRET_ACCESS_KEY || !R2_BUCKET_NAME) {
+      throw new Error('R2 configuration missing. Please check your environment variables.');
+    }
+
+    // Configure AWS SDK for R2
+    AWS.config.update({
+      endpoint: `https://${R2_ACCOUNT_ID}.r2.cloudflarestorage.com`,
+      accessKeyId: R2_ACCESS_KEY_ID,
+      secretAccessKey: R2_SECRET_ACCESS_KEY,
+      signatureVersion: 'v4',
+      region: 'auto',
+      s3ForcePathStyle: true
     });
+
+    const s3 = new AWS.S3();
+
+    // Generate unique filename
+    const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+    const fileExtension = file.name.split('.').pop() || 'mp4';
+    const uniqueFilename = `${file.name.split('.')[0]}_${timestamp}.${fileExtension}`;
+
+    // Upload parameters
+    const uploadParams = {
+      Bucket: R2_BUCKET_NAME,
+      Key: uniqueFilename,
+      Body: file,
+      ContentType: 'video/mp4',
+      CacheControl: 'public, max-age=31536000'
+    };
+
+    // Upload with progress tracking
+    const upload = s3.upload(uploadParams);
     
-    return data;
-  } catch (error) {
-    console.error('Error starting RunPod processing:', error);
-    throw error;
+    upload.on('httpUploadProgress', (progress: any) => {
+      if (onProgress && progress.total) {
+        const percentage = (progress.loaded / progress.total) * 100;
+        onProgress(percentage);
+      }
+    });
+
+    const result = await upload.promise();
+    
+    return {
+      success: true,
+      url: result.Location
+    };
+
+  } catch (error: any) {
+    console.error('R2 upload failed:', error);
+    return {
+      success: false,
+      error: error.message || 'Upload failed'
+    };
   }
 };
 
@@ -445,93 +495,74 @@ export const startRunPodProcessingDirect = async (
   onProgress?: (progress: number) => void
 ): Promise<{ job_id: string; video_id: number | null; queue_position: number; original_url: string }> => {
   try {
+    console.log('🚀 Starting client-side upload process...');
+    
     // Check authentication status before attempting upload
     await requireAuthentication();
-    const authToken = await getAuthToken();
-    if (!authToken) {
-      throw new Error('No valid authentication token found');
+    console.log('✅ Authentication check passed');
+
+    // Step 1: Ensure WebSocket is connected
+    console.log('🔌 Checking WebSocket connection...');
+    if (!wsClient.isConnected()) {
+      console.log('🔌 WebSocket not connected, attempting to connect...');
+      await wsClient.connect();
+      console.log('✅ WebSocket connected successfully');
+    } else {
+      console.log('✅ WebSocket already connected');
     }
 
-    const formData = new FormData();
-
-    formData.append('file', videoFile);
-    formData.append('video_name', videoName);
-
-    const fullUrl = `${RUNPOD_API_BASE}/video/upload`;
-
-    const uploadData = await new Promise<any>((resolve, reject) => {
-      const xhr = new XMLHttpRequest();
-
-      xhr.upload.addEventListener('progress', (event) => {
-        if (event.lengthComputable && onProgress) {
-          const percentComplete = (event.loaded / event.total) * 100;
-          onProgress(percentComplete);
-        }
-      });
-
-      xhr.addEventListener('load', () => {
-        if (xhr.status >= 200 && xhr.status < 300) {
-          try {
-            const response = JSON.parse(xhr.responseText);
-            resolve(response);
-          } catch (e) {
-            reject(new Error('Failed to parse server response'));
-          }
-        } else {
-          // Enhanced error handling for authentication issues
-          let errorMessage = `Upload failed with status ${xhr.status}`;
-          try {
-            const errorResponse = JSON.parse(xhr.responseText);
-            if (errorResponse.detail) {
-              errorMessage = errorResponse.detail;
-            }
-          } catch {}
-          
-          // Handle authentication errors specifically
-          if (xhr.status === 401 || xhr.status === 403) {
-            errorMessage = 'Access denied. Please check your permissions or contact support.';
-            // Sign out user and redirect to auth page
-            supabase.auth.signOut().then(() => {
-              window.location.href = '/auth';
-            }).catch(() => {});
-          }
-          
-          reject(new Error(errorMessage));
-        }
-      });
-
-      xhr.addEventListener('error', () => {
-        reject(new Error('Network error during upload'));
-      });
-
-      xhr.addEventListener('abort', () => {
-        reject(new Error('Upload cancelled'));
-      });
-
-      xhr.open('POST', fullUrl);
-
-      // Set Supabase JWT token for authentication
-      xhr.setRequestHeader('Authorization', `Bearer ${authToken}`);
-
-      xhr.send(formData);
+    // Step 2: Upload file directly to R2 using AWS SDK (true client-side upload)
+    console.log('☁️ Starting direct R2 upload...');
+    const uploadResult = await uploadVideoToR2Direct(videoFile, (progress) => {
+      if (onProgress) {
+        onProgress(progress);
+      }
     });
-
-    if (onProgress) {
-      onProgress(100);
+    
+    if (!uploadResult.success) {
+      throw new Error(uploadResult.error || 'R2 upload failed');
     }
+    console.log('✅ R2 upload successful:', uploadResult.url);
 
-    const processData = await fetchJSON(`/video/process/${uploadData.job_id}`, {
-      method: 'POST'
-    });
+    // Step 3: Generate job ID
+    const jobId = generateJobId();
+    console.log('🆔 Generated job ID:', jobId);
 
-    return {
-      job_id: uploadData.job_id,
-      video_id: uploadData.video_id,
-      queue_position: processData.queue_position ?? uploadData.queue_position ?? 0,
-      original_url: uploadData.original_url || uploadData.video_url || ''
+    // Step 4: Send job info to backend via WebSocket
+    const jobMessage: JobMessage = {
+      type: 'new_job',
+      job_id: jobId,
+      r2_url: uploadResult.url,
+      file_name: videoFile.name,
+      file_size: videoFile.size,
+      status: 'uploaded',
+      message: 'Video uploaded to R2, ready for processing...'
     };
-  } catch (error) {
-    console.error('Error starting RunPod processing:', error);
+
+    console.log('📤 Sending job info via WebSocket:', jobMessage);
+    wsClient.sendJob(jobMessage);
+    console.log('✅ Job info sent successfully');
+
+    // Return result in the same format as the old function for compatibility
+    return {
+      job_id: jobId,
+      video_id: null, // Will be set by backend when processing starts
+      queue_position: 0, // Will be updated via WebSocket
+      original_url: uploadResult.url
+    };
+
+  } catch (error: any) {
+    console.error('❌ Client-side upload failed:', error);
+    
+    // Enhanced error handling for authentication issues
+    if (error.message?.includes('Authentication required') || 
+        error.message?.includes('No valid authentication token')) {
+      // Sign out user and redirect to auth page
+      supabase.auth.signOut().then(() => {
+        window.location.href = '/auth';
+      }).catch(() => {});
+    }
+    
     throw error;
   }
 };

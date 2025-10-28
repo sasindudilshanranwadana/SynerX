@@ -4,6 +4,10 @@ supervision>=0.25.0
 torch>=2.7.0
 torchvision>=0.22.0
 
+# GPU acceleration (CUDA support for local development)
+# Install with: pip install torch torchvision --index-url https://download.pytorch.org/whl/cu121
+# Or use the specific CUDA version for your system
+
 # Data processing
 pandas>=2.2.0
 numpy>=2.3.0
@@ -42,6 +46,7 @@ pytest>=8.4.0
 # Optional: Image processing (will fallback to PIL if not available)
 opencv-python-headless>=4.11.0  # Headless OpenCV (no GUI dependencies)
 
-# GPU acceleration (install separately for RunPod)
-# cupy-cuda12x>=12.0.0  # Uncomment for RunPod GPU acceleration
-# cupy-cuda11x>=11.0.0  # Uncomment for older CUDA versions
+# GPU acceleration libraries (optional for local development)
+# Uncomment if you want GPU acceleration beyond PyTorch CUDA
+# cupy-cuda12x>=12.0.0  # For CUDA 12.x
+# cupy-cuda11x>=11.0.0  # For CUDA 11.x

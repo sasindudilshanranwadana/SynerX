@@ -431,18 +431,19 @@ function UploadPage() {
         const videoName = file.name.replace(/\.[^/.]+$/, '');
         setCurrentUploadFileName(file.name);
         setCurrentUploadFileSize(file.size);
-        setUploadStatus('Uploading video to server...');
+        setUploadStatus('Uploading video to cloud storage...');
 
-        const result = await startRunPodProcessingDirect(file, videoName, () => {
-          // Progress callback - keeping it for API compatibility but not using percentage
+        const result = await startRunPodProcessingDirect(file, videoName, (progress) => {
+          // Update upload progress
+          setUploadStatus(`Uploading... ${Math.round(progress)}%`);
         });
 
         const video = await createVideoMetadataRecord(file, videoName, result.original_url);
 
         setUploadedVideos(prev => [video, ...prev]);
 
-        setUploadStatus(`Successfully queued job ${result.job_id}`);
-        showNotification(`Successfully uploaded "${file.name}" and added to processing queue`, 'success', 5000);
+        setUploadStatus(`Successfully uploaded "${file.name}" and queued for processing`);
+        showNotification(`Successfully uploaded "${file.name}" and queued for processing`, 'success', 5000);
 
         setCurrentUploadFileName('');
         setCurrentUploadFileSize(0);
