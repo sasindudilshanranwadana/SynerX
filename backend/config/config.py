@@ -12,7 +12,7 @@ class Config:
     OUTPUT_VIDEO_PATH = os.path.join(BACKEND_ROOT, 'asset', 'TrackingWithStopResult.mp4')  # Output processed video path
     MODEL_PATH = os.path.join(BACKEND_ROOT, 'models', 'yolo12s.pt')  # YOLO model weights file path
     LICENSE_PLATE_MODEL_PATH = os.path.join(BACKEND_ROOT, 'models', 'best.pt')  # License plate detection model path
-    
+    ENABLE_LICENSE_PLATE_BLURRING = True  # Disable license plate blurring for performance
     # Detection Zones
     SOURCE_POLYGON = np.array([(422, 10), (594, 16), (801, 665), (535, 649)])  # Detection area polygon coordinates
     STOP_ZONE_POLYGON = np.array([(507, 199), (681, 209), (751, 555), (484, 541)])  # Stop zone polygon coordinates
