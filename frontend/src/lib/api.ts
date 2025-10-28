@@ -64,15 +64,10 @@ export const fetchVideoSummary = async (videoId: number) => {
 
 export const deleteVideoFromRunPod = async (videoId: number) => {
   try {
-    const response = await fetch(`${RUNPOD_API_BASE}/data/videos/${videoId}`, {
+    const response = await fetchJSON(`/data/videos/${videoId}`, {
       method: 'DELETE',
     });
-    const text = await response.text();
-    const data = text ? JSON.parse(text) : {};
-    if (!response.ok || data.status !== 'success') {
-      throw new Error(data.error || response.statusText);
-    }
-    return data;
+    return response;
   } catch (error) {
     console.error('Error deleting video:', error);
     throw error;
@@ -151,6 +146,33 @@ const getChartImage = async (
 
 // RunPod API Base URL
 const RUNPOD_API_BASE = import.meta.env.DEV ? '/api' : (import.meta.env.VITE_RUNPOD_URL || 'http://localhost:8000');
+
+// Authentication helper functions
+export const checkAuthentication = async (): Promise<boolean> => {
+  try {
+    const { data: { session }, error } = await supabase.auth.getSession();
+    return !error && !!session;
+  } catch {
+    return false;
+  }
+};
+
+export const getAuthToken = async (): Promise<string | null> => {
+  try {
+    const { data: { session }, error } = await supabase.auth.getSession();
+    if (error || !session) return null;
+    return (session as any)?.access_token as string | undefined || null;
+  } catch {
+    return null;
+  }
+};
+
+export const requireAuthentication = async (): Promise<void> => {
+  const isAuthenticated = await checkAuthentication();
+  if (!isAuthenticated) {
+    throw new Error('Authentication required. Please sign in to continue.');
+  }
+};
 
 // Helper to detect if error is from cold start
 const isColdStartError = (error: any, responseText: string = ''): boolean => {
@@ -393,6 +415,9 @@ export const saveVehicleCounts = async (
 // RunPod Job Management Functions
 export const startRunPodProcessing = async (video: Video): Promise<{ job_id: string; queue_position: number }> => {
   try {
+    // Check authentication status before attempting upload
+    await requireAuthentication();
+
     const formData = new FormData();
     
     // NOTE: This function path is deprecated in favor of startRunPodProcessingDirect.
@@ -402,7 +427,7 @@ export const startRunPodProcessing = async (video: Video): Promise<{ job_id: str
     formData.append('video_id', video.id.toString());
     formData.append('video_name', video.video_name);
     
-    const data = await fetchJSON(`${RUNPOD_API_BASE}/video/upload`, {
+    const data = await fetchJSON('/video/upload', {
       method: 'POST',
       body: formData,
     });
@@ -420,6 +445,13 @@ export const startRunPodProcessingDirect = async (
   onProgress?: (progress: number) => void
 ): Promise<{ job_id: string; video_id: number | null; queue_position: number; original_url: string }> => {
   try {
+    // Check authentication status before attempting upload
+    await requireAuthentication();
+    const authToken = await getAuthToken();
+    if (!authToken) {
+      throw new Error('No valid authentication token found');
+    }
+
     const formData = new FormData();
 
     formData.append('file', videoFile);
@@ -446,7 +478,25 @@ export const startRunPodProcessingDirect = async (
             reject(new Error('Failed to parse server response'));
           }
         } else {
-          reject(new Error(`Upload failed with status ${xhr.status}`));
+          // Enhanced error handling for authentication issues
+          let errorMessage = `Upload failed with status ${xhr.status}`;
+          try {
+            const errorResponse = JSON.parse(xhr.responseText);
+            if (errorResponse.detail) {
+              errorMessage = errorResponse.detail;
+            }
+          } catch {}
+          
+          // Handle authentication errors specifically
+          if (xhr.status === 401 || xhr.status === 403) {
+            errorMessage = 'Access denied. Please check your permissions or contact support.';
+            // Sign out user and redirect to auth page
+            supabase.auth.signOut().then(() => {
+              window.location.href = '/auth';
+            }).catch(() => {});
+          }
+          
+          reject(new Error(errorMessage));
         }
       });
 
@@ -460,9 +510,8 @@ export const startRunPodProcessingDirect = async (
 
       xhr.open('POST', fullUrl);
 
-      if (import.meta.env.VITE_RUNPOD_API_KEY) {
-        xhr.setRequestHeader('Authorization', `Bearer ${import.meta.env.VITE_RUNPOD_API_KEY}`);
-      }
+      // Set Supabase JWT token for authentication
+      xhr.setRequestHeader('Authorization', `Bearer ${authToken}`);
 
       xhr.send(formData);
     });
@@ -510,27 +559,37 @@ export const createVideoMetadataRecord = async (
 
 export const clearCompletedRunPodJobs = async (): Promise<void> => {
   try {
-    await fetch(`${RUNPOD_API_BASE}/jobs/clear-completed`, { method: 'POST' });
+    await fetchJSON('/jobs/clear-completed', { method: 'POST' });
   } catch (error) {
     console.error('Error clearing completed jobs:', error);
     throw error;
   }
 };
 
-export const shutdownAllRunPodJobs = async (): Promise<void> => {
+export const shutdownAllRunPodJobs = async (): Promise<{ success: boolean; message: string }> => {
   try {
-    await fetch(`${RUNPOD_API_BASE}/jobs/shutdown`, { method: 'POST' });
+    const response = await fetchJSON('/jobs/shutdown', { method: 'POST' });
+    if (response.status === 'no_job') {
+      return { success: true, message: 'No active job found to stop' };
+    }
+    return { success: true, message: 'Current processing job stopped successfully' };
   } catch (error) {
-    console.error('Error shutting down all jobs:', error);
+    console.error('Error shutting down current job:', error);
     throw error;
   }
 };
 
 export const shutdownSpecificRunPodJob = async (jobId: string): Promise<void> => {
   try {
-    await fetch(`${RUNPOD_API_BASE}/jobs/shutdown/${jobId}`, { method: 'POST' });
+    const response = await fetchJSON(`/jobs/shutdown/${jobId}`, { method: 'POST' });
+    if (response.status === 'not_found') {
+      throw new Error(`Job ${jobId} not found`);
+    }
+    if (response.status === 'cannot_cancel') {
+      throw new Error(`Job ${jobId} is already ${response.job_status} and cannot be cancelled`);
+    }
   } catch (error) {
-    console.error('Error shutting down job:', error);
+    console.error('Error shutting down specific job:', error);
     throw error;
   }
 };

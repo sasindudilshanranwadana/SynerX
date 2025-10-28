@@ -336,25 +336,42 @@ function UploadPage() {
   };
 
   const shutdownAny = async () => {
-    if (!confirm('Are you sure you want to delete the current processing job? This action cannot be undone.')) return;
+    if (!confirm('Are you sure you want to stop the current processing job? This action cannot be undone.')) return;
     try {
-      await shutdownAllRunPodJobs();
-      showNotification('Processing jobs deleted successfully', 'success');
+      const result = await shutdownAllRunPodJobs();
+      // Show different notification types based on the result
+      if (result.message.includes('No active job')) {
+        showNotification(result.message, 'info');
+      } else {
+        showNotification(result.message, 'success');
+      }
     } catch (error) {
       const errorMsg = getErrorMessage(error);
-      console.error('Error deleting jobs:', errorMsg);
+      console.error('Error stopping current job:', errorMsg);
       showNotification(errorMsg, 'error');
     }
   };
 
   const deleteJob = async (jobId: string) => {
-    if (!confirm(`Are you sure you want to delete job ${jobId}? This action cannot be undone.`)) return;
+    // Find the job to get its status for better messaging
+    const job = jobs.find(j => j.job_id === jobId);
+    const isProcessing = job?.status === 'processing';
+    
+    const confirmMessage = isProcessing 
+      ? `Are you sure you want to stop processing job ${jobId}? This will gracefully stop the current processing.`
+      : `Are you sure you want to cancel queued job ${jobId}? This will remove it from the queue.`;
+      
+    if (!confirm(confirmMessage)) return;
+    
     try {
       await shutdownSpecificRunPodJob(jobId);
-      showNotification(`Job ${jobId} deleted successfully`, 'success');
+      const successMessage = isProcessing 
+        ? `Job ${jobId} processing stopped successfully`
+        : `Job ${jobId} cancelled successfully`;
+      showNotification(successMessage, 'success');
     } catch (error) {
       const errorMsg = getErrorMessage(error);
-      console.error('Error deleting job:', errorMsg);
+      console.error('Error stopping job:', errorMsg);
       showNotification(errorMsg, 'error');
     }
   };
@@ -640,6 +657,18 @@ function UploadPage() {
                   >
                     Clear Completed
                   </button>
+                  <button
+                    onClick={shutdownAny}
+                    className={`px-2 sm:px-3 py-2 text-xs sm:text-sm rounded-lg transition-colors ${
+                      isDark
+                        ? 'bg-red-500/20 hover:bg-red-500/30 text-red-400 border border-red-500/30'
+                        : 'bg-red-100 hover:bg-red-200 text-red-700 border border-red-300'
+                    }`}
+                    title="Stop current processing job"
+                  >
+                    <Trash2 className="w-4 h-4 inline mr-1" />
+                    Stop Current Job
+                  </button>
                 </div>
               </div>
             </div>
@@ -654,6 +683,7 @@ function UploadPage() {
                     <th className={`text-left py-2 sm:py-3 px-2 sm:px-4 font-medium text-xs sm:text-sm ${isDark ? 'text-gray-300' : 'text-gray-700'}`}>Progress</th>
                     <th className={`text-left py-2 sm:py-3 px-2 sm:px-4 font-medium text-xs sm:text-sm ${isDark ? 'text-gray-300' : 'text-gray-700'}`}>Message</th>
                     <th className={`text-left py-2 sm:py-3 px-2 sm:px-4 font-medium text-xs sm:text-sm ${isDark ? 'text-gray-300' : 'text-gray-700'}`}>Elapsed</th>
+                    <th className={`text-left py-2 sm:py-3 px-2 sm:px-4 font-medium text-xs sm:text-sm ${isDark ? 'text-gray-300' : 'text-gray-700'}`}>Actions</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -687,6 +717,59 @@ function UploadPage() {
                           </td>
                           <td className={`py-2 sm:py-3 px-2 sm:px-4 text-xs sm:text-sm ${isDark ? 'text-gray-400' : 'text-gray-600'}`}>
                             {formatElapsed(job.elapsed_time)}
+                          </td>
+                          <td className="py-2 sm:py-3 px-2 sm:px-4">
+                            <div className="flex items-center gap-2">
+                              {(job.status === 'processing' || job.status === 'queued') && (
+                                <>
+                                  <button
+                                    onClick={() => openStream(job.job_id)}
+                                    className={`p-1.5 rounded-lg transition-colors ${
+                                      job.status === 'processing'
+                                        ? isDark
+                                          ? 'bg-green-500/20 hover:bg-green-500/30 text-green-400 border border-green-500/30'
+                                          : 'bg-green-100 hover:bg-green-200 text-green-700 border border-green-300'
+                                        : isDark
+                                          ? 'bg-blue-500/20 hover:bg-blue-500/30 text-blue-400'
+                                          : 'bg-blue-100 hover:bg-blue-200 text-blue-700'
+                                    }`}
+                                    title={job.status === 'processing' ? 'Open live stream (Currently processing)' : 'Open live stream (Queued)'}
+                                  >
+                                    <Activity className="w-4 h-4" />
+                                  </button>
+                                  
+                                  {job.status === 'processing' ? (
+                                    // Stop button for processing jobs
+                                    <button
+                                      onClick={() => deleteJob(job.job_id)}
+                                      className={`px-3 py-1.5 rounded-lg transition-colors text-xs font-medium ${
+                                        isDark
+                                          ? 'bg-orange-500/20 hover:bg-orange-500/30 text-orange-400 border border-orange-500/30'
+                                          : 'bg-orange-100 hover:bg-orange-200 text-orange-700 border border-orange-300'
+                                      }`}
+                                      title="Stop processing gracefully"
+                                    >
+                                      <X className="w-3 h-3 inline mr-1" />
+                                      Stop
+                                    </button>
+                                  ) : (
+                                    // Cancel button for queued jobs
+                                    <button
+                                      onClick={() => deleteJob(job.job_id)}
+                                      className={`px-3 py-1.5 rounded-lg transition-colors text-xs font-medium ${
+                                        isDark
+                                          ? 'bg-yellow-500/20 hover:bg-yellow-500/30 text-yellow-400 border border-yellow-500/30'
+                                          : 'bg-yellow-100 hover:bg-yellow-200 text-yellow-700 border border-yellow-300'
+                                      }`}
+                                      title="Cancel queued job"
+                                    >
+                                      <X className="w-3 h-3 inline mr-1" />
+                                      Cancel
+                                    </button>
+                                  )}
+                                </>
+                              )}
+                            </div>
                           </td>
                         </tr>
                       );
@@ -767,7 +850,7 @@ function UploadPage() {
                         video.status === 'failed' ? 'bg-red-500/10 text-red-400' :
                         isDark ? 'bg-gray-500/10 text-gray-400' : 'bg-gray-500/10 text-gray-600'
                       } whitespace-nowrap`}>
-                        {video.status?.charAt(0).toUpperCase() + video.status?.slice(1) || 'Unknown'}
+                        {video.status ? video.status.charAt(0).toUpperCase() + video.status.slice(1) : 'Unknown'}
                       </span>
                     </div>
                   </div>
