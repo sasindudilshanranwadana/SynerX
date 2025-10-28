@@ -441,7 +441,7 @@ uvicorn main:app --reload
    - System is configured to run in GPU mode in Runpod.
    - Locally, you need to uninstall torch and torchvision
      ```pip uninstall torch torchvision```
-   - Then install it using this [link]https://pytorch.org/get-started/locally/ (select your Operating System and copy the command into your open terminal with venv running)
+   - Then install it using this [link](https://pytorch.org/get-started/locally/) (select your Operating System and copy the command into your open terminal with venv running)
 
 ### Debug Mode
 
