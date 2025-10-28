@@ -84,9 +84,28 @@ backend/models/best.pt
 
 ### 6. Supabase Database Setup
 
-Before running the SQL commands, you can do step 9 and step 10 written in `supabase_tables.sql` first and make sure you correct the name of bucket name.
+1. **Open Supabase Dashboard**
+   - Go to [supabase.com](https://supabase.com) and sign in
+   - Select your project
 
-Run the SQL commands in `supabase_tables.sql` in your Supabase SQL editor to create the required tables and storage bucket.
+2. **Navigate to SQL Editor**
+   - Click on "SQL Editor" in the left sidebar
+   - Click "New query"
+
+3. **Copy and Paste Database Schema**
+   - Open the file `backend/database/supabase_tables.sql` in your code editor
+   - Copy the entire contents (Ctrl+A, then Ctrl+C)
+   - Paste into the Supabase SQL Editor (Ctrl+V)
+
+4. **Run the SQL Commands**
+   - Click the "Run" button or press Ctrl+Enter
+   - Wait for all commands to execute successfully
+   - You should see "Success. No rows returned" messages
+
+5. **Verify Setup**
+   - Check that three tables were created: `videos`, `tracking_results`, `vehicle_counts`
+   - Verify the sequence `tracker_id_seq` was created
+   - Confirm all functions and triggers are in place
 
 ## ⚡ Quick Development Commands
 
@@ -125,7 +144,7 @@ python core/video_processor.py
 ## 🔄 Database-Driven Workflow
 
 **Purpose**: Production deployment and web interface
-**Data Storage**: Supabase database only
+**Data Storage**: Supabase database for metadata and analysis results
 **Input**: Uploaded videos via API
 
 ```bash
@@ -144,7 +163,7 @@ uvicorn main:app --reload
 
 - Web interface at `http://localhost:8000/docs`
 - Upload videos via `/upload-video` endpoint
-- Saves data to Supabase database
+- Saves analysis results to Supabase database
 - Processing time tracking
 - Graceful shutdown support
 - Real-time video streaming via WebSocket
@@ -257,7 +276,41 @@ Edit `config/config.py` to customize:
 - **Processing parameters**: Frame buffer, velocity threshold
 - **Visualization**: Colors, line thickness, annotation settings
 
-## 📊 Data Structure
+## 📊 Database Schema
+
+The system uses three main tables in Supabase:
+
+### Videos Table
+Stores video metadata and processing status:
+- `id` - Primary key
+- `video_name` - Display name
+- `original_filename` - Original file name
+- `status` - Processing status (uploaded, processing, completed, failed, cancelled, interrupted)
+- `total_vehicles` - Count of detected vehicles
+- `compliance_rate` - Percentage of compliant vehicles
+- `processing_time_seconds` - Time taken to process
+- `message` - Current status message
+- `error` - Error details if failed
+
+### Tracking Results Table
+Individual vehicle tracking data:
+- `tracker_id` - Unique tracking ID
+- `video_id` - Reference to videos table
+- `vehicle_type` - Type of vehicle (car, truck, etc.)
+- `status` - Movement status (moving, stationary)
+- `compliance` - Compliance status (0 or 1)
+- `reaction_time` - Time to react to stop zone
+- Weather data (temperature, humidity, visibility, precipitation, wind speed)
+
+### Vehicle Counts Table
+Aggregated vehicle counts per video:
+- `id` - Primary key
+- `video_id` - Reference to videos table
+- `vehicle_type` - Type of vehicle
+- `count` - Number of vehicles
+- `date` - Date of count
+
+## 📊 Data Structure Examples
 
 ### Tracking Results
 
@@ -295,7 +348,7 @@ Edit `config/config.py` to customize:
 ```bash
 # 1. Set up environment
 cp .env.example .env
-# Edit .env with your Supabase and Cloudflare R2 credentials
+# Edit .env with your Supabase credentials
 
 # 2. Start FastAPI server
 uvicorn main:app --reload
@@ -336,7 +389,26 @@ uvicorn main:app --reload
 
    **Solution**: Check your Supabase credentials and network connection
 
-4. **Shutdown not working**
+4. **SQL execution errors in Supabase**
+
+   ```
+   ERROR: relation "videos" already exists
+   ```
+
+   **Solution**: The SQL file includes DROP statements, so you can safely re-run it. If you get constraint errors, run the SQL file again as it handles existing constraints.
+
+5. **Tables not created after running SQL**
+
+   - Check the SQL Editor for any error messages
+   - Ensure you copied the entire file content
+   - Try running the verification queries manually:
+     ```sql
+     SELECT table_name FROM information_schema.tables 
+     WHERE table_schema = 'public' 
+     AND table_name IN ('videos', 'tracking_results', 'vehicle_counts');
+     ```
+
+6. **Shutdown not working**
    - Ensure you're calling the `/shutdown/` endpoint
    - Check that processing is actually running
    - Wait a few frames for the shutdown to take effect
@@ -360,12 +432,12 @@ backend/
 │   └── supabase_client.py  # Supabase client setup
 ├── core/
 │   ├── __init__.py
-│   ├── video_processor.py  # Main processing function (YOLO/OpenCV)
-│   └── license_plate_blur.py # License plate blurring module
+│   └── video_processor.py  # Main processing function (YOLO/OpenCV)
 ├── config/
 │   └── config.py           # Configuration settings
+├── database/
+│   └── supabase_tables.sql # Database schema
 ├── utils/
-│   ├── supabase_manager.py # Supabase database operations
 │   ├── data_manager.py     # Database data orchestration
 │   ├── vehicle_tracker.py  # Vehicle tracking logic
 │   ├── heatmap.py          # Heat map generation
@@ -386,19 +458,5 @@ backend/
 4. Test in database mode
 5. Submit a pull request
 
-## 📄 License
-
-This project is licensed under the MIT License - see the LICENSE file for details.
-
-## 🆘 Support
-
-For issues and questions:
-
-1. Check the troubleshooting section
-2. Review the configuration options
-3. Test database connectivity
-4. Create an issue with detailed error messages
-
----
 
 **Happy tracking! 🚗📊**
