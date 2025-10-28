@@ -5,16 +5,12 @@ import shutil
 import glob
 from pathlib import Path
 from typing import List, Dict, Any
-import time
 from clients.r2_storage_client import get_r2_client
 
 router = APIRouter(prefix="/storage", tags=["Storage Management"])
 
 def init_storage_router():
     """Initialize the storage router"""
-    # Simple in-memory cache for storage endpoints
-    storage_cache = {}
-    STORAGE_CACHE_TTL_SECONDS = 120
     
     @router.get("/info")
     async def get_storage_info():
@@ -25,14 +21,6 @@ def init_storage_router():
             dict: R2 storage information with space usage and temp file details
         """
         try:
-            # Serve from cache if fresh
-            cache_key = "storage_info"
-            now = time.time()
-            cached = storage_cache.get(cache_key)
-            if cached and (now - cached["ts"]) <= STORAGE_CACHE_TTL_SECONDS:
-                return JSONResponse(content=cached["payload"], headers={
-                    "Cache-Control": f"public, max-age={STORAGE_CACHE_TTL_SECONDS}"
-                })
             r2_client = get_r2_client()
             
             # Get all files first to identify temp files
@@ -96,9 +84,10 @@ def init_storage_router():
                     "remaining_gb": usage_stats['remaining_gb']
                 }
             }
-            storage_cache[cache_key] = {"ts": now, "payload": payload}
             return JSONResponse(content=payload, headers={
-                "Cache-Control": f"public, max-age={STORAGE_CACHE_TTL_SECONDS}"
+                "Cache-Control": "no-cache, no-store, must-revalidate",
+                "Pragma": "no-cache",
+                "Expires": "0"
             })
             
         except Exception as e:
@@ -124,14 +113,6 @@ def init_storage_router():
             dict: List of video files with size, status, and other metadata
         """
         try:
-            # Serve from cache if fresh
-            cache_key = "storage_videos"
-            now = time.time()
-            cached = storage_cache.get(cache_key)
-            if cached and (now - cached["ts"]) <= STORAGE_CACHE_TTL_SECONDS:
-                return JSONResponse(content=cached["payload"], headers={
-                    "Cache-Control": f"public, max-age={STORAGE_CACHE_TTL_SECONDS}"
-                })
             r2_client = get_r2_client()
             
             # Get all files from R2
@@ -177,9 +158,10 @@ def init_storage_router():
                 "status": "success",
                 "data": video_files
             }
-            storage_cache[cache_key] = {"ts": now, "payload": payload}
             return JSONResponse(content=payload, headers={
-                "Cache-Control": f"public, max-age={STORAGE_CACHE_TTL_SECONDS}"
+                "Cache-Control": "no-cache, no-store, must-revalidate",
+                "Pragma": "no-cache",
+                "Expires": "0"
             })
             
         except Exception as e:
@@ -218,8 +200,6 @@ def init_storage_router():
                     failed_deletions.append(f"Failed to delete {video_id}: {str(e)}")
                     print(f"[DELETE] ❌ Exception deleting {video_id}: {str(e)}")
             
-            # Invalidate list/info caches after deletion
-            storage_cache.clear()
             return {
                 "status": "success",
                 "deleted_files": deleted_files,
@@ -271,8 +251,6 @@ def init_storage_router():
                 else:
                     pass
             
-            # Invalidate caches after cleanup
-            storage_cache.clear()
             return {
                 "status": "success",
                 "cleaned_files": cleaned_files,
