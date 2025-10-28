@@ -124,6 +124,9 @@ npm test
 # Run video processor
 npm run processor
 
+# Get authentication token for testing (make sure u have supabase email and password in supabase)
+npm run get:token
+
 # Install dependencies
 npm run install-deps
 ```
@@ -161,12 +164,13 @@ uvicorn main:app --reload
 
 **Features:**
 
-- Web interface at `http://localhost:8000/docs`
+- **Interactive API Documentation** at `http://localhost:8000/docs` (Swagger UI)
 - Upload videos via `/upload-video` endpoint
 - Saves analysis results to Supabase database
 - Processing time tracking
 - Graceful shutdown support
 - Real-time video streaming via WebSocket
+- Test all endpoints directly from the browser interface
 
 ## 📡 API Endpoints
 
@@ -257,13 +261,33 @@ Check processing status.
 
 ### Testing
 
+#### Web Interface Testing
+
+1. **Start the server**
+   ```bash
+   uvicorn main:app --reload
+   ```
+
+2. **Open the interactive API documentation**
+   - Go to [http://localhost:8000/docs](http://localhost:8000/docs)
+   - This provides a Swagger UI interface for testing all endpoints
+   - You can test endpoints directly from the browser
+
+3. **Test endpoints through the web interface**
+   - Click on any endpoint to expand it
+   - Click "Try it out" to test the endpoint
+   - Fill in required parameters and click "Execute"
+   - View the response directly in the browser
+
+#### Programmatic Testing
+
 #### `GET /test-db/`
 
 Test database connectivity and current data.
 
 #### `pytest test_main.py`
 
-Test API endpoints.
+Test API endpoints programmatically.
 
 ## ⚙️ Configuration
 
@@ -353,7 +377,7 @@ cp .env.example .env
 # 2. Start FastAPI server
 uvicorn main:app --reload
 
-# 3. Open web interface
+# 3. Open interactive API documentation
 # http://localhost:8000/docs
 
 # 4. Upload video via /upload-video endpoint
