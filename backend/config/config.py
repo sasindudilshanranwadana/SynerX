@@ -1,6 +1,97 @@
 import numpy as np
 import os
 import cv2
+from dotenv import load_dotenv
+
+# Load environment variables
+load_dotenv()
+
+def _parse_polygon(env_var: str, default: list) -> np.ndarray:
+    """Parse polygon coordinates from environment variable.
+    Format: comma-separated values like "x1,y1,x2,y2,x3,y3,x4,y4"
+    """
+    polygon_str = os.getenv(env_var)
+    if polygon_str:
+        try:
+            coords = [int(x.strip()) for x in polygon_str.split(',')]
+            # Reshape to pairs: [(x1,y1), (x2,y2), ...]
+            polygon_points = [(coords[i], coords[i+1]) for i in range(0, len(coords), 2)]
+            return np.array(polygon_points)
+        except (ValueError, IndexError) as e:
+            print(f"[WARNING] Failed to parse {env_var}, using default: {e}")
+    return np.array(default)
+
+def _parse_polygon_required(env_var: str) -> np.ndarray:
+    """Parse polygon coordinates from environment variable (required).
+    Raises ValueError if environment variable is missing or invalid.
+    Format: comma-separated values like "x1,y1,x2,y2,x3,y3,x4,y4"
+    """
+    polygon_str = os.getenv(env_var)
+    if not polygon_str:
+        raise ValueError(f"Required environment variable {env_var} is not set. Please configure it in your .env file.")
+    
+    try:
+        coords = [int(x.strip()) for x in polygon_str.split(',')]
+        if len(coords) < 6 or len(coords) % 2 != 0:
+            raise ValueError(f"{env_var} must contain an even number of coordinates (at least 3 points, 6 values)")
+        # Reshape to pairs: [(x1,y1), (x2,y2), ...]
+        polygon_points = [(coords[i], coords[i+1]) for i in range(0, len(coords), 2)]
+        return np.array(polygon_points)
+    except (ValueError, IndexError) as e:
+        raise ValueError(f"Failed to parse {env_var}: {e}. Expected format: 'x1,y1,x2,y2,x3,y3,x4,y4'") from e
+
+def _parse_tuple(env_var: str, default: tuple, dtype=int) -> tuple:
+    """Parse tuple from environment variable.
+    Format: comma-separated values like "0,255,255"
+    """
+    tuple_str = os.getenv(env_var)
+    if tuple_str:
+        try:
+            values = [dtype(x.strip()) for x in tuple_str.split(',')]
+            return tuple(values)
+        except ValueError as e:
+            print(f"[WARNING] Failed to parse {env_var}, using default: {e}")
+    return default
+
+def _parse_int(env_var: str, default: int) -> int:
+    """Parse integer from environment variable."""
+    value = os.getenv(env_var)
+    if value:
+        try:
+            return int(value)
+        except ValueError:
+            print(f"[WARNING] Failed to parse {env_var} as int, using default: {default}")
+    return default
+
+def _parse_float(env_var: str, default: float) -> float:
+    """Parse float from environment variable."""
+    value = os.getenv(env_var)
+    if value:
+        try:
+            return float(value)
+        except ValueError:
+            print(f"[WARNING] Failed to parse {env_var} as float, using default: {default}")
+    return default
+
+def _parse_float_required(env_var: str) -> float:
+    """Parse float from environment variable (required).
+    Raises ValueError if environment variable is missing or invalid.
+    """
+    value = os.getenv(env_var)
+    if not value:
+        raise ValueError(f"Required environment variable {env_var} is not set. Please configure it in your .env file.")
+    
+    try:
+        return float(value)
+    except ValueError as e:
+        raise ValueError(f"Failed to parse {env_var} as float: {e}. Expected a numeric value.") from e
+
+def _parse_bool(env_var: str, default: bool) -> bool:
+    """Parse boolean from environment variable."""
+    value = os.getenv(env_var)
+    if value:
+        return value.lower() in ('true', '1', 'yes', 'on')
+    return default
 
 class Config:
     """Configuration class to centralize all settings"""
@@ -13,45 +104,45 @@ class Config:
     MODEL_PATH = os.path.join(BACKEND_ROOT, 'models', 'yolo12s.pt')  # YOLO model weights file path
     LICENSE_PLATE_MODEL_PATH = os.path.join(BACKEND_ROOT, 'models', 'best.pt')  # License plate detection model path
     ENABLE_LICENSE_PLATE_BLURRING = True  # Disable license plate blurring for performance
-    # Detection Zones
-    SOURCE_POLYGON = np.array([(422, 10), (594, 16), (801, 665), (535, 649)])  # Detection area polygon coordinates
-    STOP_ZONE_POLYGON = np.array([(507, 199), (681, 209), (751, 555), (484, 541)])  # Stop zone polygon coordinates
     
-    # Thresholds - Optimized for Performance
-    TARGET_WIDTH, TARGET_HEIGHT = 50, 130  # Target dimensions for perspective transformation
-    DETECTION_CONFIDENCE = 0.25  # Minimum confidence threshold for object detection (Original: 0.25 for better detection)
-    NMS_THRESHOLD = 0.3  # Non-Maximum Suppression threshold to remove duplicate detections (Original: 0.3 for better detection)
-    VELOCITY_THRESHOLD = 0.6  # Threshold to determine if vehicle is stationary in pixels/frame (Range: 0.1-2.0, Recommended: 0.5-1.0 based on video resolution)
-    FRAME_BUFFER = 5  # Number of frames to buffer for velocity calculation (Optimized: 5 for faster processing)
-    DETECTION_OVERLAP_THRESHOLD = 0.5  # IoU threshold for merging overlapping detections (Range: 0.3-0.8, Recommended: 0.5-0.6 for optimal merging)
-    CLASS_CONFIDENCE_THRESHOLD = 0.5  # Confidence threshold for stable class assignment (Original: 0.5 for better detection)
-    CLASS_HISTORY_FRAMES = 10  # Number of frames to track for class consistency (Range: 3-20, Recommended: 5-15 frames)
+    # Detection Zones (required environment variables)
+    SOURCE_POLYGON = _parse_polygon_required('SOURCE_POLYGON')  # Detection area polygon coordinates (required)
+    STOP_ZONE_POLYGON = _parse_polygon_required('STOP_ZONE_POLYGON')  # Stop zone polygon coordinates (required)
     
-    # Video Settings - Balanced for Quality and Performance
-    TARGET_FPS = 30  # Target 30 FPS for smooth playback
-    FPS_UPDATE_INTERVAL = 30  # Interval (in frames) to update FPS display (Range: 10-100, Recommended: 30-60 frames)
-    PROCESSING_FRAME_SKIP = 2  # Skip every N frames during processing (2 = process every 2nd frame for better performance)
-    STREAMING_FRAME_SKIP = 3  # Skip frames for streaming to reduce bandwidth and improve quality
+    # Thresholds - Optimized for Performance (from environment variables)
+    TARGET_WIDTH = _parse_int('TARGET_WIDTH', 50)  # Target dimensions for perspective transformation
+    TARGET_HEIGHT = _parse_int('TARGET_HEIGHT', 130)  # Target dimensions for perspective transformation
+    DETECTION_CONFIDENCE = _parse_float('DETECTION_CONFIDENCE', 0.25)  # Minimum confidence threshold for object detection
+    NMS_THRESHOLD = _parse_float('NMS_THRESHOLD', 0.3)  # Non-Maximum Suppression threshold to remove duplicate detections
+    VELOCITY_THRESHOLD = _parse_float('VELOCITY_THRESHOLD', 0.6)  # Threshold to determine if vehicle is stationary in pixels/frame
+    FRAME_BUFFER = _parse_int('FRAME_BUFFER', 5)  # Number of frames to buffer for velocity calculation
+    DETECTION_OVERLAP_THRESHOLD = _parse_float('DETECTION_OVERLAP_THRESHOLD', 0.5)  # IoU threshold for merging overlapping detections
+    CLASS_CONFIDENCE_THRESHOLD = _parse_float('CLASS_CONFIDENCE_THRESHOLD', 0.5)  # Confidence threshold for stable class assignment
+    CLASS_HISTORY_FRAMES = _parse_int('CLASS_HISTORY_FRAMES', 10)  # Number of frames to track for class consistency
     
-    # Visual Settings
-    ANNOTATION_THICKNESS = 1  # Thickness of bounding box lines (Range: 1-5, Recommended: 2-3 for visibility)
-    TEXT_SCALE = 0.4  # Scale factor for text labels (Range: 0.3-1.0, Recommended: 0.5-0.7 for readability)
-    TEXT_THICKNESS = 1  # Thickness of text labels (Range: 1-3, Recommended: 1-2)
-    TRACE_LENGTH_SECONDS = 2  # Length of tracking traces in seconds (Range: 1-10, Recommended: 2-5 seconds)
-    STOP_ZONE_COLOR = (0, 255, 255)  # Color for stop zone outline (BGR format)
-    STOP_ZONE_LINE_THICKNESS = 2  # Thickness of stop zone outline (Range: 1-5, Recommended: 2-3 for visibility)
-    ANCHOR_Y_OFFSET = 0  # Vertical offset for anchor points in pixels (Range: -20 to 20, Recommended: 0-10)
-    SHOW_ANCHOR_POINTS = True  # Whether to display anchor points on vehicles
-    ANCHOR_POINT_COLOR = (255, 0, 255)  # Color for anchor points (BGR format)
-    ANCHOR_POINT_RADIUS = 5  # Radius of anchor point circles (Range: 2-10, Recommended: 3-7 pixels)
-    ANCHOR_POINT_THICKNESS = -1  # Thickness of anchor point circles (-1 for filled, 1-3 for outline)
+    # Video Settings - Balanced for Quality and Performance (from environment variables)
+    TARGET_FPS = _parse_int('TARGET_FPS', 30)  # Target 30 FPS for smooth playback
+    FPS_UPDATE_INTERVAL = _parse_int('FPS_UPDATE_INTERVAL', 30)  # Interval (in frames) to update FPS display
+    PROCESSING_FRAME_SKIP = _parse_int('PROCESSING_FRAME_SKIP', 2)  # Skip every N frames during processing
+    
+    # Visual Settings (from environment variables)
+    ANNOTATION_THICKNESS = _parse_int('ANNOTATION_THICKNESS', 1)  # Thickness of bounding box lines
+    TEXT_SCALE = _parse_float('TEXT_SCALE', 0.4)  # Scale factor for text labels
+    TEXT_THICKNESS = _parse_int('TEXT_THICKNESS', 1)  # Thickness of text labels
+    TRACE_LENGTH_SECONDS = _parse_int('TRACE_LENGTH_SECONDS', 2)  # Length of tracking traces in seconds
+    STOP_ZONE_COLOR = _parse_tuple('STOP_ZONE_COLOR', (0, 255, 255), dtype=int)  # Color for stop zone outline (BGR format)
+    STOP_ZONE_LINE_THICKNESS = _parse_int('STOP_ZONE_LINE_THICKNESS', 2)  # Thickness of stop zone outline
+    ANCHOR_Y_OFFSET = _parse_int('ANCHOR_Y_OFFSET', 0)  # Vertical offset for anchor points in pixels
+    SHOW_ANCHOR_POINTS = _parse_bool('SHOW_ANCHOR_POINTS', True)  # Whether to display anchor points on vehicles
+    ANCHOR_POINT_COLOR = _parse_tuple('ANCHOR_POINT_COLOR', (255, 0, 255), dtype=int)  # Color for anchor points (BGR format)
+    ANCHOR_POINT_RADIUS = _parse_int('ANCHOR_POINT_RADIUS', 5)  # Radius of anchor point circles
+    ANCHOR_POINT_THICKNESS = _parse_int('ANCHOR_POINT_THICKNESS', -1)  # Thickness of anchor point circles (-1 for filled, 1-3 for outline)
     
     # Vehicle Classes
     CLASS_NAMES = {2: "car", 3: "motorcycle", 5: "bus", 7: "truck"}  # YOLO class ID to vehicle type mapping
     
     # Display Settings (for API mode)
     # Auto-detect environment: enable display locally, disable in production
-    import os
     import platform
     
     # Check if we're in a headless environment
@@ -65,23 +156,24 @@ class Config:
         os.getenv('ENABLE_DISPLAY', 'auto').lower() == 'true' or
         (os.getenv('ENABLE_DISPLAY', 'auto').lower() == 'auto' and not is_headless)
     )
-    MAX_DISPLAY_WIDTH = 1280  # Maximum width for display window (resize if larger)
-    DISPLAY_FRAME_SKIP = 1  # Skip every N frames for better performance (1 = no skip, 2 = skip every other frame)
-    DISPLAY_WAIT_KEY_DELAY = 1  # Delay in milliseconds for cv2.waitKey() (1 = responsive, 0 = fastest)
+    # Display Settings (from environment variables)
+    MAX_DISPLAY_WIDTH = _parse_int('MAX_DISPLAY_WIDTH', 1280)  # Maximum width for display window (resize if larger)
+    DISPLAY_FRAME_SKIP = _parse_int('DISPLAY_FRAME_SKIP', 1)  # Skip every N frames for better performance (1 = no skip, 2 = skip every other frame)
+    DISPLAY_WAIT_KEY_DELAY = _parse_int('DISPLAY_WAIT_KEY_DELAY', 1)  # Delay in milliseconds for cv2.waitKey() (1 = responsive, 0 = fastest)
     
-    # Location Coordinates for Weather Data
+    # Location Coordinates for Weather Data (required environment variables)
     # Camera location coordinates for weather data collection
-    LOCATION_LAT = -37.740585  # Latitude (Melbourne, Australia)
-    LOCATION_LON = 144.731637  # Longitude (Melbourne, Australia)
+    LOCATION_LAT = _parse_float_required('LOCATION_LAT')  # Latitude (required)
+    LOCATION_LON = _parse_float_required('LOCATION_LON')  # Longitude (required)
     
-    # WebSocket Streaming Configuration - Smooth Playback (30 FPS)
+    # WebSocket Streaming Configuration - Smooth Playback (30 FPS) (from environment variables)
     # Performance settings for smooth real-time video streaming
-    STREAMING_FRAME_SKIP = 2  # Send every 2nd frame for balanced smoothness
-    STREAMING_JPEG_QUALITY = 85  # Higher quality for better visual
-    STREAMING_MAX_FRAME_SIZE = (1280, 720)  # Larger size for better quality (720p)
-    STREAMING_QUEUE_SIZE = 4  # Slightly larger buffer for quality
-    STREAMING_WORKERS = 4  # More workers for better quality processing
-    STREAMING_TARGET_FPS = 30  # Target 30 FPS for smooth playback
+    STREAMING_FRAME_SKIP = _parse_int('STREAMING_FRAME_SKIP', 2)  # Send every Nth frame for balanced smoothness
+    STREAMING_JPEG_QUALITY = _parse_int('STREAMING_JPEG_QUALITY', 85)  # Higher quality for better visual
+    STREAMING_MAX_FRAME_SIZE = _parse_tuple('STREAMING_MAX_FRAME_SIZE', (1280, 720), dtype=int)  # Larger size for better quality (720p)
+    STREAMING_QUEUE_SIZE = _parse_int('STREAMING_QUEUE_SIZE', 4)  # Slightly larger buffer for quality
+    STREAMING_WORKERS = _parse_int('STREAMING_WORKERS', 4)  # More workers for better quality processing
+    STREAMING_TARGET_FPS = _parse_int('STREAMING_TARGET_FPS', 30)  # Target 30 FPS for smooth playback
     
     # Conditional interpolation based on environment
     try:

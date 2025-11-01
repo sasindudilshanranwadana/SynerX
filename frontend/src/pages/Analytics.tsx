@@ -12,7 +12,7 @@ import { getStoredTheme } from '../lib/theme';
 import { getAllTrackingResults } from '../lib/database';
 import { formatDateTime, getLocalTimezoneAbbreviation } from '../lib/dateUtils';
 
-// Requests to backend analysis endpoints use fetchJSON to ensure base URL and auth headers
+// Requests to backend endpoints use fetchJSON to ensure base URL and auth headers
 
 import { fetchTrackingResults, fetchVehicleCounts, generateDetailedReport, downloadCSV } from '../lib/api';
 
@@ -270,34 +270,7 @@ function Analytics() {
     try {
       setLoading(true);
       
-      // Try to get all analytics from backend first
-      try {
-        const analyticsData = await fetchJSON('/analysis/complete');
-        
-        if (analyticsData.status === 'success' && analyticsData.tracking_results) {
-          let filteredData = analyticsData.tracking_results;
-          
-          // Apply date filter
-          filteredData = filterDataByDate(filteredData);
-          
-          setData(filteredData);
-          
-          // Load correlation analysis
-          const correlationData = await fetchJSON('/analysis/correlation');
-          
-          if (correlationData.status === 'success') {
-            setAnalysisData(correlationData.analysis);
-            updateStats(filteredData.length, filteredData, correlationData.analysis);
-          }
-          
-          setError(null);
-          return;
-        }
-      } catch (backendError) {
-        console.log('Backend not available, falling back to database');
-      }
-      
-      // Fallback: Get all data from database
+      // Get all data from database
       const allTrackingResults = await getAllTrackingResults();
       let filteredData = filterDataByDate(allTrackingResults);
       
