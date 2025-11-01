@@ -39,9 +39,10 @@ SynerX is a React-based frontend application that connects to a backend API for 
 ### Prerequisites
 
 - Node.js 18+ and npm
-- Access to the backend API (deployed separately)
-- Supabase project
+- Backend API setup (see [`../backend/README.md`](../backend/README.md) for setup instructions)
+- Supabase project with database configured
 - Cloudflare R2 bucket
+- Backend `.env` file configured with all required settings
 
 ### Installation
 
@@ -80,12 +81,35 @@ SynerX is a React-based frontend application that connects to a backend API for 
    VITE_BACKEND_URL=http://localhost:8000
    ```
 
-4. **Start the development server**
+4. **Set up the backend first** (Required for full functionality)
+   
+   Before running the frontend, make sure the backend is set up:
+   - Navigate to the `backend/` directory
+   - Follow the backend setup instructions in [`../backend/README.md`](../backend/README.md)
+   - Ensure the backend `.env` file is configured with all required settings
+   - The backend should be ready to run before starting the frontend
+
+5. **Start the development server**
+
+   **Option A: Run both frontend and backend together** (Recommended for full-stack development)
    ```bash
    npm run dev
    ```
+   
+   This command will start both:
+   - Frontend at `http://localhost:5173`
+   - Backend API at `http://localhost:8000`
+   
+   > **Note**: Make sure you've set up the backend first (see step 4 above)
 
-   The application will be available at `http://localhost:5173`
+   **Option B: Run frontend only** (If backend is already running separately)
+   ```bash
+   npm run frontend
+   ```
+   
+   This will start only the frontend development server at `http://localhost:5173`
+   
+   > **Note**: Ensure the backend is already running at `http://localhost:8000` when using this option
 
 ### Building for Production
 
