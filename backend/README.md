@@ -55,7 +55,7 @@ Create a `.env` file in the `backend` directory by copying the example:
 cp .env.example .env
 ```
 
-Then edit `.env` with your actual credentials:
+Then edit `.env` with your actual credentials and required settings:
 
 ```env
 # Supabase Configuration
@@ -72,9 +72,53 @@ CLOUDFLARE_ACCOUNT_ID=your_cloudflare_account_id_here
 R2_ACCESS_KEY_ID=your_r2_access_key_id_here
 R2_SECRET_ACCESS_KEY=your_r2_secret_access_key_here
 R2_BUCKET_NAME=your_r2_bucket_name_here
+
+# Detection Zone Configuration (REQUIRED)
+# Polygon coordinates format: x1,y1,x2,y2,x3,y3,x4,y4
+# These are REQUIRED - the application will fail to start if these are not set
+SOURCE_POLYGON=422,10,594,16,801,665,535,649
+STOP_ZONE_POLYGON=507,199,681,209,751,555,484,541
+
+# Location Coordinates for Weather Data (REQUIRED)
+LOCATION_LAT=-37.740585
+LOCATION_LON=144.731637
+
+# Target dimensions for perspective transformation
+TARGET_WIDTH=50
+TARGET_HEIGHT=130
 ```
 
-### 5. Model Setup
+> **Note**: For detailed video setup and zone configuration instructions, see [`documentation/VIDEO_SETUP_GUIDE.md`](documentation/VIDEO_SETUP_GUIDE.md)
+
+### 5. Video Configuration
+
+#### Option A: Using Default Video (No Changes Needed)
+If you're using the default video (`videoplayback.mp4`), you don't need to make any changes. The system will automatically use:
+```
+backend/asset/videoplayback.mp4
+```
+
+#### Option B: Using Your Own Video
+If you want to use your own video file:
+
+1. **Place your video file** in the `backend/asset/` directory:
+   ```bash
+   # Place your video here:
+   backend/asset/your_video.mp4
+   ```
+
+2. **Update the video path** in `backend/config/config.py`:
+   ```python
+   # In backend/config/config.py, update this line:
+   VIDEO_PATH = os.path.join(BACKEND_ROOT, 'asset', 'your_video.mp4')  # Change 'your_video.mp4' to your actual filename
+   ```
+
+3. **Important**: After changing the video file, you'll need to:
+   - Update your detection zone coordinates in `.env` (see Configuration section)
+   - Recalibrate zone coordinates for your new video resolution
+   - For detailed setup instructions, see [`documentation/VIDEO_SETUP_GUIDE.md`](documentation/VIDEO_SETUP_GUIDE.md)
+
+### 6. Model Setup
 
 Place your YOLO model file at:
 
@@ -82,7 +126,7 @@ Place your YOLO model file at:
 backend/models/best.pt
 ```
 
-### 6. Supabase Database Setup
+### 7. Supabase Database Setup
 
 1. **Open Supabase Dashboard**
    - Go to [supabase.com](https://supabase.com) and sign in
@@ -291,14 +335,34 @@ Test API endpoints programmatically.
 
 ## ⚙️ Configuration
 
-Edit `config/config.py` to customize:
+### Video Path Configuration
 
-- **Video paths**: Input/output video locations
-- **Model path**: YOLO model file location
-- **Detection settings**: Confidence thresholds, NMS settings
-- **Zone configuration**: Stop zone and source polygon coordinates
-- **Processing parameters**: Frame buffer, velocity threshold
-- **Visualization**: Colors, line thickness, annotation settings
+- **Default Video**: If using `videoplayback.mp4`, no changes needed
+- **Custom Video**: Update `VIDEO_PATH` in `config/config.py` and place your video in `backend/asset/`
+
+For detailed video setup instructions, see [`documentation/VIDEO_SETUP_GUIDE.md`](documentation/VIDEO_SETUP_GUIDE.md)
+
+### Environment Variables (`.env` file)
+
+Most configuration is done via environment variables in `backend/.env`:
+
+**Required Settings:**
+- `SOURCE_POLYGON` - Detection zone coordinates (comma-separated: `x1,y1,x2,y2,x3,y3,x4,y4`)
+- `STOP_ZONE_POLYGON` - Stop zone coordinates (comma-separated format)
+- `LOCATION_LAT` - Camera latitude for weather data
+- `LOCATION_LON` - Camera longitude for weather data
+
+**Optional Settings** (defaults will be used if not set):
+- `DETECTION_CONFIDENCE` - Detection sensitivity (default: 0.25)
+- `NMS_THRESHOLD` - Duplicate detection removal (default: 0.3)
+- `VELOCITY_THRESHOLD` - Stationary vehicle detection (default: 0.6)
+- `TARGET_WIDTH`, `TARGET_HEIGHT` - Real dimensions of detection zone (default: 50, 130)
+- And many more - see `.env.example` for all available options
+
+### Configuration Files
+
+- **`config/config.py`**: Video paths, model paths, and other code-level settings
+- **`.env`**: Detection zones, thresholds, processing parameters, and API keys
 
 ## 📊 Database Schema
 
@@ -397,7 +461,22 @@ uvicorn main:app --reload
 
    **Solution**: Create `.env` file with your Supabase credentials
 
-2. **Model file not found**
+2. **Missing required environment variables**
+
+   ```
+   ValueError: Required environment variable SOURCE_POLYGON is not set. Please configure it in your .env file.
+   ```
+
+   **Solution**: 
+   - Ensure your `.env` file contains all required variables:
+     - `SOURCE_POLYGON` (comma-separated coordinates: `x1,y1,x2,y2,x3,y3,x4,y4`)
+     - `STOP_ZONE_POLYGON` (comma-separated coordinates)
+     - `LOCATION_LAT` (latitude for weather data)
+     - `LOCATION_LON` (longitude for weather data)
+   - See `.env.example` for the correct format
+   - For detailed setup, see [`documentation/VIDEO_SETUP_GUIDE.md`](documentation/VIDEO_SETUP_GUIDE.md)
+
+3. **Model file not found**
 
    ```
    FileNotFoundError: models/best.pt
@@ -405,7 +484,7 @@ uvicorn main:app --reload
 
    **Solution**: Place your YOLO model file in `backend/models/best.pt`
 
-3. **Database connection failed**
+4. **Database connection failed**
 
    ```
    Failed to read from database
@@ -413,7 +492,7 @@ uvicorn main:app --reload
 
    **Solution**: Check your Supabase credentials and network connection
 
-4. **SQL execution errors in Supabase**
+5. **SQL execution errors in Supabase**
 
    ```
    ERROR: relation "videos" already exists
@@ -421,7 +500,7 @@ uvicorn main:app --reload
 
    **Solution**: The SQL file includes DROP statements, so you can safely re-run it. If you get constraint errors, run the SQL file again as it handles existing constraints.
 
-5. **Tables not created after running SQL**
+6. **Tables not created after running SQL**
 
    - Check the SQL Editor for any error messages
    - Ensure you copied the entire file content
@@ -432,12 +511,21 @@ uvicorn main:app --reload
      AND table_name IN ('videos', 'tracking_results', 'vehicle_counts');
      ```
 
-6. **Shutdown not working**
+7. **Shutdown not working**
    - Ensure you're calling the `/shutdown/` endpoint
    - Check that processing is actually running
    - Wait a few frames for the shutdown to take effect
+
+8. **Video file not found**
+   ```
+   FileNotFoundError: [Errno 2] No such file or directory: 'backend/asset/videoplayback.mp4'
+   ```
+   **Solution**: 
+   - **Using default video**: Place `videoplayback.mp4` in `backend/asset/` directory
+   - **Using custom video**: Update `VIDEO_PATH` in `config/config.py` and ensure your video file is in `backend/asset/`
+   - See [Video Configuration](#5-video-configuration) section above
   
-7. **Local Backend not using GPU**
+9. **Local Backend not using GPU**
    - System is configured to run in GPU mode in Runpod.
    - Locally, you need to uninstall torch and torchvision
      ```pip uninstall torch torchvision```

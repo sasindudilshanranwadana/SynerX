@@ -2,24 +2,56 @@
 
 ## Quick Video Setup
 
-### 1. Place Your Video
-```bash
-# Put your video file here:
+### 1. Configure Video Path
+
+#### Option A: Using Default Video (No Changes Needed)
+If you're using the default video (`videoplayback.mp4`), you don't need to make any changes. The system will automatically use:
+```
 backend/asset/videoplayback.mp4
 ```
 
-### 2. Update Video Path in Config
-```python
-# In backend/config/config.py
-VIDEO_PATH = os.path.join(BACKEND_ROOT, 'asset', 'your_video.mp4')
-OUTPUT_VIDEO_PATH = os.path.join(BACKEND_ROOT, 'asset', 'output_video.mp4')
+#### Option B: Using Your Own Video
+If you want to use your own video file:
+
+1. **Place your video file** in the `backend/asset/` directory:
+   ```bash
+   # Place your video here:
+   backend/asset/your_video.mp4
+   ```
+
+2. **Update the video path** in `backend/config/config.py`:
+   ```python
+   # In backend/config/config.py, update this line:
+   VIDEO_PATH = os.path.join(BACKEND_ROOT, 'asset', 'your_video.mp4')  # Change 'your_video.mp4' to your actual filename
+   ```
+
+3. **Important**: After changing the video file, you'll need to:
+   - Update your detection zone coordinates (see Step 3 below)
+   - Recalibrate zone coordinates for your new video resolution
+   - Update polygon coordinates in your `.env` file
+
+> **Note**: For more details on video setup and zone configuration, see the [Zone Setup Steps](#zone-setup-steps) section below.
+
+### 2. Configure Environment Variables
+Create or update your `.env` file in the `backend` directory:
+
+```bash
+# Copy the example file if you haven't already
+cp backend/env.example backend/.env
 ```
 
-### 3. Set Detection Zones
-```python
-# In backend/config/config.py - Update these coordinates for your video
-SOURCE_POLYGON = np.array([(x1, y1), (x2, y2), (x3, y3), (x4, y4)])  # Main detection area
-STOP_ZONE_POLYGON = np.array([(x1, y1), (x2, y2), (x3, y3), (x4, y4)])  # Stop zone area
+### 3. Set Detection Zones (REQUIRED)
+Open `backend/.env` and configure the polygon coordinates (comma-separated values):
+
+```env
+# Polygon coordinates format: x1,y1,x2,y2,x3,y3,x4,y4
+# These are REQUIRED - the application will fail to start if these are not set
+SOURCE_POLYGON=422,10,594,16,801,665,535,649
+STOP_ZONE_POLYGON=507,199,681,209,751,555,484,541
+
+# Also set the real dimensions of your SOURCE_ZONE area for accurate measurements:
+TARGET_WIDTH=50
+TARGET_HEIGHT=130
 ```
 
 ## Video Requirements
@@ -52,7 +84,7 @@ cap.release()
 3. Run the notebook
 4. Click on your video frame to mark zone corners
 5. Press 'q' to quit and get coordinates
-6. Copy the printed coordinates to your config
+6. Copy the printed coordinates to your `.env` file in comma-separated format: `x1,y1,x2,y2,x3,y3,x4,y4`
 
 #### Method 2: Online Coordinate Tools
 1. Go to [Image Coordinate Picker](https://www.image-map.net/) or [Coordinate Picker](https://www.coordinatepicker.com/)
@@ -67,14 +99,21 @@ cap.release()
 4. Note the pixel coordinates of your detection areas
 5. Write down the (x, y) coordinates
 
-### Step 3: Update Config with Coordinates
-```python
-# In backend/config/config.py - Replace with your coordinates:
-SOURCE_POLYGON = np.array([(x1, y1), (x2, y2), (x3, y3), (x4, y4)])  # Main detection area
-STOP_ZONE_POLYGON = np.array([(x1, y1), (x2, y2), (x3, y3), (x4, y4)])  # Stop zone area
+### Step 3: Update .env File with Coordinates
+Open `backend/.env` and update these values (comma-separated format):
 
-# Also set the real dimensions of your SOURCE_ZONE area for accurate measurements:
-TARGET_WIDTH, TARGET_HEIGHT = 50, 130  # Real width and height of your SOURCE_ZONE area in meters/feet
+```env
+# Main detection area (REQUIRED)
+# Format: x1,y1,x2,y2,x3,y3,x4,y4
+SOURCE_POLYGON=x1,y1,x2,y2,x3,y3,x4,y4
+
+# Stop zone area (REQUIRED)
+# Format: x1,y1,x2,y2,x3,y3,x4,y4
+STOP_ZONE_POLYGON=x1,y1,x2,y2,x3,y3,x4,y4
+
+# Real dimensions of your SOURCE_ZONE area for accurate measurements (in meters/feet)
+TARGET_WIDTH=50
+TARGET_HEIGHT=130
 ```
 
 ### Understanding Coordinates vs Real SOURCE_ZONE Dimensions
@@ -83,36 +122,42 @@ TARGET_WIDTH, TARGET_HEIGHT = 50, 130  # Real width and height of your SOURCE_ZO
 - **The system converts pixel coordinates to real-world measurements within your SOURCE_ZONE**
 
 #### Example:
-```python
+```env
 # If your SOURCE_ZONE area is 50 meters wide and 130 meters long:
-TARGET_WIDTH, TARGET_HEIGHT = 50, 130
+TARGET_WIDTH=50
+TARGET_HEIGHT=130
 
 # And your SOURCE_ZONE polygon corners are at these pixel coordinates:
-SOURCE_POLYGON = np.array([(422, 10), (594, 16), (801, 665), (535, 649)])
+# Format: x1,y1,x2,y2,x3,y3,x4,y4
+SOURCE_POLYGON=422,10,594,16,801,665,535,649
 # This creates a polygon that covers the real 50m x 130m SOURCE_ZONE area
 ```
 
 ### Step 4: Test Your Zones
-```python
-# Example coordinates (adjust for your video):
-SOURCE_POLYGON = np.array([(422, 10), (594, 16), (801, 665), (535, 649)])
-STOP_ZONE_POLYGON = np.array([(507, 199), (681, 209), (751, 555), (484, 541)])
+Update your `backend/.env` file with example coordinates (adjust for your video):
+
+```env
+SOURCE_POLYGON=422,10,594,16,801,665,535,649
+STOP_ZONE_POLYGON=507,199,681,209,751,555,484,541
 ```
 
 ## Detection Settings
 
 ### Basic Detection Parameters
-```python
-# In backend/config/config.py - Adjust these for your video:
+Open `backend/.env` and adjust these values (optional - defaults will be used if not set):
 
+```env
 # Detection sensitivity (0.1-0.9, lower = more detections)
-DETECTION_CONFIDENCE = 0.25  # Start with 0.25, increase if too many false positives
+# Start with 0.25, increase if too many false positives
+DETECTION_CONFIDENCE=0.25
 
 # Remove duplicate detections (0.1-0.8, higher = more aggressive removal)
-NMS_THRESHOLD = 0.3  # Start with 0.3, increase if overlapping boxes
+# Start with 0.3, increase if overlapping boxes
+NMS_THRESHOLD=0.3
 
 # Vehicle speed threshold for stationary detection (pixels/frame, lower = more sensitive to movement)
-VELOCITY_THRESHOLD = 0.6  # Start with 0.6, lower values = more vehicles considered stationary
+# Start with 0.6, lower values = more vehicles considered stationary
+VELOCITY_THRESHOLD=0.6
 ```
 
 ### How to Calculate VELOCITY_THRESHOLD
@@ -138,11 +183,12 @@ VELOCITY_THRESHOLD = 0.6  # Start with 0.6, lower values = more vehicles conside
    ```
 
 #### Method 2: Trial and Error
-1. **Start with default**: `VELOCITY_THRESHOLD = 0.6`
+1. **Start with default**: `VELOCITY_THRESHOLD=0.6` in your `.env` file
 2. **Run processing** and check results
 3. **Adjust based on results**:
    - Too many stationary vehicles → Increase threshold (0.8, 1.0)
    - Not detecting stationary vehicles → Decrease threshold (0.3, 0.4)
+4. **Update your `.env` file** with the new value
 
 #### Method 3: Use Built-in Testing Tools
 1. **Navigate to the testing tools:**
@@ -157,53 +203,98 @@ VELOCITY_THRESHOLD = 0.6  # Start with 0.6, lower values = more vehicles conside
 
 3. **Follow the recommendations** provided by the test
 
-4. **Update your config.py** with the recommended value
+4. **Update your `.env` file** with the recommended value (e.g., `VELOCITY_THRESHOLD=0.75`)
 
 **Note:** This method tests realistic vehicle movement patterns and provides specific recommendations for your video.
 
 ### Advanced Detection Settings
-```python
+Add these to your `backend/.env` file (optional - defaults will be used if not set):
+
+```env
 # Frame processing (higher = faster processing, lower = more accurate)
-FRAME_BUFFER = 5  # Frames to buffer for velocity calculation
-DETECTION_OVERLAP_THRESHOLD = 0.5  # Merge overlapping detections
-CLASS_CONFIDENCE_THRESHOLD = 0.5  # Vehicle type classification confidence
-CLASS_HISTORY_FRAMES = 10  # Frames to track for consistent classification
+FRAME_BUFFER=5
+DETECTION_OVERLAP_THRESHOLD=0.5
+CLASS_CONFIDENCE_THRESHOLD=0.5
+CLASS_HISTORY_FRAMES=10
 ```
 
 ### Performance Tuning Tips
 
 #### For High-Traffic Videos
-```python
-DETECTION_CONFIDENCE = 0.3  # Higher threshold to reduce false positives
-VELOCITY_THRESHOLD = 0.8   # Higher threshold for busy traffic
-FRAME_BUFFER = 3           # Fewer frames for faster processing
+Add these to your `backend/.env`:
+```env
+DETECTION_CONFIDENCE=0.3
+VELOCITY_THRESHOLD=0.8
+FRAME_BUFFER=3
 ```
 
 #### For Low-Traffic Videos
-```python
-DETECTION_CONFIDENCE = 0.2  # Lower threshold to catch more vehicles
-VELOCITY_THRESHOLD = 0.4   # Lower threshold for slow traffic
-FRAME_BUFFER = 7           # More frames for better accuracy
+Add these to your `backend/.env`:
+```env
+DETECTION_CONFIDENCE=0.2
+VELOCITY_THRESHOLD=0.4
+FRAME_BUFFER=7
 ```
 
 #### For Fast-Moving Vehicles
-```python
-VELOCITY_THRESHOLD = 1.0   # Higher threshold for highway speeds
-DETECTION_CONFIDENCE = 0.3  # Higher confidence for fast vehicles
+Add these to your `backend/.env`:
+```env
+VELOCITY_THRESHOLD=1.0
+DETECTION_CONFIDENCE=0.3
 ```
 
 #### For Slow/Stationary Vehicles
-```python
-VELOCITY_THRESHOLD = 0.3   # Lower threshold for parking lots
-DETECTION_CONFIDENCE = 0.2  # Lower threshold for stationary vehicles
+Add these to your `backend/.env`:
+```env
+VELOCITY_THRESHOLD=0.3
+DETECTION_CONFIDENCE=0.2
 ```
 
 ## Quick Start
-1. Put video in `backend/asset/`
-2. Update `VIDEO_PATH` in config.py
-3. Set zone coordinates
-4. Adjust detection settings if needed
-5. Run the system
+
+### For Default Video Users:
+1. **Copy environment example file:**
+   ```bash
+   cp backend/env.example backend/.env
+   ```
+
+2. **Configure required settings in `backend/.env`:**
+   - Set `SOURCE_POLYGON` (comma-separated coordinates: `x1,y1,x2,y2,x3,y3,x4,y4`)
+   - Set `STOP_ZONE_POLYGON` (comma-separated coordinates)
+   - Set `LOCATION_LAT` and `LOCATION_LON` (for weather data)
+   - Set `TARGET_WIDTH` and `TARGET_HEIGHT` (real dimensions of your zone)
+
+3. **Optionally adjust detection settings** in `.env` if defaults don't work
+
+4. **Run the system**
+
+### For Custom Video Users:
+1. **Place your video** in `backend/asset/your_video.mp4`
+
+2. **Update video path** in `backend/config/config.py`:
+   ```python
+   VIDEO_PATH = os.path.join(BACKEND_ROOT, 'asset', 'your_video.mp4')
+   ```
+
+3. **Copy environment example file:**
+   ```bash
+   cp backend/env.example backend/.env
+   ```
+
+4. **Configure required settings in `backend/.env`:**
+   - Set `SOURCE_POLYGON` (comma-separated coordinates: `x1,y1,x2,y2,x3,y3,x4,y4`)
+   - Set `STOP_ZONE_POLYGON` (comma-separated coordinates)
+   - Set `LOCATION_LAT` and `LOCATION_LON` (for weather data)
+   - Set `TARGET_WIDTH` and `TARGET_HEIGHT` (real dimensions of your zone)
+
+5. **Important**: Since you're using a custom video, you **must** get new zone coordinates:
+   - Follow the [Zone Setup Steps](#zone-setup-steps) section below
+   - Use the interactive notebook or coordinate tools to get coordinates for your video
+   - Update the polygon values in your `.env` file
+
+6. **Optionally adjust detection settings** in `.env` if defaults don't work
+
+7. **Run the system**
 
 ## Validation & Testing
 
@@ -229,11 +320,12 @@ This will:
 - ✅ No false detections outside your zones
 
 ### If Issues Found
-- **No detections**: Lower `DETECTION_CONFIDENCE` (try 0.2)
-- **Too many false positives**: Increase `DETECTION_CONFIDENCE` (try 0.3)
-- **Zones not working**: Check your coordinate values
-- **Poor tracking**: Adjust `VELOCITY_THRESHOLD`
-- **Too many stationary vehicles**: Increase `VELOCITY_THRESHOLD` (try 0.8)
-- **Not detecting stationary vehicles**: Decrease `VELOCITY_THRESHOLD` (try 0.3)
+- **No detections**: Lower `DETECTION_CONFIDENCE` in `.env` (try `DETECTION_CONFIDENCE=0.2`)
+- **Too many false positives**: Increase `DETECTION_CONFIDENCE` in `.env` (try `DETECTION_CONFIDENCE=0.3`)
+- **Zones not working**: Check your coordinate values in `.env` (ensure comma-separated format: `x1,y1,x2,y2,x3,y3,x4,y4`)
+- **Poor tracking**: Adjust `VELOCITY_THRESHOLD` in `.env`
+- **Too many stationary vehicles**: Increase `VELOCITY_THRESHOLD` in `.env` (try `VELOCITY_THRESHOLD=0.8`)
+- **Not detecting stationary vehicles**: Decrease `VELOCITY_THRESHOLD` in `.env` (try `VELOCITY_THRESHOLD=0.3`)
+- **Application fails to start**: Ensure required environment variables are set (`SOURCE_POLYGON`, `STOP_ZONE_POLYGON`, `LOCATION_LAT`, `LOCATION_LON`)
 
 That's it! 🎬
