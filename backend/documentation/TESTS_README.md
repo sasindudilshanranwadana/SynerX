@@ -245,5 +245,6 @@ pytest tests/test_weather_api.py -s
 ```
 
 ### Result Screenshot
+<img width="1493" height="908" alt="1" src="https://github.com/user-attachments/assets/b87631c6-854c-49d2-abb6-f5bf8310f0b5" />
 
 
