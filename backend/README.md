@@ -72,25 +72,62 @@ CLOUDFLARE_ACCOUNT_ID=your_cloudflare_account_id_here
 R2_ACCESS_KEY_ID=your_r2_access_key_id_here
 R2_SECRET_ACCESS_KEY=your_r2_secret_access_key_here
 R2_BUCKET_NAME=your_r2_bucket_name_here
-
-# Detection Zone Configuration (REQUIRED)
-# Polygon coordinates format: x1,y1,x2,y2,x3,y3,x4,y4
-# These are REQUIRED - the application will fail to start if these are not set
-SOURCE_POLYGON=422,10,594,16,801,665,535,649
-STOP_ZONE_POLYGON=507,199,681,209,751,555,484,541
-
-# Location Coordinates for Weather Data (REQUIRED)
-LOCATION_LAT=-37.740585
-LOCATION_LON=144.731637
-
-# Target dimensions for perspective transformation
-TARGET_WIDTH=50
-TARGET_HEIGHT=130
 ```
 
-> **Note**: For detailed video setup and zone configuration instructions, see [`documentation/VIDEO_SETUP_GUIDE.md`](documentation/VIDEO_SETUP_GUIDE.md)
+> **Important**: After creating your R2 bucket, you **must** configure CORS settings. See [Cloudflare R2 CORS Configuration](#cloudflare-r2-cors-configuration) section below.
 
-### 5. Video Configuration
+### 5. Cloudflare R2 CORS Configuration (Required for video uploads)
+
+When creating your Cloudflare R2 bucket, you **must** configure CORS settings to allow the frontend to upload videos. This is critical for the application to work properly.
+
+**Steps to configure CORS:**
+
+1. Go to your [Cloudflare Dashboard](https://dash.cloudflare.com/)
+2. Navigate to **R2 Object Storage**
+3. Select your bucket (or create a new one)
+4. Go to **Settings** → **CORS Policy**
+5. Click **Add CORS policy** or **Edit**
+6. Copy and paste the following CORS configuration:
+
+```json
+[
+  {
+    "AllowedOrigins": [
+      "http://localhost:3000",
+      "http://localhost:8000",
+      "http://localhost:5500",
+      "http://localhost:5173",
+      "http://127.0.0.1:5500",
+      "https://synerx.netlify.app",
+      "https://rogitmg9xpmsgq-8000.proxy.runpod.net"
+    ],
+    "AllowedMethods": [
+      "GET",
+      "POST",
+      "PUT",
+      "DELETE",
+      "HEAD"
+    ],
+    "AllowedHeaders": [
+      "*"
+    ],
+    "ExposeHeaders": [
+      "Content-Length",
+      "Content-Range",
+      "Content-Type",
+      "Accept-Ranges",
+      "ETag"
+    ],
+    "MaxAgeSeconds": 3600
+  }
+]
+```
+
+7. Save the CORS policy
+
+> **Important**: Without proper CORS configuration, video uploads will fail with CORS errors in the browser console.
+
+### 6. Video Configuration
 
 #### Option A: Using Default Video (No Changes Needed)
 If you're using the default video (`videoplayback.mp4`), you don't need to make any changes. The system will automatically use:
@@ -118,7 +155,7 @@ If you want to use your own video file:
    - Recalibrate zone coordinates for your new video resolution
    - For detailed setup instructions, see [`documentation/VIDEO_SETUP_GUIDE.md`](documentation/VIDEO_SETUP_GUIDE.md)
 
-### 6. Model Setup
+### 8. Model Setup
 
 Place your YOLO model file at:
 
@@ -126,7 +163,7 @@ Place your YOLO model file at:
 backend/models/best.pt
 ```
 
-### 7. Supabase Database Setup
+### 9. Supabase Database Setup
 
 1. **Open Supabase Dashboard**
    - Go to [supabase.com](https://supabase.com) and sign in
