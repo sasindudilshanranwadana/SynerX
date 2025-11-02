@@ -166,7 +166,84 @@ This is the most critical test, verifying the entire end-to-end workflow. It is 
 
 
 
+## 1. Weather System API Test 
 
- Test Results - Janith
- <img width="1233" height="560" alt="image" src="https://github.com/user-attachments/assets/0269f954-a814-4c5a-b37a-3520a42d219a" />
+The primary test validates the **Weather Impact Analysis API** is reachable, authenticated, and returns structured JSON—useful as a **deployment-readiness smoke check** before real tracking data is available.
+
+## 1. Prerequisites
+
+- **Python 3.11+** (3.12 also works)
+- Ability to create a virtual environment
+- Git + a local clone of this repository
+
+> All commands below assume you run them from the **backend/** directory.
+
+```bash
+cd backend
+```
+
+## 2. Environment Setup
+
+Create and activate a virtual environment:
+
+**Windows**
+```bash
+py -m venv .venv
+.venv\Scripts\activate
+```
+
+Install dependencies:
+```bash
+pip install -r requirements.txt
+pip install httpx python-dotenv boto3 torch torchvision --index-url https://download.pytorch.org/whl/cpu
+pip install ultralytics supervision seaborn
+```
+
+Create `.env`:
+```env
+SUPABASE_URL=https://dummy.supabase.co
+SUPABASE_KEY=dummy-key-123
+```
+
+## 3. Run Backend (optional)
+
+```bash
+uvicorn main:app --reload
+# http://localhost:8000/docs
+```
+
+## 4. Run Weather System Test
+
+```bash
+pytest tests/test_weather_api.py -s
+```
+
+## 5. What This Test Verifies
+
+- Auth layer works
+- Route `/analysis/weather-impact` is reachable
+- Returns JSON 200/500/502 depending on data availability
+
+## 6. Troubleshooting
+
+- Missing modules → install above deps
+- 403 → ensure Authorization header used in test
+- 502 → expected if no tracking data yet
+
+## 7. Quick Commands 
+
+```bash
+cd backend
+py -m venv .venv
+.venv\Scripts\activate
+pip install -r requirements.txt
+pip install httpx python-dotenv boto3 torch torchvision --index-url https://download.pytorch.org/whl/cpu
+pip install ultralytics supervision seaborn
+echo SUPABASE_URL=https://dummy.supabase.co> .env
+echo SUPABASE_KEY=dummy-key-123>> .env
+pytest tests/test_weather_api.py -s
+```
+
+### Result Screenshot
+
 
