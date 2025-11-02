@@ -128,7 +128,8 @@ The test suite is organized into tests for individual pages and shared UI compon
     -   Tests that the `onClose` callback is triggered when the overlay is clicked.
 
 
-<img width="1458" height="898" alt="image" src="https://github.com/user-attachments/assets/492d79d6-8e9c-4677-b485-3850f02c0992" />
+<img width="1461" height="832" alt="image" src="https://github.com/user-attachments/assets/de2ad857-e16d-44ba-bdac-30566754c7e4" />
+
 
 ---
 
