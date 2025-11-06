@@ -2,7 +2,7 @@
 
 import { render, screen } from '@testing-library/react';
 import { describe, it, expect } from 'vitest';
-import LoadingScreen from './LoadingScreen'; // Make sure the path is correct
+import LoadingScreen from '../LoadingScreen'; // Make sure the path is correct
 
 describe('LoadingScreen component', () => {
   it('should render the loading text', () => {

@@ -243,32 +243,7 @@ function Dashboard() {
 
   const loadAnalytics = async () => {
     try {
-      // Try to get analytics from RunPod backend first
-      try {
-        const apiBase = 'http://127.0.0.1:8000';
-        const response = await fetch(`${apiBase}/analysis/complete`, {
-          method: 'GET',
-          headers: { 'Content-Type': 'application/json' },
-          signal: AbortSignal.timeout(10000)
-        });
-        
-        if (response.ok) {
-          const data = await response.json();
-          if (data.stats) {
-            setStats({
-              videosProcessed: data.stats.videosProcessed || 0,
-              violations: data.stats.violations || 0,
-              complianceRate: data.stats.complianceRate || 0,
-              avgReactionTime: data.stats.avgReactionTime || 0
-            });
-            return;
-          }
-        }
-      } catch (backendError) {
-        console.log('Backend analytics not available, using database fallback');
-      }
-      
-      // Fallback: Get analytics from database
+      // Get analytics from database
       const analytics = await getOverallAnalytics();
 
       setStats({
@@ -279,7 +254,7 @@ function Dashboard() {
       });
     } catch (error) {
       console.error('Error loading analytics:', error);
-      // Set to zero if both backend and database fail
+      // Set to zero if database fails
       setStats({
         videosProcessed: 0,
         violations: 0,
